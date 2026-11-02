@@ -166,6 +166,8 @@ if __name__ == '__main__':
     parser.add_argument('--dlt_dyn_dim', type=int, default=16, help='DLT: summary dimension of the dynamic coefficients')
     parser.add_argument('--dlt_ccf_len', type=int, default=8000,
                         help='DLT: number of (most recent) training steps used for neighbour selection')
+    parser.add_argument('--dlt_impl', type=str, default='kernel', choices=['kernel', 'basis'],
+                        help='DLT: computation path for dlt/dltdyn (identical results; kernel = less memory)')
 
     args = parser.parse_args()
     if torch.cuda.is_available() and args.use_gpu:

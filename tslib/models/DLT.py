@@ -77,6 +77,12 @@ class Model(nn.Module):
         self.k = k = max(0, min(getattr(configs, "dlt_k", 8), C - 1))
         self.dyn_dim = d = getattr(configs, "dlt_dyn_dim", 16)
         self.ccf_len = getattr(configs, "dlt_ccf_len", 8000)
+        # dlt / dltdyn computation path (mathematically identical):
+        #   kernel: build K_ij = sum_r alpha_ijr phi_r, one grouped conv  (less memory; default)
+        #   basis : filter with the R basis kernels, gather, mix          (fewer FLOPs for R << L)
+        self.impl = getattr(configs, "dlt_impl", "kernel")
+        if self.impl not in ("kernel", "basis"):
+            raise ValueError(f"--dlt_impl must be 'kernel' or 'basis', got {self.impl}")
         if k == 0 and self.variant != "ci":
             print(f"[DLT] enc_in={C}: no other variables, falling back to variant 'ci'")
             self.variant = "ci"
@@ -149,18 +155,31 @@ class Model(nn.Module):
             g = torch.gather(src, 3, pos.unsqueeze(0).expand(B, -1, -1, -1))
             return (g * self.a[None, :, :, None]).sum(2)
         if v in ("dlt", "dltdyn"):
-            # filter every variable once with the R shared basis kernels, then mix per pair
-            xp = F.pad(xn, (L, 0)).reshape(B * C, 1, T + L)
-            u = F.conv1d(xp, self.phi.flip(-1).unsqueeze(1)).view(B, C, self.R, T)
-            ug = u[:, idx]                                                       # (B, C, k, R, T)
+            alpha = self.alpha
+            if v == "dltdyn":
+                alpha = alpha[None] * (1 + torch.tanh(self.mod(self._pair_features(xn))))  # (B, C, k, R)
+            if self.impl == "basis":
+                # filter every variable once with the R shared basis kernels, then mix per pair
+                xp = F.pad(xn, (L, 0)).reshape(B * C, 1, T + L)
+                ug = F.conv1d(xp, self.phi.flip(-1).unsqueeze(1)).view(B, C, self.R, T)[:, idx]  # (B,C,k,R,T)
+                eq = "bckrt,ckr->bct" if v == "dlt" else "bckrt,bckr->bct"
+                return torch.einsum(eq, ug, alpha)
+            # "kernel": materialise K_ij = sum_r alpha_ijr phi_r once, then one grouped convolution
             if v == "dlt":
-                return torch.einsum("bckrt,ckr->bct", ug, self.alpha)
-            alpha = self.alpha[None] * (1 + torch.tanh(self.mod(self._pair_features(xn))))  # (B, C, k, R)
-            return torch.einsum("bckrt,bckr->bct", ug, alpha)
-        # tap3 / full: explicit per-pair kernels as one grouped convolution
-        taps = self.w.shape[-1]
-        xg = F.pad(xn[:, idx.reshape(-1)], (taps - 1, 0))                       # (B, C*k, T + taps - 1)
-        z = F.conv1d(xg, self.w.reshape(C * k, 1, taps).flip(-1), groups=C * k)
+                return self._pair_conv(xn, torch.einsum("ckr,rl->ckl", alpha, self.phi))       # K: (C, k, L+1)
+            K = torch.einsum("bckr,rl->bckl", alpha, self.phi)                                    # (B, C, k, L+1)
+            xg = F.pad(xn[:, idx], (L, 0)).reshape(1, B * C * k, T + L)
+            z = F.conv1d(xg, K.reshape(B * C * k, 1, L + 1).flip(-1), groups=B * C * k)
+            return z.view(B, C, k, T).sum(2)
+        # tap3 / full: explicit per-pair kernels
+        return self._pair_conv(xn, self.w)
+
+    def _pair_conv(self, xn, K):
+        """z_i = sum_j K_ij * x_j for static per-pair kernels K: (C, k, taps), as one grouped convolution."""
+        B, C, T = xn.shape
+        k, taps = K.shape[1], K.shape[-1]
+        xg = F.pad(xn[:, self.idx.reshape(-1)], (taps - 1, 0))                   # (B, C*k, T + taps - 1)
+        z = F.conv1d(xg, K.reshape(C * k, 1, taps).flip(-1), groups=C * k)
         return z.view(B, C, k, T).sum(2)
 
     def forecast(self, x_enc):

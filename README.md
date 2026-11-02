@@ -129,11 +129,46 @@ EXTRA_ARGS="--use_amp" bash scripts/long_term_forecast/DLT_script/DLT_ECL.sh    
 Scripts exist for ETTh1/2, ETTm1/2, Weather, ECL, Traffic, Exchange and PEMS08. Metrics are appended
 to `tslib/result_long_term_forecast.txt`; predictions go to `tslib/results/<setting>/`.
 DLT-specific flags: `--dlt_variant {ci,scalar,shift,tap3,dlt,full,scalardyn,dltdyn}`, `--dlt_k`,
-`--dlt_L`, `--dlt_R`, `--dlt_dyn_dim`, `--dlt_ccf_len`.
+`--dlt_L`, `--dlt_R`, `--dlt_dyn_dim`, `--dlt_ccf_len`, `--dlt_impl {kernel,basis}` (two numerically
+identical computation paths for `dlt`/`dltdyn`; `kernel` is the default and uses less memory).
 
-**GPU memory.** DLT itself is small (≤ 0.36 M parameters even at Traffic scale; see the measurements
-below), so any CUDA GPU with ≥ 4 GB runs it. For the full benchmark the baselines (e.g. iTransformer on
-Traffic) dominate; a single 24 GB card (RTX 3090/4090, A5000, A10) is comfortable.
+**GPU memory.** DLT itself is small (≤ 0.36 M parameters even at Traffic scale) and one training step at
+batch 32 needs ≤ ~0.75 GB of activations (table below), so any CUDA GPU with ≥ 4 GB runs it. For the full
+benchmark the baselines (e.g. iTransformer on Traffic) dominate; a single 24 GB card (RTX 3090/4090,
+A5000, A10) is comfortable.
+
+### Verification of the port
+* **Equivalence with `code/proto.py`:** with identical parameters and neighbours, all 8 variants (and both
+  computation paths) give the same outputs (max |Δ| ≤ 1.1e-6) and gradients (≤ 1.2e-7).
+* **Device-agnostic:** every variant runs forward + backward on PyTorch's `meta` device, i.e. no tensor is
+  pinned to the CPU inside the model. *Not yet run on a physical GPU* (the development machine had none).
+* **End-to-end in TSLib (CPU):** all variants train and test; without CUDA the run falls back to the CPU;
+  test-only mode (`--is_training 0`) reloads the checkpoint (incl. neighbours) and reproduces the metric.
+* **Same results as the prototype** (MSE, H = 96 unless noted; prototype = mean over its seeds, TSLib = one
+  run with TSLib's seed and data pipeline, prototype hyper-parameters: lr 3e-3, ≤ 6 epochs, patience 2):
+
+| setting | ci | scalar | dlt | scalardyn | dltdyn |
+|---|---|---|---|---|---|
+| PEMS08 – prototype | 1.168 | 1.017 | 0.863 | 0.721 | 0.552 |
+| PEMS08 – TSLib | 1.169 | 1.040 | 0.858 | 0.674 | **0.526** |
+| PEMS08 H=24 – prototype / TSLib | | | 0.179 / 0.180 | | 0.133 / **0.133** |
+| Weather – prototype | 0.193 | | 0.167 | 0.172 | 0.164 |
+| Weather – TSLib | 0.193 | | 0.167 | 0.176 | **0.165** |
+| ETTh1 – prototype | **0.390** | | 0.393 | | 0.408 |
+| ETTh1 – TSLib | **0.389** | | 0.396 | | 0.405 |
+
+  (These TSLib runs used `--dlt_impl basis`; repeating ETTh1 dlt/dltdyn, Weather dltdyn and PEMS08 H=24
+  dltdyn with the default `kernel` path gives the same MSE to four decimals.)
+
+* **Speed / memory** of one training step (CPU, 4 threads, batch 32, T = H = 96, k = 8, L = 48, R = 4):
+
+| variables | dlt (kernel) | dlt (basis) | dltdyn (kernel) | dltdyn (basis) | full | prototype loop: dlt / dltdyn |
+|---|---|---|---|---|---|---|
+| 862 (Traffic) | 0.77 s, 527 MB | 1.03 s, 904 MB | 0.85 s, 734 MB | 0.89 s, 1028 MB | 0.59 s, 552 MB | 1.79 s / 1.17 s |
+| 321 (Electricity) | 0.20 s, 271 MB | 0.36 s, 398 MB | 0.25 s, 360 MB | 0.30 s, 445 MB | 0.28 s, 262 MB | 0.35 s / 0.27 s |
+| 170 (PEMS08) | 0.13 s, 203 MB | 0.20 s, 290 MB | 0.19 s, 243 MB | 0.16 s, 310 MB | 0.13 s, 202 MB | – |
+
+  Parameters at Traffic scale: dlt 46 K, dltdyn 49 K vs. free kernel 357 K.
 
 ## Next steps
 Gate/regulariser for weakly coupled data; a stronger temporal backbone; full GPU benchmark in `tslib/`
