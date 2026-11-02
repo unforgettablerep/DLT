@@ -1,0 +1,21 @@
+# Minimal dependencies for running DLT (and the classic, non-foundation models) in this
+# Time-Series-Library snapshot. The upstream requirements.txt additionally pulls in the
+# foundation-model stacks (chronos, timesfm, uni2ts/jax, ...), which DLT does not need.
+#
+# 1) install PyTorch matching your CUDA driver first, e.g.
+#      pip install torch --index-url https://download.pytorch.org/whl/cu121
+# 2) pip install -r requirements_dlt.txt
+#
+# Tested (CPU) with: python 3.13, torch 2.15, numpy 2.5.3, pandas 3.0.5, scikit-learn 1.9.1,
+# scipy 1.18.1, matplotlib 3.11.2, tqdm 4.70.1, sktime 1.2.0, datasets 5.1.0,
+# huggingface_hub 2.4.0, patool 4.1.0
+numpy
+pandas
+scikit-learn
+scipy
+matplotlib
+tqdm
+sktime
+datasets
+huggingface_hub
+patool

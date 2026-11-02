@@ -81,6 +81,7 @@ scripts/run_grid.sh        reproduce all 69 runs
 results/runs.jsonl   one JSON line per run (MSE, MAE, params, time, lag statistics)
 results/summary.md   results table
 figures/             architecture figure (SVG: editable/Visio-importable; PDF: vector for LaTeX; PNG: 4800×3180)
+tslib/               Time-Series-Library snapshot with DLT (models/DLT.py, scripts/long_term_forecast/DLT_script/)
 ```
 
 ## Reproduce
@@ -101,8 +102,41 @@ python code/make_arch.py figures/dlt_architecture.svg
 node code/render.js figures/dlt_architecture.svg figures/dlt_architecture.png figures/dlt_architecture.pdf 3
 ```
 
+## Time-Series-Library port (`tslib/`) — GPU-ready
+`tslib/` is a snapshot of [thuml/Time-Series-Library](https://github.com/thuml/Time-Series-Library)
+(commit `4e938a1`, MIT) with DLT added as `--model DLT`; every change to upstream is listed in
+[`tslib/DLT_CHANGES.md`](tslib/DLT_CHANGES.md). The TSLib model is a vectorised re-implementation
+of `code/proto.py` (no Python loop over neighbours) and is device-agnostic: CPU, single / multi-GPU
+(DataParallel), AMP and Apple MPS.
+
+```bash
+cd tslib
+pip install torch --index-url https://download.pytorch.org/whl/cu121   # pick the build for your CUDA
+pip install -r requirements_dlt.txt
+# ETT / Weather / ECL / Traffic / Exchange: put the CSVs under ./dataset/... as in the TSLib scripts
+# (missing CSVs are downloaded from the TSLib Hugging Face repo automatically).
+# PEMS08 is not in that repo:
+mkdir -p dataset/PEMS && curl -fL -o dataset/PEMS/PEMS08.npz \
+  https://huggingface.co/datasets/jimmygao3218/PEMS08/resolve/main/PEMS08.npz
+
+bash scripts/long_term_forecast/DLT_script/DLT_PEMS08.sh                 # GPU 0, DLT-dyn, H = 12/24/48/96
+VARIANT=dlt bash scripts/long_term_forecast/DLT_script/DLT_Weather.sh    # another kernel variant
+bash scripts/long_term_forecast/DLT_script/DLT_ablation.sh               # all 8 variants (PEMS08 + Weather)
+EXTRA_ARGS="--no_use_gpu --num_workers 0" bash scripts/long_term_forecast/DLT_script/DLT_ETTh1.sh   # CPU
+EXTRA_ARGS="--use_multi_gpu --devices 0,1" bash scripts/long_term_forecast/DLT_script/DLT_Traffic.sh # 2 GPUs
+EXTRA_ARGS="--use_amp" bash scripts/long_term_forecast/DLT_script/DLT_ECL.sh                        # AMP
+```
+Scripts exist for ETTh1/2, ETTm1/2, Weather, ECL, Traffic, Exchange and PEMS08. Metrics are appended
+to `tslib/result_long_term_forecast.txt`; predictions go to `tslib/results/<setting>/`.
+DLT-specific flags: `--dlt_variant {ci,scalar,shift,tap3,dlt,full,scalardyn,dltdyn}`, `--dlt_k`,
+`--dlt_L`, `--dlt_R`, `--dlt_dyn_dim`, `--dlt_ccf_len`.
+
+**GPU memory.** DLT itself is small (≤ 0.36 M parameters even at Traffic scale; see the measurements
+below), so any CUDA GPU with ≥ 4 GB runs it. For the full benchmark the baselines (e.g. iTransformer on
+Traffic) dominate; a single 24 GB card (RTX 3090/4090, A5000, A10) is comfortable.
+
 ## Next steps
-Gate/regulariser for weakly coupled data; port into Time-Series-Library with a stronger temporal
-backbone; full benchmark (ETT×4, Weather, Electricity, Traffic, Exchange, Solar, PEMS03/04/07/08;
-4 horizons; 3 seeds) against iTransformer, PatchTST, TimeMixer, DUET, TimeFilter, CrossLinear, LIFT,
-VCformer; visualise learned kernels on PEMS08.
+Gate/regulariser for weakly coupled data; a stronger temporal backbone; full GPU benchmark in `tslib/`
+(ETT×4, Weather, Electricity, Traffic, Exchange, Solar, PEMS03/04/07/08; 4 horizons; 3 seeds) against
+iTransformer, PatchTST, TimeMixer, TimeFilter (already in TSLib) and DUET, CrossLinear, LIFT, VCformer,
+LagTS (to be added); visualise learned kernels on PEMS08.
