@@ -25,9 +25,13 @@ def mape_timemixer(pred, true):
     return float(np.mean(np.where(r > 5, 0, r)))
 
 
+MASK_EPS = 1e-3   # |true| <= MASK_EPS counts as a missing value: zeros come back as ~1e-5 after float32 scaling
+
+
 def mape_masked(pred, true):
-    """MAPE over the entries with true != 0 (the masked MAPE of the traffic-forecasting literature)."""
-    m = true != 0
+    """MAPE over the entries with |true| > MASK_EPS (the masked MAPE of the traffic-forecasting literature;
+    PEMS flows are counts >= 1, but a zero is ~1e-5 rather than 0 after the float32 scale / inverse round trip)."""
+    m = np.abs(true) > MASK_EPS
     return float(np.mean(np.abs((pred[m] - true[m]) / true[m]))) if m.any() else float('nan')
 
 
@@ -54,7 +58,7 @@ class StreamMetrics:
         self.s['spe'] += np.square(r).sum()
         tm = np.nan_to_num(a, nan=0.0, posinf=np.inf)
         self.s['ape_clip5'] += np.where(tm > 5, 0.0, tm).sum()
-        m = t != 0
+        m = np.abs(t) > MASK_EPS
         self.n_masked += int(m.sum())
         self.s['ape_masked'] += a[m].sum()
 
