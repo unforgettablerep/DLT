@@ -6,6 +6,18 @@ from utils.print_args import print_args
 import random
 import numpy as np
 
+def dlt_suffix(args):
+    """Experiment-name suffix of DLT runs: keeps checkpoints / results of different configurations apart."""
+    suf = '_{}_k{}_L{}_R{}'.format(args.dlt_variant, args.dlt_k, args.dlt_L, args.dlt_R)
+    if args.dlt_variant in ('topk', 'mill', 'milldyn'):
+        suf += '_K{}'.format(args.dlt_topk)
+    if args.dlt_gate != 'none':
+        suf += '_g{}'.format(args.dlt_gate)
+        if args.dlt_gate == 'static':
+            suf += '{:g}'.format(args.dlt_gate_init)
+    return suf
+
+
 if __name__ == '__main__':
     fix_seed = 2021
     random.seed(fix_seed)
@@ -158,7 +170,8 @@ if __name__ == '__main__':
 
     # DLT (Distributed-Lag Transfer)
     parser.add_argument('--dlt_variant', type=str, default='dltdyn',
-                        choices=['ci', 'scalar', 'shift', 'tap3', 'dlt', 'full', 'scalardyn', 'dltdyn'],
+                        choices=['ci', 'scalar', 'shift', 'tap3', 'dlt', 'full', 'scalardyn', 'dltdyn',
+                                 'topk', 'mill', 'milldyn'],
                         help='DLT: parameterisation of the cross-variable lag kernel')
     parser.add_argument('--dlt_k', type=int, default=8, help='DLT: number of source neighbours per variable')
     parser.add_argument('--dlt_L', type=int, default=48, help='DLT: maximum lag of the cross-variable kernels')
@@ -168,8 +181,28 @@ if __name__ == '__main__':
                         help='DLT: number of (most recent) training steps used for neighbour selection')
     parser.add_argument('--dlt_impl', type=str, default='kernel', choices=['kernel', 'basis'],
                         help='DLT: computation path for dlt/dltdyn (identical results; kernel = less memory)')
+    parser.add_argument('--dlt_topk', type=int, default=5,
+                        help='DLT: lags per pair for the MillGNN-style variants topk / mill / milldyn')
+    parser.add_argument('--dlt_gate', type=str, default='none', choices=['none', 'moe', 'static'],
+                        help='DLT: combination of the two branches (moe = MoVE-style softmax gate, '
+                             'static = per-variable sigmoid gate)')
+    parser.add_argument('--dlt_gate_init', type=float, default=-3.0,
+                        help='DLT: initial logit of the static gate (sigmoid(-3) = 0.047)')
+
+    # reproducibility / bookkeeping (all default to the upstream behaviour)
+    parser.add_argument('--fix_seed', type=int, default=2021, help='seed of python / numpy / torch')
+    parser.add_argument('--no_epoch_test', action='store_true', default=False,
+                        help='skip the per-epoch test loss (not used for model selection)')
+    parser.add_argument('--no_save_preds', action='store_true', default=False,
+                        help='do not save pred.npy / true.npy and the test plots')
+    parser.add_argument('--result_jsonl', type=str, default='',
+                        help='append one JSON line per run (config, metrics, epochs, time) to this file')
 
     args = parser.parse_args()
+    if args.fix_seed != fix_seed:
+        random.seed(args.fix_seed)
+        torch.manual_seed(args.fix_seed)
+        np.random.seed(args.fix_seed)
     if torch.cuda.is_available() and args.use_gpu:
         args.device = torch.device('cuda:{}'.format(args.gpu))
         print('Using GPU')
@@ -245,7 +278,9 @@ if __name__ == '__main__':
                         + f'_tvdt{int(args.tv_dt)}_tvB{int(args.tv_B)}_tvC{int(args.tv_C)}_useD{int(args.use_D)}_{args.des}_{ii}'
 
             if args.model == 'DLT':  # keep checkpoints / results of different DLT variants apart
-                setting += '_{}_k{}_L{}_R{}'.format(args.dlt_variant, args.dlt_k, args.dlt_L, args.dlt_R)
+                setting += dlt_suffix(args)
+            if args.fix_seed != fix_seed:
+                setting += '_seed{}'.format(args.fix_seed)
 
             print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
             exp.train(setting)
@@ -289,7 +324,9 @@ if __name__ == '__main__':
                     + f'_tvdt{args.tv_dt}_tvB{args.tv_B}_tvC{args.tv_C}_useD{int(args.use_D)}_{args.des}_{ii}'
 
         if args.model == 'DLT':  # must match the training-time setting name
-            setting += '_{}_k{}_L{}_R{}'.format(args.dlt_variant, args.dlt_k, args.dlt_L, args.dlt_R)
+            setting += dlt_suffix(args)
+        if args.fix_seed != fix_seed:
+            setting += '_seed{}'.format(args.fix_seed)
 
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
         exp.test(setting, test=1)

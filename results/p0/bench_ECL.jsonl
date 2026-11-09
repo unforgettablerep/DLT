@@ -1,0 +1,15 @@
+{"setting": "ECL", "variant": "ci", "gate": "none", "impl": "kernel", "train_ms": 26.7, "eval_ms": 10.3, "epoch_s": 16.1}
+{"setting": "ECL", "variant": "scalar", "gate": "none", "impl": "kernel", "train_ms": 67.6, "eval_ms": 50.2, "epoch_s": 42.5}
+{"setting": "ECL", "variant": "shift", "gate": "none", "impl": "kernel", "train_ms": 96.8, "eval_ms": 73.9, "epoch_s": 61.1}
+{"setting": "ECL", "variant": "tap3", "gate": "none", "impl": "kernel", "train_ms": 115.8, "eval_ms": 80.8, "epoch_s": 72.5}
+{"setting": "ECL", "variant": "dlt", "gate": "none", "impl": "kernel", "train_ms": 302.9, "eval_ms": 109.0, "epoch_s": 181.4}
+{"setting": "ECL", "variant": "full", "gate": "none", "impl": "kernel", "train_ms": 353.0, "eval_ms": 99.3, "epoch_s": 209.2}
+{"setting": "ECL", "variant": "scalardyn", "gate": "none", "impl": "kernel", "train_ms": 126.5, "eval_ms": 72.9, "epoch_s": 77.9}
+{"setting": "ECL", "variant": "dltdyn", "gate": "none", "impl": "kernel", "train_ms": 424.9, "eval_ms": 150.3, "epoch_s": 254.2}
+{"setting": "ECL", "variant": "topk", "gate": "none", "impl": "kernel", "train_ms": 260.8, "eval_ms": 114.0, "epoch_s": 157.8}
+{"setting": "ECL", "variant": "mill", "gate": "none", "impl": "kernel", "train_ms": 240.7, "eval_ms": 141.4, "epoch_s": 148.5}
+{"setting": "ECL", "variant": "milldyn", "gate": "none", "impl": "kernel", "train_ms": 248.5, "eval_ms": 160.1, "epoch_s": 154.5}
+{"setting": "ECL", "variant": "dlt", "gate": "none", "impl": "basis", "train_ms": 389.1, "eval_ms": 241.1, "epoch_s": 241.0}
+{"setting": "ECL", "variant": "dltdyn", "gate": "none", "impl": "basis", "train_ms": 360.0, "eval_ms": 179.4, "epoch_s": 219.6}
+{"setting": "ECL", "variant": "dltdyn", "gate": "moe", "impl": "kernel", "train_ms": 394.3, "eval_ms": 135.5, "epoch_s": 235.6}
+{"setting": "ECL", "variant": "dltdyn", "gate": "static", "impl": "kernel", "train_ms": 428.8, "eval_ms": 133.1, "epoch_s": 255.1}

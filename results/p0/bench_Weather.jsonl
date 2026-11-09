@@ -1,0 +1,15 @@
+{"setting": "Weather", "variant": "ci", "gate": "none", "impl": "kernel", "train_ms": 1.5, "eval_ms": 0.7, "epoch_s": 1.8}
+{"setting": "Weather", "variant": "scalar", "gate": "none", "impl": "kernel", "train_ms": 4.0, "eval_ms": 2.3, "epoch_s": 4.9}
+{"setting": "Weather", "variant": "shift", "gate": "none", "impl": "kernel", "train_ms": 4.9, "eval_ms": 3.5, "epoch_s": 6.2}
+{"setting": "Weather", "variant": "tap3", "gate": "none", "impl": "kernel", "train_ms": 5.5, "eval_ms": 4.0, "epoch_s": 7.0}
+{"setting": "Weather", "variant": "dlt", "gate": "none", "impl": "kernel", "train_ms": 25.4, "eval_ms": 5.7, "epoch_s": 30.1}
+{"setting": "Weather", "variant": "full", "gate": "none", "impl": "kernel", "train_ms": 19.0, "eval_ms": 5.3, "epoch_s": 22.7}
+{"setting": "Weather", "variant": "scalardyn", "gate": "none", "impl": "kernel", "train_ms": 6.6, "eval_ms": 2.4, "epoch_s": 7.9}
+{"setting": "Weather", "variant": "dltdyn", "gate": "none", "impl": "kernel", "train_ms": 22.0, "eval_ms": 6.8, "epoch_s": 26.4}
+{"setting": "Weather", "variant": "topk", "gate": "none", "impl": "kernel", "train_ms": 10.7, "eval_ms": 7.1, "epoch_s": 13.4}
+{"setting": "Weather", "variant": "mill", "gate": "none", "impl": "kernel", "train_ms": 11.5, "eval_ms": 7.1, "epoch_s": 14.3}
+{"setting": "Weather", "variant": "milldyn", "gate": "none", "impl": "kernel", "train_ms": 13.4, "eval_ms": 7.5, "epoch_s": 16.5}
+{"setting": "Weather", "variant": "dlt", "gate": "none", "impl": "basis", "train_ms": 18.2, "eval_ms": 11.3, "epoch_s": 22.7}
+{"setting": "Weather", "variant": "dltdyn", "gate": "none", "impl": "basis", "train_ms": 19.2, "eval_ms": 4.9, "epoch_s": 22.8}
+{"setting": "Weather", "variant": "dltdyn", "gate": "moe", "impl": "kernel", "train_ms": 22.4, "eval_ms": 4.1, "epoch_s": 26.4}
+{"setting": "Weather", "variant": "dltdyn", "gate": "static", "impl": "kernel", "train_ms": 22.9, "eval_ms": 4.1, "epoch_s": 27.0}

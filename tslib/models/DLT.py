@@ -16,9 +16,19 @@ The per-pair lag kernel K_ij is parameterised by ``--dlt_variant``:
   dlt        K = sum_r alpha_ijr phi_r(tau)         (shared lag basis, R << L)
   scalardyn  scalar with input-adaptive a_ij(X)     (control: dynamics without a lag kernel)
   dltdyn     dlt with input-adaptive alpha_ijr(X)   (proposed)
+  topk       free weights on the K lags with the largest |CCF| per pair  (MillGNN-style lag sets)
+  mill       a_ij * Lambda_ij(tau) on the same K lags, with MillGNN's excitatory / inhibitory decay
+             Lambda_ij(tau) = ReLU(exp(-be_ij tau) - (1 - att_ij) exp(-bi_ij tau)), be, bi, att in (0, 1)
+  milldyn    mill with input-dependent att_ij(X) = softmax_j(q_i . k_j / sqrt(d))  (MillGNN-style, dynamic)
 
-Neighbours N(i) (top-k) and peak lags d_ij are chosen from the *training split only*
-(max |CCF| of first differences over lags 0..L). ``prepare(train_dataset)`` is called by
+``--dlt_gate`` combines the two branches (any variant except ci):
+
+  none       y = y_self + y_cross                                   (default)
+  moe        y = g_0 y_self + g_1 y_cross, g = softmax(W_g x_i)      (MoVE-style input-dependent gate)
+  static     y = y_self + sigmoid(theta_i) y_cross, theta_i = --dlt_gate_init (per-variable gate, opens from ~0)
+
+Neighbours N(i) (top-k), peak lags d_ij and the K-lag sets are chosen from the *training split only*
+(|CCF| of first differences over lags 0..L). ``prepare(train_dataset)`` is called by
 Exp_Long_Term_Forecast.train() before training. They are stored as buffers, so they follow
 ``.to(device)`` / DataParallel and are saved in (and restored from) checkpoints.
 
@@ -30,7 +40,25 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-VARIANTS = ("ci", "scalar", "shift", "tap3", "dlt", "full", "scalardyn", "dltdyn")
+VARIANTS = ("ci", "scalar", "shift", "tap3", "dlt", "full", "scalardyn", "dltdyn", "topk", "mill", "milldyn")
+LAGSET_VARIANTS = ("topk", "mill", "milldyn")      # use K CCF-selected lags per pair
+GATES = ("none", "moe", "static")
+
+
+def _diff_standardise(train_values, max_len, device):
+    """First differences of the last ``max_len`` training steps, standardised per variable (float64)."""
+    dev = torch.device(device)
+    if dev.type == "mps":            # float64 is not supported on MPS
+        dev = torch.device("cpu")
+    x = torch.as_tensor(np.asarray(train_values), dtype=torch.float64, device=dev)
+    x = torch.diff(x, dim=0)[-max_len:]
+    return (x - x.mean(0)) / (x.std(0, unbiased=False) + 1e-8)
+
+
+def _abs_ccf(x, tau):
+    """|corr(dx_i(t), dx_j(t - tau))| for all pairs: (C_target, C_source)."""
+    n = x.shape[0]
+    return (x[tau:].T @ x[:n - tau]).abs() / (n - tau)
 
 
 @torch.no_grad()
@@ -40,17 +68,12 @@ def select_neighbours(train_values, k, L, max_len=8000, device="cpu"):
     train_values: (T, C) array of the (scaled) training split.
     Returns idx (C, k) and lag (C, k) as int64 tensors on ``device``.
     """
-    dev = torch.device(device)
-    if dev.type == "mps":            # float64 is not supported on MPS
-        dev = torch.device("cpu")
-    x = torch.as_tensor(np.asarray(train_values), dtype=torch.float64, device=dev)
-    x = torch.diff(x, dim=0)[-max_len:]
-    x = (x - x.mean(0)) / (x.std(0, unbiased=False) + 1e-8)
+    x = _diff_standardise(train_values, max_len, device)
     n, C = x.shape
-    best = torch.full((C, C), -1.0, dtype=torch.float64, device=dev)
-    blag = torch.zeros((C, C), dtype=torch.long, device=dev)
+    best = torch.full((C, C), -1.0, dtype=torch.float64, device=x.device)
+    blag = torch.zeros((C, C), dtype=torch.long, device=x.device)
     for tau in range(L + 1):
-        c = (x[tau:].T @ x[:n - tau]).abs() / (n - tau)    # (C_target, C_source)
+        c = _abs_ccf(x, tau)                                  # (C_target, C_source)
         upd = c > best
         best[upd] = c[upd]
         blag[upd] = tau
@@ -58,6 +81,17 @@ def select_neighbours(train_values, k, L, max_len=8000, device="cpu"):
     idx = torch.argsort(best, dim=1, descending=True)[:, :k]
     lag = torch.gather(blag, 1, idx)
     return idx, lag
+
+
+@torch.no_grad()
+def select_lags(train_values, idx, K, L, max_len=8000, device="cpu"):
+    """For every selected pair (i, idx[i, j]): the K lags in 0..L with the largest |CCF|
+    (the lag sets of MillGNN's cross-correlation graph). Returns (C, k, K) int64, ascending."""
+    x = _diff_standardise(train_values, max_len, device)
+    idx = idx.to(x.device)
+    rows = torch.arange(x.shape[1], device=x.device)[:, None]
+    r = torch.stack([_abs_ccf(x, tau)[rows, idx] for tau in range(L + 1)], dim=-1)   # (C, k, L + 1)
+    return r.topk(K, dim=-1).indices.sort(dim=-1).values
 
 
 class Model(nn.Module):
@@ -77,6 +111,12 @@ class Model(nn.Module):
         self.k = k = max(0, min(getattr(configs, "dlt_k", 8), C - 1))
         self.dyn_dim = d = getattr(configs, "dlt_dyn_dim", 16)
         self.ccf_len = getattr(configs, "dlt_ccf_len", 8000)
+        self.K = K = getattr(configs, "dlt_topk", 5)              # lags per pair for topk / mill / milldyn
+        self.gate = getattr(configs, "dlt_gate", "none")
+        if self.gate not in GATES:
+            raise ValueError(f"--dlt_gate must be one of {GATES}, got {self.gate}")
+        if self.variant in LAGSET_VARIANTS and not 1 <= K <= L + 1:
+            raise ValueError(f"--dlt_topk must be in 1..dlt_L+1 = {L + 1}, got {K}")
         # dlt / dltdyn computation path (mathematically identical):
         #   kernel: build K_ij = sum_r alpha_ijr phi_r, one grouped conv  (less memory; default)
         #   basis : filter with the R basis kernels, gather, mix          (fewer FLOPs for R << L)
@@ -119,6 +159,32 @@ class Model(nn.Module):
             self.mod = nn.Sequential(nn.Linear(2 * d, 32), nn.GELU(), nn.Linear(32, R if v == "dltdyn" else 1))
             nn.init.zeros_(self.mod[-1].weight)
             nn.init.zeros_(self.mod[-1].bias)
+        if v in LAGSET_VARIANTS:
+            # K lags per pair with the largest training-split |CCF|: filled by prepare()
+            self.register_buffer("tlag", torch.zeros(C, k, K, dtype=torch.long))
+            if v == "topk":
+                self.w = g(C, k, K)                                   # one free weight per selected lag
+            else:
+                # MillGNN decay-aware weights on the selected lags (time-step resolution, time-invariant):
+                #   K_ij(tau) = a_ij * Lambda_ij(tau),  Lambda = ReLU(exp(-be tau) - (1 - att) exp(-bi tau))
+                # be, bi in (0, 1) per pair (MillGNN: softmax of embeddings, shared across samples);
+                # a_ij is a signed per-pair amplitude, added so that negative coupling is representable
+                # as in every other variant (MillGNN's ReLU weights are non-negative).
+                logit = lambda p: float(np.log(p / (1 - p)))
+                self.a = g(C, k)
+                self.b_exc = nn.Parameter(logit(0.05) + 0.01 * torch.randn(C, k))   # slow excitatory decay
+                self.b_inh = nn.Parameter(logit(0.2) + 0.01 * torch.randn(C, k))    # faster inhibitory decay
+                if v == "mill":
+                    self.b_att = nn.Parameter(0.01 * torch.randn(C, k))            # att = sigmoid -> 0.5
+                else:
+                    # att_ij(X) = softmax over the k sources of q_i . k_j / sqrt(d)   (MillGNN Eq. 8)
+                    self.summ = nn.Linear(T, d)
+                    self.q_proj = nn.Linear(d, d)
+                    self.k_proj = nn.Linear(d, d)
+        if self.gate == "moe":
+            self.gate_net = nn.Linear(T, 2)                           # MoVE: G(X) = softmax(W_g X)
+        elif self.gate == "static":
+            self.gate_logit = nn.Parameter(torch.full((C,), float(getattr(configs, "dlt_gate_init", -3.0))))
 
     # ------------------------------------------------------------------ setup
     @torch.no_grad()
@@ -130,9 +196,14 @@ class Model(nn.Module):
         idx, lag = select_neighbours(values, self.k, self.L, self.ccf_len, device=self.idx.device)
         self.idx.copy_(idx)
         self.lag.copy_(lag)
+        msg = ""
+        if self.variant in LAGSET_VARIANTS:
+            tl = select_lags(values, idx, self.K, self.L, self.ccf_len, device=self.idx.device)
+            self.tlag.copy_(tl)
+            msg = f"; K={self.K} lags per pair, lag 0 among them for {(tl == 0).any(-1).float().mean().item():.0%}"
         self.prepared.fill_(True)
         print(f"[DLT] variant={self.variant}: selected k={self.k} neighbours per variable "
-              f"(peak lag 0 for {(lag == 0).float().mean().item():.0%} of pairs)")
+              f"(peak lag 0 for {(lag == 0).float().mean().item():.0%} of pairs){msg}")
 
     # ------------------------------------------------------------------ model
     def _pair_features(self, xn):
@@ -171,8 +242,38 @@ class Model(nn.Module):
             xg = F.pad(xn[:, idx], (L, 0)).reshape(1, B * C * k, T + L)
             z = F.conv1d(xg, K.reshape(B * C * k, 1, L + 1).flip(-1), groups=B * C * k)
             return z.view(B, C, k, T).sum(2)
+        if v == "topk":
+            return self._lag_taps(xn, self.w)
+        if v in ("mill", "milldyn"):
+            return self._lag_taps(xn, self.mill_weights(xn))
         # tap3 / full: explicit per-pair kernels
         return self._pair_conv(xn, self.w)
+
+    def mill_weights(self, xn=None):
+        """Tap weights a_ij * Lambda_ij(tau) at the selected lags: (C, k, K), or (B, C, k, K) for milldyn."""
+        if self.variant == "mill":
+            att = torch.sigmoid(self.b_att)                                          # (C, k)
+        else:
+            s = self.summ(xn)                                                        # (B, C, d)
+            q, kk = self.q_proj(s), self.k_proj(s)
+            score = (q.unsqueeze(2) * kk[:, self.idx]).sum(-1) / np.sqrt(q.shape[-1])  # (B, C, k)
+            att = torch.softmax(score, dim=-1)
+        tau = self.tlag.to(self.a.dtype)                                             # (C, k, K)
+        lam = F.relu(torch.exp(-torch.sigmoid(self.b_exc)[..., None] * tau)
+                     - (1 - att[..., None]) * torch.exp(-torch.sigmoid(self.b_inh)[..., None] * tau))
+        return self.a[..., None] * lam
+
+    def _lag_taps(self, xn, w):
+        """z_i(t) = sum_j sum_m w_ijm x_j(t - tau_ijm) on the K selected lags; w: (C, k, K) or (B, C, k, K)."""
+        B, C, T = xn.shape
+        L = self.L
+        src = F.pad(xn, (L, 0))[:, self.idx]                                         # (B, C, k, T + L)
+        base = torch.arange(T, device=xn.device) + L
+        z = 0
+        for m in range(self.K):
+            pos = (base - self.tlag[..., m:m + 1]).unsqueeze(0).expand(B, -1, -1, -1)  # (B, C, k, T)
+            z = z + (torch.gather(src, 3, pos) * w[..., m, None]).sum(2)
+        return z
 
     def _pair_conv(self, xn, K):
         """z_i = sum_j K_ij * x_j for static per-pair kernels K: (C, k, taps), as one grouped convolution."""
@@ -194,7 +295,14 @@ class Model(nn.Module):
                     raise RuntimeError("DLT: neighbours not selected; call model.prepare(train_data) "
                                        "before training, or load a trained checkpoint")
                 self._ready = True
-            y = y + self.cross_head(self.cross(xn))
+            y_cross = self.cross_head(self.cross(xn))
+            if self.gate == "none":
+                y = y + y_cross
+            elif self.gate == "moe":
+                gw = torch.softmax(self.gate_net(xn), dim=-1)                       # (B, C, 2)
+                y = gw[..., :1] * y + gw[..., 1:] * y_cross
+            else:
+                y = y + torch.sigmoid(self.gate_logit)[:, None] * y_cross
         return (y * sd + mu).permute(0, 2, 1)                                   # (B, H, C)
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):

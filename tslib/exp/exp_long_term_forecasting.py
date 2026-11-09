@@ -7,6 +7,7 @@ import torch.nn as nn
 from torch import optim
 import os
 import time
+import json
 import warnings
 import numpy as np
 from utils.dtw_metric import dtw, accelerated_dtw
@@ -99,6 +100,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
 
+        no_epoch_test = getattr(self.args, 'no_epoch_test', False)
+        self.train_info = {'epochs': 0, 'best_epoch': 0, 'best_vali': None, 'train_secs': 0.0, 'epoch_secs': []}
+        train_start = time.time()
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
@@ -153,9 +157,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     model_optim.step()
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
+            self.train_info['epoch_secs'].append(round(time.time() - epoch_time, 2))
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
-            test_loss = self.vali(test_data, test_loader, criterion)
+            test_loss = float('nan') if no_epoch_test else self.vali(test_data, test_loader, criterion)
+            self.train_info['epochs'] = epoch + 1
+            if self.train_info['best_vali'] is None or vali_loss < self.train_info['best_vali']:
+                self.train_info['best_vali'] = float(vali_loss)
+                self.train_info['best_epoch'] = epoch + 1
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
@@ -166,6 +175,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
             adjust_learning_rate(model_optim, epoch + 1, self.args)
 
+        self.train_info['train_secs'] = round(time.time() - train_start, 2)
         best_model_path = path + '/' + 'checkpoint.pth'
         self.model.load_state_dict(torch.load(best_model_path))
 
@@ -222,7 +232,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 preds.append(pred)
                 trues.append(true)
-                if i % 20 == 0:
+                if i % 20 == 0 and not getattr(self.args, 'no_save_preds', False):
                     input = batch_x.detach().cpu().numpy()
                     if test_data.scale and self.args.inverse:
                         shape = input.shape
@@ -268,7 +278,25 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         f.close()
 
         np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        np.save(folder_path + 'pred.npy', preds)
-        np.save(folder_path + 'true.npy', trues)
+        if not getattr(self.args, 'no_save_preds', False):
+            np.save(folder_path + 'pred.npy', preds)
+            np.save(folder_path + 'true.npy', trues)
+
+        if getattr(self.args, 'result_jsonl', ''):
+            a = self.args
+            rec = {'setting': setting, 'model': a.model, 'model_id': a.model_id, 'data': a.data,
+                   'data_path': a.data_path, 'seq_len': a.seq_len, 'pred_len': a.pred_len,
+                   'seed': getattr(a, 'fix_seed', 2021), 'lr': a.learning_rate, 'batch_size': a.batch_size,
+                   'train_epochs': a.train_epochs, 'patience': a.patience,
+                   'mse': float(mse), 'mae': float(mae), 'rmse': float(rmse),
+                   'n_params': int(sum(p.numel() for p in self.model.parameters()))}
+            if a.model == 'DLT':
+                rec.update({'variant': a.dlt_variant, 'gate': a.dlt_gate, 'k': a.dlt_k, 'L': a.dlt_L,
+                            'R': a.dlt_R, 'topk': a.dlt_topk, 'impl': a.dlt_impl})
+                if a.dlt_gate == 'static':
+                    rec['gate_init'] = a.dlt_gate_init
+            rec.update(getattr(self, 'train_info', {}))
+            with open(a.result_jsonl, 'a') as fj:
+                fj.write(json.dumps(rec) + '\n')
 
         return

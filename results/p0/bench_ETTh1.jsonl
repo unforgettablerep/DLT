@@ -1,0 +1,15 @@
+{"setting": "ETTh1", "variant": "ci", "gate": "none", "impl": "kernel", "train_ms": 0.8, "eval_ms": 0.3, "epoch_s": 0.2}
+{"setting": "ETTh1", "variant": "scalar", "gate": "none", "impl": "kernel", "train_ms": 1.4, "eval_ms": 0.5, "epoch_s": 0.4}
+{"setting": "ETTh1", "variant": "shift", "gate": "none", "impl": "kernel", "train_ms": 1.6, "eval_ms": 0.7, "epoch_s": 0.5}
+{"setting": "ETTh1", "variant": "tap3", "gate": "none", "impl": "kernel", "train_ms": 1.9, "eval_ms": 0.8, "epoch_s": 0.6}
+{"setting": "ETTh1", "variant": "dlt", "gate": "none", "impl": "kernel", "train_ms": 5.2, "eval_ms": 1.0, "epoch_s": 1.5}
+{"setting": "ETTh1", "variant": "full", "gate": "none", "impl": "kernel", "train_ms": 5.0, "eval_ms": 0.9, "epoch_s": 1.4}
+{"setting": "ETTh1", "variant": "scalardyn", "gate": "none", "impl": "kernel", "train_ms": 2.0, "eval_ms": 0.7, "epoch_s": 0.6}
+{"setting": "ETTh1", "variant": "dltdyn", "gate": "none", "impl": "kernel", "train_ms": 6.7, "eval_ms": 1.2, "epoch_s": 1.9}
+{"setting": "ETTh1", "variant": "topk", "gate": "none", "impl": "kernel", "train_ms": 3.3, "eval_ms": 1.3, "epoch_s": 1.0}
+{"setting": "ETTh1", "variant": "mill", "gate": "none", "impl": "kernel", "train_ms": 3.5, "eval_ms": 1.4, "epoch_s": 1.1}
+{"setting": "ETTh1", "variant": "milldyn", "gate": "none", "impl": "kernel", "train_ms": 4.1, "eval_ms": 1.6, "epoch_s": 1.2}
+{"setting": "ETTh1", "variant": "dlt", "gate": "none", "impl": "basis", "train_ms": 5.2, "eval_ms": 2.8, "epoch_s": 1.6}
+{"setting": "ETTh1", "variant": "dltdyn", "gate": "none", "impl": "basis", "train_ms": 5.7, "eval_ms": 1.5, "epoch_s": 1.6}
+{"setting": "ETTh1", "variant": "dltdyn", "gate": "moe", "impl": "kernel", "train_ms": 7.0, "eval_ms": 1.3, "epoch_s": 2.0}
+{"setting": "ETTh1", "variant": "dltdyn", "gate": "static", "impl": "kernel", "train_ms": 6.7, "eval_ms": 1.3, "epoch_s": 1.9}

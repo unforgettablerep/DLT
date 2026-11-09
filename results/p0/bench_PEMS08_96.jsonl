@@ -1,0 +1,15 @@
+{"setting": "PEMS08_96", "variant": "ci", "gate": "none", "impl": "kernel", "train_ms": 15.7, "eval_ms": 10.2, "epoch_s": 6.4}
+{"setting": "PEMS08_96", "variant": "scalar", "gate": "none", "impl": "kernel", "train_ms": 34.6, "eval_ms": 23.0, "epoch_s": 14.1}
+{"setting": "PEMS08_96", "variant": "shift", "gate": "none", "impl": "kernel", "train_ms": 50.2, "eval_ms": 38.2, "epoch_s": 21.0}
+{"setting": "PEMS08_96", "variant": "tap3", "gate": "none", "impl": "kernel", "train_ms": 50.5, "eval_ms": 39.0, "epoch_s": 21.1}
+{"setting": "PEMS08_96", "variant": "dlt", "gate": "none", "impl": "kernel", "train_ms": 171.3, "eval_ms": 54.5, "epoch_s": 63.0}
+{"setting": "PEMS08_96", "variant": "full", "gate": "none", "impl": "kernel", "train_ms": 153.5, "eval_ms": 51.5, "epoch_s": 56.7}
+{"setting": "PEMS08_96", "variant": "scalardyn", "gate": "none", "impl": "kernel", "train_ms": 49.3, "eval_ms": 17.6, "epoch_s": 18.3}
+{"setting": "PEMS08_96", "variant": "dltdyn", "gate": "none", "impl": "kernel", "train_ms": 189.0, "eval_ms": 62.7, "epoch_s": 69.8}
+{"setting": "PEMS08_96", "variant": "topk", "gate": "none", "impl": "kernel", "train_ms": 123.9, "eval_ms": 73.8, "epoch_s": 49.4}
+{"setting": "PEMS08_96", "variant": "mill", "gate": "none", "impl": "kernel", "train_ms": 149.5, "eval_ms": 110.4, "epoch_s": 62.0}
+{"setting": "PEMS08_96", "variant": "milldyn", "gate": "none", "impl": "kernel", "train_ms": 140.1, "eval_ms": 74.8, "epoch_s": 54.9}
+{"setting": "PEMS08_96", "variant": "dlt", "gate": "none", "impl": "basis", "train_ms": 177.4, "eval_ms": 92.0, "epoch_s": 69.2}
+{"setting": "PEMS08_96", "variant": "dltdyn", "gate": "none", "impl": "basis", "train_ms": 166.9, "eval_ms": 65.7, "epoch_s": 62.8}
+{"setting": "PEMS08_96", "variant": "dltdyn", "gate": "moe", "impl": "kernel", "train_ms": 181.3, "eval_ms": 62.4, "epoch_s": 67.2}
+{"setting": "PEMS08_96", "variant": "dltdyn", "gate": "static", "impl": "kernel", "train_ms": 177.1, "eval_ms": 61.1, "epoch_s": 65.6}
