@@ -31,6 +31,40 @@ def mape_masked(pred, true):
     return float(np.mean(np.abs((pred[m] - true[m]) / true[m]))) if m.any() else float('nan')
 
 
+class StreamMetrics:
+    """Running sums of the test metrics, so that the test split need not be held in memory (--no_save_preds;
+    the full prediction arrays of Electricity / Traffic at horizon 720 take tens of GB). Same definitions as
+    utils/metrics.py, mape_timemixer and mape_masked; sums in float64, so the values agree with the array
+    versions up to float32 rounding (~1e-7 relative)."""
+
+    def __init__(self):
+        self.n = self.n_masked = 0
+        self.s = dict.fromkeys(('ae', 'se', 'ape', 'spe', 'ape_clip5', 'ape_masked'), 0.0)
+
+    def update(self, pred, true):
+        d = pred.astype(np.float64) - true.astype(np.float64)
+        t = true.astype(np.float64)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            r = d / t                                              # x / 0 -> +-inf, 0 / 0 -> nan
+        a = np.abs(r)
+        self.n += d.size
+        self.s['ae'] += np.abs(d).sum()
+        self.s['se'] += np.square(d).sum()
+        self.s['ape'] += a.sum()                                   # inf / nan propagate as in np.mean
+        self.s['spe'] += np.square(r).sum()
+        tm = np.nan_to_num(a, nan=0.0, posinf=np.inf)
+        self.s['ape_clip5'] += np.where(tm > 5, 0.0, tm).sum()
+        m = t != 0
+        self.n_masked += int(m.sum())
+        self.s['ape_masked'] += a[m].sum()
+
+    def result(self):
+        n, s = self.n, self.s
+        mae, mse = s['ae'] / n, s['se'] / n
+        return (mae, mse, float(np.sqrt(mse)), s['ape'] / n, s['spe'] / n, s['ape_clip5'] / n,
+                s['ape_masked'] / self.n_masked if self.n_masked else float('nan'))
+
+
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
         super(Exp_Long_Term_Forecast, self).__init__(args)
@@ -228,6 +262,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         preds = []
         trues = []
+        # without saved predictions (and without DTW) the metrics are accumulated batch by batch
+        stream = StreamMetrics() if getattr(self.args, 'no_save_preds', False) and not self.args.use_dtw else None
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
@@ -269,6 +305,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 pred = outputs
                 true = batch_y
 
+                if stream is not None:
+                    stream.update(pred, true)
+                    continue
                 preds.append(pred)
                 trues.append(true)
                 if i % 20 == 0 and not getattr(self.args, 'no_save_preds', False):
@@ -280,12 +319,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
                     visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
 
-        preds = np.concatenate(preds, axis=0)
-        trues = np.concatenate(trues, axis=0)
-        print('test shape:', preds.shape, trues.shape)
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
-        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
-        print('test shape:', preds.shape, trues.shape)
+        if stream is None:
+            preds = np.concatenate(preds, axis=0)
+            trues = np.concatenate(trues, axis=0)
+            print('test shape:', preds.shape, trues.shape)
+            preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
+            trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+            print('test shape:', preds.shape, trues.shape)
+        else:
+            print('test values (streamed metrics):', stream.n)
 
         # result save
         folder_path = './results/' + setting + '/'
@@ -307,7 +349,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         else:
             dtw = 'Not calculated'
 
-        mae, mse, rmse, mape, mspe = metric(preds, trues)
+        if stream is None:
+            mae, mse, rmse, mape, mspe = metric(preds, trues)
+            mape_clip5, mape_mask = mape_timemixer(preds, trues), mape_masked(preds, trues)
+        else:
+            mae, mse, rmse, mape, mspe, mape_clip5, mape_mask = stream.result()
         print('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
         f = open("result_long_term_forecast.txt", 'a')
         f.write(setting + "  \n")
@@ -329,7 +375,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                    'train_epochs': a.train_epochs, 'patience': a.patience,
                    'mse': float(mse), 'mae': float(mae), 'rmse': float(rmse),
                    'mape': float(mape) if np.isfinite(mape) else None,
-                   'mape_clip5': mape_timemixer(preds, trues), 'mape_masked': mape_masked(preds, trues),
+                   'mape_clip5': float(mape_clip5), 'mape_masked': float(mape_mask),
                    'inverse': bool(a.inverse), 'loss': getattr(a, 'loss', 'MSE'),
                    'vali_inverse': bool(getattr(a, 'vali_inverse', False)),
                    'n_params': int(sum(p.numel() for p in self.model.parameters()))}
