@@ -1,0 +1,55 @@
+{"dataset": "Weather", "C": 21, "model": "CI (RLinear-style)", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 9312, "train_ms": 1.0, "infer_ms": 0.3, "mem_MB": 85.5, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "scalar", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 18792, "train_ms": 3.4, "infer_ms": 1.7, "mem_MB": 95.0, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "full kernel", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 26856, "train_ms": 10.3, "infer_ms": 3.5, "mem_MB": 109.3, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "top-5 lags", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 19464, "train_ms": 6.6, "infer_ms": 2.9, "mem_MB": 106.5, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "MillGNN-dyn kernel", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 21224, "train_ms": 10.7, "infer_ms": 8.7, "mem_MB": 108.4, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "DLT", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 19492, "train_ms": 11.0, "infer_ms": 4.5, "mem_MB": 108.3, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "DLT-dyn", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 22232, "train_ms": 14.4, "infer_ms": 2.1, "mem_MB": 122.7, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "DLT-dyn (kernel path)", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 22232, "train_ms": 9.1, "infer_ms": 1.8, "mem_MB": 118.4, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "iTransformer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 4833888, "train_ms": 132.2, "infer_ms": 22.7, "mem_MB": 268.8, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "iTransformer + DLT-dyn", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 4846808, "train_ms": 154.8, "infer_ms": 26.0, "mem_MB": 297.7, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "PatchTST", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 6903904, "train_ms": 1454.1, "infer_ms": 250.5, "mem_MB": 1297.5, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "PatchTST (paper config)", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 547296, "train_ms": 266.1, "infer_ms": 53.5, "mem_MB": 471.8, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "DLinear", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 18624, "train_ms": 1.8, "infer_ms": 0.6, "mem_MB": 88.4, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "TimeMixer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 104433, "train_ms": 200.4, "infer_ms": 44.8, "mem_MB": 433.5, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "LagTS", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 5641576, "train_ms": 310.1, "infer_ms": 89.0, "mem_MB": 489.1, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "CI (RLinear-style)", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 9312, "train_ms": 10.5, "infer_ms": 2.6, "mem_MB": 109.1, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "scalar", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 19984, "train_ms": 21.8, "infer_ms": 12.1, "mem_MB": 146.4, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "full kernel", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 85264, "train_ms": 51.7, "infer_ms": 23.4, "mem_MB": 196.3, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "top-5 lags", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 25424, "train_ms": 72.1, "infer_ms": 34.2, "mem_MB": 236.1, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "MillGNN-dyn kernel", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 24800, "train_ms": 54.3, "infer_ms": 38.5, "mem_MB": 251.0, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "DLT", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 24260, "train_ms": 56.2, "infer_ms": 25.6, "mem_MB": 205.6, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "DLT-dyn", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 27000, "train_ms": 84.1, "infer_ms": 26.1, "mem_MB": 307.6, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "DLT-dyn (kernel path)", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 27000, "train_ms": 86.0, "infer_ms": 29.5, "mem_MB": 235.8, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "iTransformer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 3255904, "train_ms": 582.7, "infer_ms": 109.4, "mem_MB": 896.8, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "iTransformer + DLT-dyn", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 3273592, "train_ms": 693.2, "infer_ms": 120.0, "mem_MB": 988.3, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "PatchTST", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 414816, "train_ms": 1730.9, "infer_ms": 313.7, "mem_MB": 2163.3, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "PatchTST (paper config)", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 547296, "train_ms": 2449.9, "infer_ms": 445.7, "mem_MB": 2896.5, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "DLinear", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 18624, "train_ms": 10.4, "infer_ms": 5.4, "mem_MB": 108.8, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "TimeMixer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 893698, "train_ms": 156.3, "infer_ms": 42.6, "mem_MB": 341.1, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "CI (RLinear-style)", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 9312, "train_ms": 12.3, "infer_ms": 4.5, "mem_MB": 137.4, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "scalar", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 21192, "train_ms": 32.6, "infer_ms": 18.7, "mem_MB": 199.4, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "full kernel", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 144456, "train_ms": 108.5, "infer_ms": 44.5, "mem_MB": 279.5, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "top-5 lags", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 31464, "train_ms": 99.1, "infer_ms": 71.3, "mem_MB": 361.2, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "MillGNN-dyn kernel", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 28424, "train_ms": 106.7, "infer_ms": 80.2, "mem_MB": 396.2, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "DLT", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 29092, "train_ms": 107.3, "infer_ms": 45.7, "mem_MB": 254.1, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "DLT-dyn", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 31832, "train_ms": 170.9, "infer_ms": 63.9, "mem_MB": 446.0, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "DLT-dyn (kernel path)", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 31832, "train_ms": 145.9, "infer_ms": 44.0, "mem_MB": 350.2, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "iTransformer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 4833888, "train_ms": 2252.9, "infer_ms": 378.2, "mem_MB": 2566.9, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "iTransformer + DLT-dyn", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 4856408, "train_ms": 2463.3, "infer_ms": 363.3, "mem_MB": 2635.4, "gpu": null}
+{"dataset": "ECL", "model": "PatchTST", "device": "cpu", "error": "?"}
+{"dataset": "ECL", "C": 321, "model": "PatchTST (paper config)", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 547296, "train_ms": 6291.2, "infer_ms": 1822.3, "mem_MB": 4293.8, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "DLinear", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 18624, "train_ms": 12.8, "infer_ms": 3.1, "mem_MB": 136.7, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "TimeMixer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 106833, "train_ms": 3274.7, "infer_ms": 770.1, "mem_MB": 4919.7, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "CI (RLinear-style)", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 9312, "train_ms": 36.3, "infer_ms": 13.3, "mem_MB": 189.9, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "scalar", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 25520, "train_ms": 121.4, "infer_ms": 83.0, "mem_MB": 380.7, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "full kernel", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 356528, "train_ms": 330.3, "infer_ms": 133.3, "mem_MB": 520.7, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "top-5 lags", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 53104, "train_ms": 368.3, "infer_ms": 263.1, "mem_MB": 833.9, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "MillGNN-dyn kernel", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 41408, "train_ms": 425.3, "infer_ms": 267.7, "mem_MB": 886.9, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "DLT", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 46404, "train_ms": 328.6, "infer_ms": 143.2, "mem_MB": 513.8, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "DLT-dyn", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 49144, "train_ms": 492.9, "infer_ms": 158.8, "mem_MB": 993.8, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "DLT-dyn (kernel path)", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 49144, "train_ms": 405.6, "infer_ms": 149.0, "mem_MB": 716.7, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "iTransformer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 6411872, "train_ms": 18361.0, "infer_ms": 3951.5, "mem_MB": 12401.4, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "iTransformer + DLT-dyn", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 6451704, "train_ms": 19787.0, "infer_ms": 4032.6, "mem_MB": 12885.1, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "DLinear", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 18624, "train_ms": 40.2, "infer_ms": 22.7, "mem_MB": 201.9, "gpu": null}
+{"dataset": "Traffic", "model": "TimeMixer", "device": "cpu", "error": "?"}
