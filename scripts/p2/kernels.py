@@ -143,6 +143,7 @@ def main():
     p.add_argument('--ckpt', required=True); p.add_argument('--data', required=True)
     p.add_argument('--out', required=True); p.add_argument('--H', type=int, default=96)
     a = p.parse_args()
+    a.out, a.ckpt, a.data = (os.path.abspath(x) for x in (a.out, a.ckpt, a.data))   # before the chdir below
     os.chdir(REPO / 'tslib')
     os.makedirs(a.out, exist_ok=True)
     C = np.load(os.path.join(a.data, 'PEMS08.npz'))['data'].shape[1]
