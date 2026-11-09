@@ -109,8 +109,11 @@ def main():
             r = subprocess.run([sys.executable, __file__, '--out', a.out, '--one', json.dumps(spec)],
                                capture_output=True, text=True, env={**os.environ, 'OMP_NUM_THREADS': str(a.threads)})
             line = [l for l in r.stdout.splitlines() if l.startswith('RESULT ')]
+            err = (r.stderr.strip().splitlines() or [''])[-1]
+            if not err and r.returncode == -9:                  # SIGKILL without a traceback: the OOM killer
+                err = 'killed (SIGKILL, out of memory)'
             rec = json.loads(line[0][7:]) if line else {'dataset': ds, 'model': name, 'device': a.device,
-                                                         'error': (r.stderr.strip().splitlines() or ['?'])[-1]}
+                                                         'error': err or f'exit code {r.returncode}'}
             print(json.dumps(rec), flush=True)
             with open(a.out, 'a') as f:
                 f.write(json.dumps(rec) + '\n')
