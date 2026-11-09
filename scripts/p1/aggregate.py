@@ -16,6 +16,7 @@ FILES = {'ETTh1.csv': 'ETTh1', 'ETTh2.csv': 'ETTh2', 'ETTm1.csv': 'ETTm1', 'ETTm
          'exchange_rate.csv': 'Exchange', 'electricity.csv': 'ECL', 'traffic.csv': 'Traffic', 'PEMS04.npz': 'PEMS04',
          'PEMS08.npz': 'PEMS08'}
 dsname = lambda r: FILES[r['data_path']]
+LONG = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', 'Traffic')
 
 
 def load(suite):
@@ -59,34 +60,35 @@ if pems:
 # ---------------------------------------------------------------- long-term benchmark
 lt = load('long_small') + load('long_large')
 tuned = load('tuned')
+ci = load('ci_long')
 if lt or tuned:
     P('## Long-term forecasting, input 96 (MSE / MAE)\n')
     others = ['MillGNN', 'MoVE', 'TimeMixer', 'iTransformer', 'PatchTST', 'DLinear']
-    P('| dataset | H | DLT-dyn (default) | DLT-dyn (tuned) | ' + ' | '.join(f'{m} *rep.*' for m in others) + ' |')
-    P('|---|---|---|---|' + '---|' * len(others))
-    for ds in ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', 'Traffic'):
-        rows_ds = [r for r in lt if dsname(r) == ds]
-        rows_tu = [r for r in tuned if dsname(r) == ds]
-        if not rows_ds and not rows_tu:
+    ours = (('DLT-dyn (default)', lt), ('DLT-dyn (tuned)', tuned), ('CI linear (ours)', ci))
+    P('| dataset | H | ' + ' | '.join(o[0] for o in ours) + ' | ' + ' | '.join(f'{m} *rep.*' for m in others) + ' |')
+    P('|---|---|' + '---|' * (len(ours) + len(others)))
+    for ds in LONG:
+        sets = [[r for r in rows if dsname(r) == ds] for _, rows in ours]
+        if not any(sets):
             continue
-        avg = {'d': [], 't': []}
+        avg = [[] for _ in ours]
         for H in HS + ['Avg']:
-            if H != 'Avg':
-                d = [r for r in rows_ds if str(r['pred_len']) == H]
-                t = [r for r in rows_tu if str(r['pred_len']) == H]
-                if d: avg['d'].append(np.mean([r['mse'] for r in d]))
-                if t: avg['t'].append(np.mean([r['mse'] for r in t]))
-                cd = f"{ms([r['mse'] for r in d])} / {ms([r['mae'] for r in d])}" if d else '–'
-                ct = f"{ms([r['mse'] for r in t])} / {ms([r['mae'] for r in t])}" if t else '–'
-            else:
-                cd = f"{np.mean(avg['d']):.3f}" if len(avg['d']) == 4 else '–'
-                ct = f"{np.mean(avg['t']):.3f}" if len(avg['t']) == 4 else '–'
+            cells = []
+            for i, rows in enumerate(sets):
+                if H != 'Avg':
+                    d = [r for r in rows if str(r['pred_len']) == H]
+                    if d: avg[i].append((np.mean([r['mse'] for r in d]), np.mean([r['mae'] for r in d])))
+                    cells.append(f"{ms([r['mse'] for r in d])} / {ms([r['mae'] for r in d])}" if d else '–')
+                else:
+                    cells.append(f'{np.mean([a[0] for a in avg[i]]):.3f} / {np.mean([a[1] for a in avg[i]]):.3f}'
+                                 if len(avg[i]) == 4 else '–')
             rep = []
             for m in others:
                 v = REP['long_term'].get(m, {}).get(ds, {}).get(H)
                 rep.append(f'{v[0]:.3f} / {v[1]:.3f}' if v else '–')
-            P(f'| {ds} | {H} | {cd} | {ct} | ' + ' | '.join(rep) + ' |')
-    P('\nDLT-dyn (tuned): configuration chosen by the validation search (scripts/p1/hpsearch.py, see tuned.json).\n')
+            P(f'| {ds} | {H} | ' + ' | '.join(cells) + ' | ' + ' | '.join(rep) + ' |')
+    P('\nDLT-dyn (tuned): configuration chosen by the validation search (scripts/p1/hpsearch.py, see tuned.json). '
+      'CI linear: the same model without the cross-variable branch (RevIN + one linear map per variable).\n')
 
 # ---------------------------------------------------------------- plug-in
 plug = load('plugin') + load('plugin_large')
@@ -125,6 +127,30 @@ if base:
         P(f"| {ds} | {H} | {m} | {ms([r['mse'] for r in rs])} / {ms([r['mae'] for r in rs])} | "
           + (f'{v[0]:.3f} / {v[1]:.3f}' if v else '–') + ' |')
     P('')
+    # averages over the four horizons, every model trained by us with the same pipeline
+    models = sorted({m for (_, _, m) in g})
+    cols = [('DLT-dyn (default)', lt), ('DLT-dyn (tuned)', tuned), ('CI linear', ci)] + \
+           [(m, [r for r in base if r['model'] == m]) for m in models]
+    P('### Average MSE / MAE over the four horizons, all trained in this pipeline\n')
+    P('| dataset | ' + ' | '.join(c[0] for c in cols) + ' |')
+    P('|---|' + '---|' * len(cols))
+    for ds in LONG:
+        cells, best = [], None
+        vals = []
+        for _, rows in cols:
+            per_h = [[r for r in rows if dsname(r) == ds and str(r['pred_len']) == H] for H in HS]
+            if all(per_h):
+                vals.append((np.mean([np.mean([r['mse'] for r in h]) for h in per_h]),
+                             np.mean([np.mean([r['mae'] for r in h]) for h in per_h])))
+            else:
+                vals.append(None)
+        if not any(vals):
+            continue
+        bm = min(v[0] for v in vals if v)
+        cells = [('–' if v is None else (f'**{v[0]:.3f}** / {v[1]:.3f}' if v[0] == bm else f'{v[0]:.3f} / {v[1]:.3f}'))
+                 for v in vals]
+        P(f'| {ds} | ' + ' | '.join(cells) + ' |')
+    P('\nBold: lowest average MSE among the models trained here.\n')
 
 txt = '\n'.join(L)
 os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)

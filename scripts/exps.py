@@ -22,6 +22,11 @@ Suites
   sensitivity  P2  DLT-dyn, one factor at a time: L in {12,24,96}, R in {2,8}, k in {4,16} (default 48/4/8)
                    on ETTh1-96, Weather-96, PEMS08-96
   neighbours   P2  DLT-dyn / DLT with random or all neighbours instead of the CCF top-k (Weather-96, PEMS08-96)
+  ci_long      P1  the channel-independent linear model (DLT without the cross branch) on the long-term benchmark
+
+--models / --datasets restrict the baselines (and ci_long) suites, e.g. the CPU-feasible subset
+    python scripts/exps.py baselines --models DLinear iTransformer TimeMixer LagTS \
+        --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange --data <dir> --work <dir>
 """
 import argparse, os, re, json, itertools
 from pathlib import Path
@@ -29,6 +34,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 TSLIB = REPO / 'tslib'
 HORIZONS = (96, 192, 336, 720)
+LONG_SETS = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', 'Traffic')
 
 # name: (--data, file, variables, --freq, train windows (for cost estimates))
 DATASETS = {
@@ -91,6 +97,8 @@ FALLBACK = {
                   'PEMS08': '--e_layers 5 --d_model 128 --d_ff 256 --learning_rate 0.003 --down_sampling_layers 1 --down_sampling_window 2 --channel_independence 0 --use_norm 0'},
     'LagTS': {'ETTh1': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
               'ETTh2': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
+              'ETTm1': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
+              'ETTm2': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
               'Exchange': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
               'Weather': '--e_layers 3 --d_model 512 --d_ff 512 --learning_rate 0.0001'},
 }
@@ -164,6 +172,8 @@ def main():
     p.add_argument('--device', default='cpu', choices=['cpu', 'gpu'])
     p.add_argument('--seeds', type=int, nargs='+', default=[2021, 2022, 2023])
     p.add_argument('--dlt', default='', help='extra --dlt_* arguments of the proposed model (e.g. a gate)')
+    p.add_argument('--models', nargs='+', help='baselines: only these models')
+    p.add_argument('--datasets', nargs='+', help='baselines / ci_long: only these datasets')
     a = p.parse_args()
     g = Gen(a, a.suite)
     dlt = f'{DLT_DEFAULT} {a.dlt}'.strip()
@@ -192,10 +202,12 @@ def main():
                   f'--plug_base {base} --dlt_variant ci {bargs} {proto}', cost(ds, rel))
             g.add(f'{ds}_{H}_{base}_dlt', 'DLTPlug', ds, H, seed,
                   f'--plug_base {base} {dlt} --dlt_lr 0.003 {bargs} {proto}', cost(ds, rel + 1))
+    elif a.suite == 'ci_long':                                 # the same linear model without the cross branch
+        for ds, H, seed in itertools.product(a.datasets or LONG_SETS, HORIZONS, S):
+            g.add(f'{ds}_{H}_ci', 'DLT', ds, H, seed, f'--dlt_variant ci {DLT_TRAIN}', cost(ds, 0.1))
     elif a.suite == 'baselines':
-        for ds, H, seed in itertools.product(('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', 'Traffic'),
-                                             HORIZONS, S):
-            for base in ('iTransformer', 'PatchTST', 'DLinear', 'TimeMixer', 'LagTS'):
+        for ds, H, seed in itertools.product(a.datasets or LONG_SETS, HORIZONS, S):
+            for base in a.models or ('iTransformer', 'PatchTST', 'DLinear', 'TimeMixer', 'LagTS'):
                 if base == 'LagTS' and DATASETS[ds][2] > 21:
                     continue                                   # O(N^2) pairs: the paper uses N <= 21
                 bargs, _ = backbone_args(base, ds, H)
