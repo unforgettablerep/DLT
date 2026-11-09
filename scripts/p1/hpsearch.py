@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import exps
 
 SPACE = {'learning_rate': [0.001, 0.003, 0.01], 'batch_size': [16, 32, 64], 'dlt_k': [4, 8, 16],
-         'dlt_L': [24, 48, 96], 'dlt_R': [2, 4, 8], 'dlt_dyn_dim': [8, 16, 32], 'dlt_gate': ['none', 'static']}
+         'dlt_L': [24, 48, 96], 'dlt_R': [2, 4, 8], 'dlt_dyn_dim': [8, 16, 32], 'dlt_gate': ['none', 'static', 'moe']}
 DEFAULT = {'learning_rate': 0.003, 'batch_size': 32, 'dlt_k': 8, 'dlt_L': 48, 'dlt_R': 4, 'dlt_dyn_dim': 16,
            'dlt_gate': 'none'}
 
