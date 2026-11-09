@@ -19,3 +19,9 @@ sktime
 datasets
 huggingface_hub
 patool
+
+# Optional, for the Transformer baselines of P1 (iTransformer, PatchTST, TimeMixer, LagTS import
+# layers/SelfAttention_Family.py, which needs reformer_pytorch). Installed with --no-deps so that pip does not
+# touch the PyTorch build; product-key-memory 0.1.10 avoids the colt5-attention dependency of newer releases:
+#   pip install --no-deps einops==0.8.1 local-attention==1.11.2 reformer-pytorch==1.4.4 \
+#       hyper-connections axial-positional-embedding product-key-memory==0.1.10

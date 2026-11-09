@@ -28,7 +28,13 @@ The per-pair lag kernel K_ij is parameterised by ``--dlt_variant``:
   static     y = y_self + sigmoid(theta_i) y_cross, theta_i = --dlt_gate_init (per-variable gate, opens from ~0)
 
 Neighbours N(i) (top-k), peak lags d_ij and the K-lag sets are chosen from the *training split only*
-(|CCF| of first differences over lags 0..L). ``prepare(train_dataset)`` is called by
+(|CCF| of first differences over lags 0..L). ``--dlt_neighbours`` replaces the CCF ranking by k random
+sources (``random``, drawn with ``--fix_seed``) or by all other variables (``all``, k = C - 1); peak lags
+still come from the CCF. ``--dlt_impl dense`` evaluates dlt / dltdyn with a dense C x C coefficient
+tensor (cheapest when k is close to C - 1).
+
+With ``cross_only=True`` the model has no intra-variable head and ``correction(x_enc)`` returns only the
+de-normalised cross-variable term sigma_i * W_c z_i; ``models/DLTPlug.py`` adds it to any backbone. ``prepare(train_dataset)`` is called by
 Exp_Long_Term_Forecast.train() before training. They are stored as buffers, so they follow
 ``.to(device)`` / DataParallel and are saved in (and restored from) checkpoints.
 
@@ -43,6 +49,7 @@ import torch.nn.functional as F
 VARIANTS = ("ci", "scalar", "shift", "tap3", "dlt", "full", "scalardyn", "dltdyn", "topk", "mill", "milldyn")
 LAGSET_VARIANTS = ("topk", "mill", "milldyn")      # use K CCF-selected lags per pair
 GATES = ("none", "moe", "static")
+NEIGHBOUR_MODES = ("ccf", "random", "all")
 
 
 def _diff_standardise(train_values, max_len, device):
@@ -62,11 +69,13 @@ def _abs_ccf(x, tau):
 
 
 @torch.no_grad()
-def select_neighbours(train_values, k, L, max_len=8000, device="cpu"):
+def select_neighbours(train_values, k, L, max_len=8000, device="cpu", mode="ccf", seed=0):
     """Top-k sources per target by max_tau |corr(dx_i(t), dx_j(t - tau))|, tau = 0..L.
 
     train_values: (T, C) array of the (scaled) training split.
-    Returns idx (C, k) and lag (C, k) as int64 tensors on ``device``.
+    mode: "ccf" (default), "random" (k sources drawn uniformly without the target itself, generator
+    seeded with ``seed``) or "all" (all other variables, ordered by CCF strength).
+    Returns idx (C, k) and lag (C, k) as int64 tensors on ``device``; lag is the CCF peak lag of each pair.
     """
     x = _diff_standardise(train_values, max_len, device)
     n, C = x.shape
@@ -78,7 +87,13 @@ def select_neighbours(train_values, k, L, max_len=8000, device="cpu"):
         best[upd] = c[upd]
         blag[upd] = tau
     best.fill_diagonal_(-float("inf"))
-    idx = torch.argsort(best, dim=1, descending=True)[:, :k]
+    if mode == "random":
+        gen = torch.Generator().manual_seed(int(seed))
+        others = [[j for j in range(C) if j != i] for i in range(C)]
+        idx = torch.tensor([[others[i][j] for j in torch.randperm(C - 1, generator=gen)[:k].tolist()]
+                            for i in range(C)], dtype=torch.long, device=x.device)
+    else:                            # "ccf"; "all" is the same ranking with k = C - 1
+        idx = torch.argsort(best, dim=1, descending=True)[:, :k]
     lag = torch.gather(blag, 1, idx)
     return idx, lag
 
@@ -95,8 +110,9 @@ def select_lags(train_values, idx, K, L, max_len=8000, device="cpu"):
 
 
 class Model(nn.Module):
-    def __init__(self, configs):
+    def __init__(self, configs, cross_only=False):
         super().__init__()
+        self.cross_only = cross_only
         self.task_name = configs.task_name
         if self.task_name not in ("long_term_forecast", "short_term_forecast"):
             raise NotImplementedError("DLT currently supports long_term_forecast / short_term_forecast only")
@@ -108,7 +124,11 @@ class Model(nn.Module):
             raise ValueError(f"--dlt_variant must be one of {VARIANTS}, got {self.variant}")
         self.L = L = getattr(configs, "dlt_L", 48)
         self.R = R = getattr(configs, "dlt_R", 4)
-        self.k = k = max(0, min(getattr(configs, "dlt_k", 8), C - 1))
+        self.neighbours = getattr(configs, "dlt_neighbours", "ccf")
+        if self.neighbours not in NEIGHBOUR_MODES:
+            raise ValueError(f"--dlt_neighbours must be one of {NEIGHBOUR_MODES}, got {self.neighbours}")
+        self.k = k = C - 1 if self.neighbours == "all" else max(0, min(getattr(configs, "dlt_k", 8), C - 1))
+        self.neighbour_seed = getattr(configs, "fix_seed", 2021)
         self.dyn_dim = d = getattr(configs, "dlt_dyn_dim", 16)
         self.ccf_len = getattr(configs, "dlt_ccf_len", 8000)
         self.K = K = getattr(configs, "dlt_topk", 5)              # lags per pair for topk / mill / milldyn
@@ -121,13 +141,16 @@ class Model(nn.Module):
         #   kernel: build K_ij = sum_r alpha_ijr phi_r, one grouped conv  (less memory; default)
         #   basis : filter with the R basis kernels, gather, mix          (fewer FLOPs for R << L)
         self.impl = getattr(configs, "dlt_impl", "kernel")
-        if self.impl not in ("kernel", "basis"):
-            raise ValueError(f"--dlt_impl must be 'kernel' or 'basis', got {self.impl}")
+        if self.impl not in ("kernel", "basis", "dense"):
+            raise ValueError(f"--dlt_impl must be 'kernel', 'basis' or 'dense', got {self.impl}")
         if k == 0 and self.variant != "ci":
             print(f"[DLT] enc_in={C}: no other variables, falling back to variant 'ci'")
             self.variant = "ci"
 
-        self.self_head = nn.Linear(T, H)
+        if cross_only and self.variant == "ci":
+            raise ValueError("cross_only=True needs a cross-variable variant (not 'ci')")
+        if not cross_only:
+            self.self_head = nn.Linear(T, H)
         if self.variant == "ci":
             return
         # neighbour indices / peak lags: filled by prepare(), saved in checkpoints
@@ -193,7 +216,8 @@ class Model(nn.Module):
         if self.variant == "ci":
             return
         values = getattr(train_data, "data_x", train_data)
-        idx, lag = select_neighbours(values, self.k, self.L, self.ccf_len, device=self.idx.device)
+        idx, lag = select_neighbours(values, self.k, self.L, self.ccf_len, device=self.idx.device,
+                                     mode=self.neighbours, seed=self.neighbour_seed)
         self.idx.copy_(idx)
         self.lag.copy_(lag)
         msg = ""
@@ -202,7 +226,7 @@ class Model(nn.Module):
             self.tlag.copy_(tl)
             msg = f"; K={self.K} lags per pair, lag 0 among them for {(tl == 0).any(-1).float().mean().item():.0%}"
         self.prepared.fill_(True)
-        print(f"[DLT] variant={self.variant}: selected k={self.k} neighbours per variable "
+        print(f"[DLT] variant={self.variant}: selected k={self.k} neighbours per variable ({self.neighbours}) "
               f"(peak lag 0 for {(lag == 0).float().mean().item():.0%} of pairs){msg}")
 
     # ------------------------------------------------------------------ model
@@ -229,6 +253,15 @@ class Model(nn.Module):
             alpha = self.alpha
             if v == "dltdyn":
                 alpha = alpha[None] * (1 + torch.tanh(self.mod(self._pair_features(xn))))  # (B, C, k, R)
+            if self.impl == "dense":
+                # basis-filtered signals of all variables, mixed with a dense C x C x R coefficient tensor
+                xp = F.pad(xn, (L, 0)).reshape(B * C, 1, T + L)
+                u = F.conv1d(xp, self.phi.flip(-1).unsqueeze(1)).view(B, C, self.R, T)
+                if v == "dlt":
+                    A = alpha.new_zeros(C, C, self.R).scatter(1, idx[..., None].expand(C, k, self.R), alpha)
+                    return torch.einsum("ijr,bjrt->bit", A, u)
+                A = alpha.new_zeros(B, C, C, self.R).scatter(2, idx[None, ..., None].expand(B, C, k, self.R), alpha)
+                return torch.einsum("bijr,bjrt->bit", A, u)
             if self.impl == "basis":
                 # filter every variable once with the R shared basis kernels, then mix per pair
                 xp = F.pad(xn, (L, 0)).reshape(B * C, 1, T + L)
@@ -283,6 +316,26 @@ class Model(nn.Module):
         z = F.conv1d(xg, K.reshape(C * k, 1, taps).flip(-1), groups=C * k)
         return z.view(B, C, k, T).sum(2)
 
+    def _check_ready(self):
+        if not getattr(self, "_ready", False):          # checked once (avoids a device sync per step)
+            if not bool(self.prepared):
+                raise RuntimeError("DLT: neighbours not selected; call model.prepare(train_data) "
+                                   "before training, or load a trained checkpoint")
+            self._ready = True
+
+    def correction(self, x_enc):
+        """cross_only models: the de-normalised cross-variable term sigma_i * gate * W_c z_i, (B, H, C)."""
+        x = x_enc.permute(0, 2, 1)
+        sd = x.std(-1, keepdim=True) + 1e-5
+        xn = (x - x.mean(-1, keepdim=True)) / sd
+        self._check_ready()
+        y = self.cross_head(self.cross(xn))
+        if self.gate == "static":
+            y = torch.sigmoid(self.gate_logit)[:, None] * y
+        elif self.gate == "moe":
+            raise ValueError("the MoVE-style gate mixes two forecasts; use --dlt_gate none or static for plug-ins")
+        return (y * sd).permute(0, 2, 1)
+
     def forecast(self, x_enc):
         x = x_enc.permute(0, 2, 1)                                              # (B, C, T)
         mu = x.mean(-1, keepdim=True)
@@ -290,11 +343,7 @@ class Model(nn.Module):
         xn = (x - mu) / sd
         y = self.self_head(xn)
         if self.variant != "ci":
-            if not getattr(self, "_ready", False):      # checked once (avoids a device sync per step)
-                if not bool(self.prepared):
-                    raise RuntimeError("DLT: neighbours not selected; call model.prepare(train_data) "
-                                       "before training, or load a trained checkpoint")
-                self._ready = True
+            self._check_ready()
             y_cross = self.cross_head(self.cross(xn))
             if self.gate == "none":
                 y = y + y_cross

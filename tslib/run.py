@@ -9,6 +9,12 @@ import numpy as np
 def dlt_suffix(args):
     """Experiment-name suffix of DLT runs: keeps checkpoints / results of different configurations apart."""
     suf = '_{}_k{}_L{}_R{}'.format(args.dlt_variant, args.dlt_k, args.dlt_L, args.dlt_R)
+    if args.model == 'DLTPlug':
+        suf = '_{}'.format(args.plug_base) + suf
+        if args.dlt_lr > 0:
+            suf += '_dlr{:g}'.format(args.dlt_lr)
+    if args.dlt_neighbours != 'ccf':
+        suf += '_nb{}'.format(args.dlt_neighbours)
     if args.dlt_variant in ('topk', 'mill', 'milldyn'):
         suf += '_K{}'.format(args.dlt_topk)
     if args.dlt_gate != 'none':
@@ -18,12 +24,8 @@ def dlt_suffix(args):
     return suf
 
 
-if __name__ == '__main__':
-    fix_seed = 2021
-    random.seed(fix_seed)
-    torch.manual_seed(fix_seed)
-    np.random.seed(fix_seed)
-
+def get_parser():
+    """All command-line options (module level so that other scripts can build the same configs)."""
     parser = argparse.ArgumentParser(description='TimesNet')
 
     # basic config
@@ -179,8 +181,20 @@ if __name__ == '__main__':
     parser.add_argument('--dlt_dyn_dim', type=int, default=16, help='DLT: summary dimension of the dynamic coefficients')
     parser.add_argument('--dlt_ccf_len', type=int, default=8000,
                         help='DLT: number of (most recent) training steps used for neighbour selection')
-    parser.add_argument('--dlt_impl', type=str, default='kernel', choices=['kernel', 'basis'],
-                        help='DLT: computation path for dlt/dltdyn (identical results; kernel = less memory)')
+    parser.add_argument('--dlt_impl', type=str, default='kernel', choices=['kernel', 'basis', 'dense'],
+                        help='DLT: computation path for dlt/dltdyn (identical results; kernel = less memory, '
+                             'dense = cheapest when k is close to C - 1)')
+    parser.add_argument('--dlt_neighbours', type=str, default='ccf', choices=['ccf', 'random', 'all'],
+                        help='DLT: neighbour selection (ccf top-k, k random sources, all other variables)')
+    parser.add_argument('--plug_base', type=str, default='DLinear',
+                        help='DLTPlug: backbone from models/ that the DLT branch is added to')
+    parser.add_argument('--dlt_hp_trial', type=int, default=-1, help='bookkeeping: index of a search trial')
+    parser.add_argument('--dlt_lr', type=float, default=0.0,
+                        help='DLTPlug: learning rate of the DLT branch (0 = same as --learning_rate)')
+    parser.add_argument('--lagts_lambda', type=float, default=0.1, help='LagTS: weight of the lag relation loss')
+    parser.add_argument('--lagts_rel_dim', type=int, default=8, help="LagTS: relation embedding size D'")
+    parser.add_argument('--vali_inverse', action='store_true', default=False,
+                        help='validation loss = MAE on the original scale (TimeMixer protocol for PEMS)')
     parser.add_argument('--dlt_topk', type=int, default=5,
                         help='DLT: lags per pair for the MillGNN-style variants topk / mill / milldyn')
     parser.add_argument('--dlt_gate', type=str, default='none', choices=['none', 'moe', 'static'],
@@ -197,7 +211,16 @@ if __name__ == '__main__':
                         help='do not save pred.npy / true.npy and the test plots')
     parser.add_argument('--result_jsonl', type=str, default='',
                         help='append one JSON line per run (config, metrics, epochs, time) to this file')
+    return parser
 
+
+if __name__ == '__main__':
+    fix_seed = 2021
+    random.seed(fix_seed)
+    torch.manual_seed(fix_seed)
+    np.random.seed(fix_seed)
+
+    parser = get_parser()
     args = parser.parse_args()
     if args.fix_seed != fix_seed:
         random.seed(args.fix_seed)
@@ -277,8 +300,10 @@ if __name__ == '__main__':
                         + f'_expand{args.expand}_dc{args.d_conv}_nk{args.num_kernels}' \
                         + f'_tvdt{int(args.tv_dt)}_tvB{int(args.tv_B)}_tvC{int(args.tv_C)}_useD{int(args.use_D)}_{args.des}_{ii}'
 
-            if args.model == 'DLT':  # keep checkpoints / results of different DLT variants apart
+            if args.model in ('DLT', 'DLTPlug'):  # keep checkpoints / results of different DLT variants apart
                 setting += dlt_suffix(args)
+            if args.model == 'LagTS':
+                setting += '_lam{:g}_rd{}'.format(args.lagts_lambda, args.lagts_rel_dim)
             if args.fix_seed != fix_seed:
                 setting += '_seed{}'.format(args.fix_seed)
 
@@ -323,8 +348,10 @@ if __name__ == '__main__':
                     + f'_expand{args.expand}_dc{args.d_conv}_nk{args.num_kernels}' \
                     + f'_tvdt{args.tv_dt}_tvB{args.tv_B}_tvC{args.tv_C}_useD{int(args.use_D)}_{args.des}_{ii}'
 
-        if args.model == 'DLT':  # must match the training-time setting name
+        if args.model in ('DLT', 'DLTPlug'):  # must match the training-time setting name
             setting += dlt_suffix(args)
+        if args.model == 'LagTS':
+            setting += '_lam{:g}_rd{}'.format(args.lagts_lambda, args.lagts_rel_dim)
         if args.fix_seed != fix_seed:
             setting += '_seed{}'.format(args.fix_seed)
 

@@ -16,6 +16,21 @@ from utils.augmentation import run_augmentation, run_augmentation_single
 warnings.filterwarnings('ignore')
 
 
+def mape_timemixer(pred, true):
+    """MAPE as in TimeMixer's PEMS protocol: ratios > 5 (true values near 0) count as 0. A perfect
+    prediction of a zero value (0 / 0, e.g. a dead sensor that RevIN models reproduce exactly) counts as 0."""
+    with np.errstate(divide='ignore', invalid='ignore'):
+        r = np.abs((pred - true) / true)
+    r = np.nan_to_num(r, nan=0.0, posinf=np.inf)
+    return float(np.mean(np.where(r > 5, 0, r)))
+
+
+def mape_masked(pred, true):
+    """MAPE over the entries with true != 0 (the masked MAPE of the traffic-forecasting literature)."""
+    m = true != 0
+    return float(np.mean(np.abs((pred[m] - true[m]) / true[m]))) if m.any() else float('nan')
+
+
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
         super(Exp_Long_Term_Forecast, self).__init__(args)
@@ -32,10 +47,22 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return data_set, data_loader
 
     def _select_optimizer(self):
+        model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+        dlt_lr = getattr(self.args, 'dlt_lr', 0.0)
+        if dlt_lr > 0 and hasattr(model, 'dlt'):
+            # plug-in: the DLT branch gets its own learning rate; the schedule scales both groups alike
+            dlt_ids = {id(p) for p in model.dlt.parameters()}
+            groups = [{'params': [p for p in model.parameters() if id(p) not in dlt_ids], 'lr_scale': 1.0},
+                      {'params': list(model.dlt.parameters()), 'lr_scale': dlt_lr / self.args.learning_rate}]
+            for g in groups:
+                g['lr'] = self.args.learning_rate * g['lr_scale']
+            return optim.Adam(groups)
         model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
         return model_optim
 
     def _select_criterion(self):
+        if getattr(self.args, 'loss', 'MSE').upper() == 'MAE':    # e.g. the TimeMixer protocol on PEMS
+            return nn.L1Loss()
         criterion = nn.MSELoss()
         return criterion
  
@@ -67,6 +94,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 pred = outputs.detach()
                 true = batch_y.detach()
 
+                if getattr(self.args, 'vali_inverse', False) and vali_data.scale:
+                    shape = pred.shape
+                    p_np = vali_data.inverse_transform(pred.cpu().numpy().reshape(-1, shape[-1])).reshape(shape)
+                    t_np = vali_data.inverse_transform(true.cpu().numpy().reshape(-1, shape[-1])).reshape(shape)
+                    total_loss.append(np.mean(np.abs(p_np - t_np)))
+                    continue
                 loss = criterion(pred, true)
 
                 total_loss.append(loss.item())
@@ -101,6 +134,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             scaler = torch.cuda.amp.GradScaler()
 
         no_epoch_test = getattr(self.args, 'no_epoch_test', False)
+        aux_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+        extra_loss = getattr(aux_model, 'extra_loss', None)      # e.g. LagTS: lambda * lag relation loss
         self.train_info = {'epochs': 0, 'best_epoch': 0, 'best_vali': None, 'train_secs': 0.0, 'epoch_secs': []}
         train_start = time.time()
         for epoch in range(self.args.train_epochs):
@@ -131,6 +166,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                         loss = criterion(outputs, batch_y)
                         train_loss.append(loss.item())
+                        if extra_loss is not None:
+                            loss = loss + extra_loss(batch_x, outputs, batch_y)
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
@@ -139,6 +176,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                     loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
+                    if extra_loss is not None:
+                        loss = loss + extra_loss(batch_x, outputs, batch_y)
 
                 if (i + 1) % 100 == 0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
@@ -284,15 +323,29 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         if getattr(self.args, 'result_jsonl', ''):
             a = self.args
-            rec = {'setting': setting, 'model': a.model, 'model_id': a.model_id, 'data': a.data,
+            rec = {'setting': setting, 'model': a.model, 'model_id': a.model_id, 'des': a.des, 'data': a.data,
                    'data_path': a.data_path, 'seq_len': a.seq_len, 'pred_len': a.pred_len,
                    'seed': getattr(a, 'fix_seed', 2021), 'lr': a.learning_rate, 'batch_size': a.batch_size,
                    'train_epochs': a.train_epochs, 'patience': a.patience,
                    'mse': float(mse), 'mae': float(mae), 'rmse': float(rmse),
+                   'mape': float(mape) if np.isfinite(mape) else None,
+                   'mape_clip5': mape_timemixer(preds, trues), 'mape_masked': mape_masked(preds, trues),
+                   'inverse': bool(a.inverse), 'loss': getattr(a, 'loss', 'MSE'),
+                   'vali_inverse': bool(getattr(a, 'vali_inverse', False)),
                    'n_params': int(sum(p.numel() for p in self.model.parameters()))}
-            if a.model == 'DLT':
+            if a.model in ('DLT', 'DLTPlug'):
                 rec.update({'variant': a.dlt_variant, 'gate': a.dlt_gate, 'k': a.dlt_k, 'L': a.dlt_L,
-                            'R': a.dlt_R, 'topk': a.dlt_topk, 'impl': a.dlt_impl})
+                            'R': a.dlt_R, 'topk': a.dlt_topk, 'impl': a.dlt_impl,
+                            'neighbours': getattr(a, 'dlt_neighbours', 'ccf'), 'dyn_dim': a.dlt_dyn_dim})
+                if getattr(a, 'dlt_hp_trial', -1) >= 0:
+                    rec['hp_trial'] = a.dlt_hp_trial
+            if a.model == 'DLTPlug':
+                rec['plug_base'] = a.plug_base
+                rec['dlt_lr'] = getattr(a, 'dlt_lr', 0.0)
+            if a.model == 'LagTS':
+                rec.update({'lagts_lambda': a.lagts_lambda, 'lagts_rel_dim': a.lagts_rel_dim})
+            if a.model != 'DLT':
+                rec.update({'d_model': a.d_model, 'd_ff': a.d_ff, 'e_layers': a.e_layers, 'n_heads': a.n_heads})
                 if a.dlt_gate == 'static':
                     rec['gate_init'] = a.dlt_gate_init
             rec.update(getattr(self, 'train_info', {}))

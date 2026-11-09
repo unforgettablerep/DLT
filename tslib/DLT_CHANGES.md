@@ -9,11 +9,15 @@ Everything else in this directory is unchanged upstream code.
 | `models/DLT.py` | **new** – DLT model (11 kernel variants incl. the MillGNN-style `topk` / `mill` / `milldyn`), neighbour and lag-set selection, `prepare()` hook, optional branch gates (`--dlt_gate none|moe|static`); two identical computation paths for `dlt`/`dltdyn` (`--dlt_impl kernel` = default, less memory; `basis`) |
 | `data_provider/data_loader.py` | **new** `Dataset_PEMS` (PEMS03/04/07/08 `.npz`, 6:2:2 split, rebuilt 5-min time marks) |
 | `data_provider/data_factory.py` | register `--data PEMS` |
-| `exp/exp_long_term_forecasting.py` | call `model.prepare(train_data)` before training if the model defines it (DataParallel-safe); optional `--no_epoch_test`, `--no_save_preds`, `--result_jsonl` (one JSON line per run with metrics, epochs, best epoch and timing) |
+| `exp/exp_long_term_forecasting.py` | call `model.prepare(train_data)` before training if the model defines it (DataParallel-safe); optional `--no_epoch_test`, `--no_save_preds`, `--result_jsonl` (one JSON line per run with metrics incl. TimeMixer's clipped MAPE and the masked MAPE, epochs, best epoch and timing); `--loss MAE` (L1 training loss) and `--vali_inverse` (validation MAE on the original scale) for the TimeMixer / MillGNN PEMS protocol together with `--inverse`; models may add an auxiliary loss via `extra_loss(x, pred, true)`; per-group learning rates for `--dlt_lr` |
+| `models/DLTPlug.py` | **new** – the DLT cross-variable branch as a plug-in: `Backbone(X) + sigma * W_c z` for any TSLib forecaster (`--plug_base`); `--dlt_variant ci` = backbone alone through the same code path; `--dlt_lr` gives the branch its own learning rate |
+| `models/LagTS.py` | **new** – re-implementation of LagTS (ICASSP 2025; no official code) incl. its lag relation loss (`extra_loss`), `--lagts_lambda`, `--lagts_rel_dim` |
 | `exp/exp_basic.py` | fall back to CPU when CUDA / MPS is requested but not available (instead of crashing) |
 | `utils/timefeatures.py` | pandas ≥ 3 compatibility: map TSLib `--freq` codes (`t`, `h`, `s`, `d`, `b`, `w`, `m`, `q`, `a`) to the new pandas aliases (`min`, `h`, `s`, `D`, `B`, `W`, `ME`, `QE`, `YE`); falls back to the original string on older pandas |
 | `run.py` | `--dlt_variant --dlt_k --dlt_L --dlt_R --dlt_dyn_dim --dlt_ccf_len --dlt_impl --dlt_topk --dlt_gate --dlt_gate_init`; `--fix_seed` (default 2021 = upstream behaviour); DLT experiment names get a `_{variant}_k{k}_L{L}_R{R}` suffix (plus `_K{topk}`, `_g{gate}`, `_seed{n}` when used) so configurations do not overwrite each other |
 | `scripts/long_term_forecast/DLT_script/` | **new** run scripts (ETTh1/2, ETTm1/2, Weather, ECL, Traffic, Exchange, PEMS08, kernel ablation) |
+| `utils/tools.py` | `adjust_learning_rate` keeps per-group learning-rate ratios (`lr_scale`; default 1 = upstream behaviour) |
+| `run.py` (structure) | the argument parser is built by `get_parser()` (module level) so that scripts can construct identical configurations |
 | `requirements_dlt.txt` | **new** minimal dependency list |
 
 ## Device support
@@ -49,3 +53,13 @@ theta_i = `--dlt_gate_init` (default -3, i.e. the cross branch starts at weight 
 Verification: `scripts/p0/test_variants.py` (repository root) checks every variant against an explicit loop,
 the lag sets against a reference CCF loop, and that the original 8 variants are unchanged (same parameters
 for the same seed, identical outputs) relative to commit `af398bd`.
+
+## Neighbour selection and computation paths
+`--dlt_neighbours ccf|random|all`: CCF top-k (default), k random sources (drawn with `--fix_seed`), or all other
+variables (k = C - 1). `--dlt_impl dense` evaluates dlt / dltdyn with a dense C x C x R coefficient tensor, which is
+the cheapest path when k is close to C - 1. Verification: `scripts/p0/test_p1p2.py` (dense path, neighbour sets,
+DLTPlug, LagTS loss against explicit loops).
+
+## Reproducing P1 / P2
+See `scripts/exps.py` (job lists per suite, `--device cpu|gpu`), `scripts/run_queue.sh`, `scripts/p1/hpsearch.py`,
+`scripts/p2/efficiency.py`, `scripts/p2/kernels.py` and the aggregation scripts in `scripts/p1`, `scripts/p2`.
