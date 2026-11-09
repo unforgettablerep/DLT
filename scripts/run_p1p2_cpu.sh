@@ -19,8 +19,10 @@ python scripts/p1/hpsearch.py make --data "$DATA" --work "$WORK"
 cat "$WORK"/jobs_pems12.txt "$WORK"/jobs_long_small.txt "$WORK"/jobs_plugin.txt "$WORK"/jobs_sensitivity.txt \
     "$WORK"/jobs_neighbours.txt "$WORK"/jobs_hp.txt > "$WORK/jobs_cpu_all.txt"
 grep -v "traffic.csv" "$WORK/jobs_long_large.txt" >> "$WORK/jobs_cpu_all.txt"     # Electricity only; Traffic on a GPU
-bash scripts/run_queue.sh "$WORK/jobs_cpu_all.txt" 4
+echo "queue start $(date)" >> "$WORK/runner.log"
+bash scripts/run_queue.sh "$WORK/jobs_cpu_all.txt" 4 || echo "some jobs failed $(date) (see $WORK/logs)" >> "$WORK/runner.log"
 python scripts/p1/hpsearch.py select --work "$WORK" > "$WORK/hp_select.md"
 python scripts/p1/hpsearch.py tuned --data "$DATA" --work "$WORK"
-bash scripts/run_queue.sh "$WORK/jobs_tuned.txt" 4
+echo "tuned start $(date)" >> "$WORK/runner.log"
+bash scripts/run_queue.sh "$WORK/jobs_tuned.txt" 4 || echo "some tuned jobs failed $(date)" >> "$WORK/runner.log"
 echo "P12DONE $(date)" >> "$WORK/runner.log"

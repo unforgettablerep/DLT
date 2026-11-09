@@ -1,0 +1,107 @@
+# Priority-0 experiments: kernel and gate comparison
+
+156 runs. Time-Series-Library, look-back 96, k = 8 neighbours, L = 48, R = 4, top-K = 5, Adam lr 3e-3 (halved every epoch), batch 32, 10 epochs, early stopping patience 3 on the validation MSE, seeds 2021/2022/2023. Entries: mean ± std over seeds; n < 3 seeds is marked.
+
+## Test MSE
+
+| configuration | ETTh1_96 | Weather_96 | ECL_96 | PEMS08_24 | PEMS08_96 |
+|---|---:|---:|---:|---:|---:|
+| CI (no cross branch) | **0.3887 ± 0.0062** | 0.1942 ± 0.0006 | – | 0.2325 ± 0.0000 | 1.1681 ± 0.0024 |
+| scalar (lag 0) | 0.3953 ± 0.0057 | 0.1736 ± 0.0004 | – | 0.1902 ± 0.0001 | 1.0113 ± 0.0188 |
+| shift (CCF peak lag, LIFT-style) | 0.3954 ± 0.0071 | 0.1739 ± 0.0004 | – | 0.1939 ± 0.0001 | 1.0321 ± 0.0138 |
+| tap3 (CrossLinear-style) | 0.3930 ± 0.0055 | 0.1722 ± 0.0009 | – | 0.1847 ± 0.0004 | 0.9496 ± 0.0184 |
+| full (free, lags 0..48) | 0.3949 ± 0.0016 | 0.1682 ± 0.0007 | – | 0.1785 ± 0.0008 | 0.8530 ± 0.0012 |
+| |  |  |  |  |  |
+| top-5 lags, free weights | 0.3914 ± 0.0025 | 0.1676 ± 0.0001 | – | 0.1821 ± 0.0002 | 0.9064 ± 0.0160 |
+| MillGNN-static (top-5 + decay) | <u>0.3892 ± 0.0004</u> | 0.1702 ± 0.0003 | – | 0.1914 ± 0.0001 | 0.9900 ± 0.0038 |
+| MillGNN-dyn (top-5 + decay + attention) | 0.3918 ± 0.0033 | 0.1724 ± 0.0005 | – | 0.1860 ± 0.0010 | 0.9219 ± 0.0022 |
+| |  |  |  |  |  |
+| scalar-dyn | 0.3962 ± 0.0043 | 0.1730 ± 0.0025 | – | 0.1495 ± 0.0007 | 0.7046 ± 0.0469 |
+| **DLT** | 0.3943 ± 0.0030 | 0.1672 ± 0.0005 | – | 0.1793 ± 0.0005 | 0.8583 ± 0.0047 |
+| **DLT-dyn** | 0.4102 ± 0.0055 | <u>0.1637 ± 0.0006</u> | – | **0.1333 ± 0.0024** | **0.5229 ± 0.0087** |
+| |  |  |  |  |  |
+| DLT-dyn + MoVE softmax gate | 0.3966 ± 0.0029 | **0.1633 ± 0.0019** | – | 0.1352 ± 0.0058 | <u>0.5385 ± 0.0072</u> |
+| DLT-dyn + static gate (init 0.047) | 0.4071 ± 0.0047 | 0.1641 ± 0.0011 | – | <u>0.1335 ± 0.0011</u> | 0.5453 ± 0.0049 |
+
+Bold: best mean; underlined: second best.
+
+## Test MAE
+
+| configuration | ETTh1_96 | Weather_96 | ECL_96 | PEMS08_24 | PEMS08_96 |
+|---|---:|---:|---:|---:|---:|
+| CI (no cross branch) | <u>0.3957 ± 0.0044</u> | 0.2335 ± 0.0004 | – | 0.3276 ± 0.0003 | 0.8059 ± 0.0030 |
+| scalar (lag 0) | 0.4026 ± 0.0060 | 0.2212 ± 0.0003 | – | 0.2916 ± 0.0005 | 0.7327 ± 0.0059 |
+| shift (CCF peak lag, LIFT-style) | 0.4042 ± 0.0061 | 0.2211 ± 0.0002 | – | 0.2958 ± 0.0005 | 0.7477 ± 0.0043 |
+| tap3 (CrossLinear-style) | 0.3988 ± 0.0022 | 0.2198 ± 0.0015 | – | 0.2901 ± 0.0012 | 0.7152 ± 0.0111 |
+| full (free, lags 0..48) | 0.4032 ± 0.0008 | 0.2167 ± 0.0009 | – | 0.2854 ± 0.0008 | 0.6630 ± 0.0020 |
+| |  |  |  |  |  |
+| top-5 lags, free weights | 0.3990 ± 0.0014 | 0.2152 ± 0.0002 | – | 0.2874 ± 0.0008 | 0.6913 ± 0.0059 |
+| MillGNN-static (top-5 + decay) | **0.3955 ± 0.0008** | 0.2164 ± 0.0002 | – | 0.2948 ± 0.0001 | 0.7340 ± 0.0028 |
+| MillGNN-dyn (top-5 + decay + attention) | 0.4008 ± 0.0043 | 0.2193 ± 0.0008 | – | 0.2939 ± 0.0016 | 0.6963 ± 0.0041 |
+| |  |  |  |  |  |
+| scalar-dyn | 0.4036 ± 0.0029 | 0.2197 ± 0.0024 | – | 0.2581 ± 0.0010 | 0.5834 ± 0.0131 |
+| **DLT** | 0.4026 ± 0.0012 | 0.2156 ± 0.0007 | – | 0.2855 ± 0.0009 | 0.6678 ± 0.0038 |
+| **DLT-dyn** | 0.4140 ± 0.0028 | **0.2101 ± 0.0014** | – | **0.2429 ± 0.0014** | **0.4945 ± 0.0055** |
+| |  |  |  |  |  |
+| DLT-dyn + MoVE softmax gate | 0.4080 ± 0.0022 | <u>0.2103 ± 0.0012</u> | – | 0.2460 ± 0.0063 | <u>0.5010 ± 0.0043</u> |
+| DLT-dyn + static gate (init 0.047) | 0.4118 ± 0.0023 | 0.2109 ± 0.0012 | – | <u>0.2437 ± 0.0018</u> | 0.5052 ± 0.0029 |
+
+Bold: best mean; underlined: second best.
+
+## Relative test MSE against the channel-independent model (negative = better)
+
+| configuration | ETTh1_96 | Weather_96 | ECL_96 | PEMS08_24 | PEMS08_96 |
+|---|---:|---:|---:|---:|---:|
+| scalar (lag 0) | +1.7% | -10.6% | – | -18.2% | -13.4% |
+| shift (CCF peak lag, LIFT-style) | +1.7% | -10.5% | – | -16.6% | -11.6% |
+| tap3 (CrossLinear-style) | +1.1% | -11.3% | – | -20.5% | -18.7% |
+| full (free, lags 0..48) | +1.6% | -13.4% | – | -23.2% | -27.0% |
+| top-5 lags, free weights | +0.7% | -13.7% | – | -21.7% | -22.4% |
+| MillGNN-static (top-5 + decay) | +0.1% | -12.3% | – | -17.6% | -15.3% |
+| MillGNN-dyn (top-5 + decay + attention) | +0.8% | -11.2% | – | -20.0% | -21.1% |
+| scalar-dyn | +1.9% | -10.9% | – | -35.7% | -39.7% |
+| **DLT** | +1.4% | -13.9% | – | -22.9% | -26.5% |
+| **DLT-dyn** | +5.5% | -15.7% | – | -42.7% | -55.2% |
+| DLT-dyn + MoVE softmax gate | +2.0% | -15.9% | – | -41.8% | -53.9% |
+| DLT-dyn + static gate (init 0.047) | +4.7% | -15.5% | – | -42.6% | -53.3% |
+
+## DLT-dyn against the other kernels (Welch t-test on the seed means)
+
+Δ = MSE(other) / MSE(DLT-dyn) − 1; positive means DLT-dyn is better. p: two-sided Welch t-test, 3 vs 3 seeds.
+
+| other kernel | ETTh1_96 | Weather_96 | ECL_96 | PEMS08_24 | PEMS08_96 |
+|---|---|---|---|---|---|
+| full (free, lags 0..48) | -3.7% (p=0.032) | +2.8% (p=0.001) | – | +34.0% (p=0.000) | +63.1% (p=0.000) |
+| top-5 lags, free weights | -4.6% (p=0.015) | +2.4% (p=0.006) | – | +36.6% (p=0.001) | +73.3% (p=0.000) |
+| MillGNN-static (top-5 + decay) | -5.1% (p=0.022) | +4.0% (p=0.000) | – | +43.6% (p=0.001) | +89.3% (p=0.000) |
+| MillGNN-dyn (top-5 + decay + attention) | -4.5% (p=0.013) | +5.3% (p=0.000) | – | +39.6% (p=0.000) | +76.3% (p=0.000) |
+| scalar-dyn | -3.4% (p=0.028) | +5.7% (p=0.018) | – | +12.2% (p=0.004) | +34.7% (p=0.019) |
+| **DLT** | -3.9% (p=0.021) | +2.2% (p=0.001) | – | +34.6% (p=0.001) | +64.1% (p=0.000) |
+
+## Gates on DLT-dyn
+
+| gate | ETTh1_96 | Weather_96 | ECL_96 | PEMS08_24 | PEMS08_96 |
+|---|---|---|---|---|---|
+| CI (no cross branch) | 0.3887 ± 0.0062 (best ep. 4.7) | 0.1942 ± 0.0006 (best ep. 7.7) | – | 0.2325 ± 0.0000 (best ep. 7.0) | 1.1681 ± 0.0024 (best ep. 7.0) |
+| **DLT-dyn** | 0.4102 ± 0.0055 (best ep. 1.3) | 0.1637 ± 0.0006 (best ep. 6.3) | – | 0.1333 ± 0.0024 (best ep. 9.3) | 0.5229 ± 0.0087 (best ep. 9.7) |
+| DLT-dyn + MoVE softmax gate | 0.3966 ± 0.0029 (best ep. 1.0) | 0.1633 ± 0.0019 (best ep. 6.0) | – | 0.1352 ± 0.0058 (best ep. 9.0) | 0.5385 ± 0.0072 (best ep. 9.3) |
+| DLT-dyn + static gate (init 0.047) | 0.4071 ± 0.0047 (best ep. 1.0) | 0.1641 ± 0.0011 (best ep. 2.7) | – | 0.1335 ± 0.0011 (best ep. 8.7) | 0.5453 ± 0.0049 (best ep. 9.7) |
+
+## Training: epochs run / best epoch / seconds per epoch (1 CPU thread) / parameters
+
+| configuration | ETTh1_96 | Weather_96 | ECL_96 | PEMS08_24 | PEMS08_96 |
+|---|---|---|---|---|---|
+| CI (no cross branch) | 7.3 / 4.7 / 0s / 9.3K | 9.7 / 7.7 / 3s / 9.3K | – | 9.7 / 7.0 / 3s / 2.3K | 9.0 / 7.0 / 5s / 9.3K |
+| scalar (lag 0) | 6.7 / 4.0 / 0s / 18.7K | 9.0 / 6.7 / 4s / 18.8K | – | 9.7 / 7.3 / 8s / 6.0K | 10.0 / 8.7 / 11s / 20.0K |
+| shift (CCF peak lag, LIFT-style) | 6.7 / 4.0 / 1s / 18.7K | 10.0 / 8.3 / 5s / 18.8K | – | 9.7 / 7.3 / 19s / 6.0K | 8.7 / 7.0 / 20s / 20.0K |
+| tap3 (CrossLinear-style) | 6.7 / 3.7 / 1s / 18.8K | 9.3 / 6.7 / 7s / 19.1K | – | 9.3 / 6.7 / 20s / 8.7K | 10.0 / 8.0 / 23s / 22.7K |
+| full (free, lags 0..48) | 7.3 / 5.3 / 2s / 20.7K | 10.0 / 8.7 / 22s / 26.9K | – | 10.0 / 9.3 / 61s / 71.3K | 8.3 / 5.3 / 62s / 85.3K |
+| top-5 lags, free weights | 9.0 / 7.3 / 1s / 18.8K | 10.0 / 9.7 / 13s / 19.5K | – | 10.0 / 8.7 / 38s / 11.5K | 9.7 / 7.0 / 42s / 25.4K |
+| MillGNN-static (top-5 + decay) | 9.7 / 8.0 / 1s / 18.8K | 10.0 / 9.0 / 14s / 19.3K | – | 9.7 / 8.0 / 38s / 10.1K | 9.3 / 6.7 / 40s / 24.1K |
+| MillGNN-dyn (top-5 + decay + attention) | 7.3 / 4.7 / 1s / 20.8K | 10.0 / 8.3 / 15s / 21.2K | – | 10.0 / 8.3 / 44s / 10.8K | 10.0 / 8.0 / 46s / 24.8K |
+| scalar-dyn | 5.7 / 2.7 / 1s / 21.3K | 8.0 / 5.3 / 7s / 21.4K | – | 10.0 / 10.0 / 18s / 8.7K | 10.0 / 9.7 / 16s / 22.6K |
+| **DLT** | 7.0 / 4.0 / 2s / 19.0K | 10.0 / 8.0 / 22s / 19.5K | – | 9.7 / 8.0 / 58s / 10.3K | 8.7 / 6.3 / 59s / 24.3K |
+| **DLT-dyn** | 4.3 / 1.3 / 2s / 21.7K | 9.0 / 6.3 / 25s / 22.2K | – | 10.0 / 9.3 / 54s / 13.0K | 10.0 / 9.7 / 56s / 27.0K |
+| DLT-dyn + MoVE softmax gate | 4.0 / 1.0 / 2s / 21.9K | 8.7 / 6.0 / 24s / 22.4K | – | 10.0 / 9.0 / 55s / 13.2K | 10.0 / 9.3 / 58s / 27.2K |
+| DLT-dyn + static gate (init 0.047) | 4.0 / 1.0 / 1s / 21.7K | 5.7 / 2.7 / 24s / 22.3K | – | 10.0 / 8.7 / 55s / 13.2K | 10.0 / 9.7 / 56s / 27.2K |
+
