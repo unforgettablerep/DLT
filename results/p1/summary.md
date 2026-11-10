@@ -77,3 +77,29 @@ Same backbone hyper-parameters and training budget in both columns; the DLT bran
 | Weather | 96 | PatchTST | 0.184 ± 0.002 / 0.226 ± 0.001 | 0.167 ± 0.003 / 0.215 ± 0.003 | -9.1% | 0.002 |
 | Weather | 96 | iTransformer | 0.174 ± 0.002 / 0.215 ± 0.002 | 0.163 ± 0.001 / 0.207 ± 0.001 | -6.7% | 0.004 |
 
+## All other variables as neighbours (dense path) vs the CCF top-8 default
+
+Follow-up of the P2 neighbour study. PEMS: horizon 12, TimeMixer protocol, MAE / MAPE (%) / RMSE; otherwise MSE / MAE. ETT / Exchange are not listed: with 7-8 variables the default k = 8 already uses all.
+
+| dataset | H | model | CCF top-8 (default) | all neighbours | Δ (first metric) | p |
+|---|---|---|---|---|---|---|
+| ECL | 96 | DLT | – | 0.200 ± 0.002 / 0.300 ± 0.003 | – | – |
+| ECL | 192 | DLT | – | 0.200 ± 0.004 / 0.297 ± 0.005 | – | – |
+| ECL | 336 | DLT | – | 0.215 ± 0.001 / 0.311 ± 0.003 | – | – |
+| ECL | 720 | DLT | – | 0.256 ± 0.009 / 0.342 ± 0.009 | – | – |
+| PEMS04 | 12 | DLT | 23.99 ± 0.03 / 14.87 ± 0.02 / 37.72 ± 0.05 | 22.85 ± 0.07 / 15.10 ± 0.21 / 35.56 ± 0.08 | -4.8% | 0.000 |
+| PEMS04 | 12 | DLT-dyn | 22.31 ± 0.06 / 13.85 ± 0.04 / 35.10 ± 0.10 | 21.69 ± 0.18 / 13.67 ± 0.08 / 34.19 ± 0.40 | -2.8% | 0.019 |
+| PEMS08 | 12 | DLT | 19.99 ± 0.15 / 11.79 ± 0.08 / 31.88 ± 0.21 | 18.69 ± 0.17 / 11.41 ± 0.13 / 29.16 ± 0.21 | -6.5% | 0.001 |
+| PEMS08 | 12 | DLT-dyn | 17.87 ± 0.14 / 10.68 ± 0.05 / 28.30 ± 0.26 | 18.25 ± 0.17 / 11.20 ± 0.05 / 28.33 ± 0.31 | +2.1% | 0.041 |
+| PEMS08 | 12 | iTransformer + DLT-dyn | 16.26 ± 0.10 / 10.01 ± 0.05 / 26.15 ± 0.19 | 17.49 ± 0.19 / 10.81 ± 0.12 / 27.41 ± 0.13 | +7.6% | 0.002 |
+| Weather | 96 | DLT | – | 0.164 ± 0.001 / 0.213 ± 0.001 | – | – |
+| Weather | 96 | DLT-dyn | 0.164 ± 0.001 / 0.210 ± 0.001 | 0.162 ± 0.003 / 0.210 ± 0.003 | -1.3% | 0.326 |
+| Weather | 192 | DLT | – | 0.214 ± 0.001 / 0.256 ± 0.001 | – | – |
+| Weather | 192 | DLT-dyn | 0.213 ± 0.001 / 0.253 ± 0.001 | 0.210 ± 0.000 / 0.253 ± 0.000 | -1.0% | 0.107 |
+| Weather | 336 | DLT | – | 0.270 ± 0.002 / 0.295 ± 0.001 | – | – |
+| Weather | 336 | DLT-dyn | 0.270 ± 0.002 / 0.294 ± 0.002 | 0.268 ± 0.004 / 0.295 ± 0.003 | -0.8% | 0.482 |
+| Weather | 720 | DLT | – | 0.351 ± 0.000 / 0.347 ± 0.000 | – | – |
+| Weather | 720 | DLT-dyn | 0.351 ± 0.001 / 0.349 ± 0.000 | 0.348 ± 0.001 / 0.346 ± 0.001 | -0.8% | 0.010 |
+
+DLT with the CCF top-8 on the long-term datasets was not run at every horizon (the default model is DLT-dyn); see P0 / P2 for DLT at horizon 96.
+
