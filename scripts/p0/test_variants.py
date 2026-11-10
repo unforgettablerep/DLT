@@ -1,4 +1,4 @@
-"""Verification of the DLT kernels and gates in tslib/models/DLT.py.
+"""Verification of the DLT kernels and gates in models/DLT.py.
 
     python scripts/p0/test_variants.py <dir with ETTh1.csv>
 
@@ -12,7 +12,7 @@ import sys, types, importlib.util, io, os, subprocess, tempfile
 from pathlib import Path
 import numpy as np, pandas as pd, torch
 REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / 'tslib'))
+sys.path.insert(0, str(REPO))
 from models import DLT as new
 old_src = subprocess.run(['git', '-C', str(REPO), 'show', 'af398bd:tslib/models/DLT.py'],
                          capture_output=True, text=True, check=True).stdout

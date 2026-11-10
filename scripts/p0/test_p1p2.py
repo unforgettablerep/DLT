@@ -9,7 +9,7 @@ import sys, types
 from pathlib import Path
 import numpy as np, torch
 REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / 'tslib'))
+sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / 'scripts' / 'p0'))
 from models import DLT, DLTPlug, LagTS, DLinear
 torch.set_default_dtype(torch.float64)

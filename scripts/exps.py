@@ -7,7 +7,7 @@
 written to <work>/jobs_<suite>.txt (one shell command per line, longest first); every job appends its JSON
 record to <work>/results_<suite>.jsonl and logs to <work>/logs/<suite>/. Run a list with
     bash scripts/run_queue.sh <work>/jobs_<suite>.txt [parallel jobs]
-from anywhere (the runner changes into tslib/). On a GPU use --device gpu and run one job per GPU.
+from anywhere (the runner changes into the repository root). On a GPU use --device gpu and run one job per GPU.
 
 Suites
   pems12       P1  PEMS04/08, input 96, horizon 12, TimeMixer protocol (L1 training loss, validation MAE and
@@ -34,7 +34,7 @@ import argparse, os, re, json, itertools
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-TSLIB = REPO / 'tslib'
+TSLIB = REPO
 HORIZONS = (96, 192, 336, 720)
 LONG_SETS = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', 'Traffic')
 

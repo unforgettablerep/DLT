@@ -35,8 +35,8 @@ SKIP_CPU = {('PatchTST', 'Traffic'), ('LagTS', 'ECL'), ('LagTS', 'Traffic'), ('L
 
 def one(spec):
     import numpy as np, torch
-    sys.path.insert(0, str(REPO / 'tslib')); sys.path.insert(0, str(REPO / 'scripts'))
-    os.chdir(REPO / 'tslib')
+    sys.path.insert(0, str(REPO)); sys.path.insert(0, str(REPO / 'scripts'))
+    os.chdir(REPO)
     import run, exps
     from importlib import import_module
     dev = torch.device('cuda' if spec['device'] == 'gpu' else 'cpu')

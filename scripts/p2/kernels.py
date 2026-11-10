@@ -1,7 +1,7 @@
 """P2: learned lag kernels on PEMS08 against the road network.
 
     python scripts/p2/kernels.py --ckpt <dir with P0 checkpoints> --data <dir with PEMS08.npz, PEMS08_edges.csv> \
-                                 --out results/p2 [--H 96]
+                                 --out results/p2 [--fig_dir ../DLTpaper/figures] [--H 96]
 
 For every trained DLT / DLT-dyn checkpoint (all seeds) the kernels K_ij(tau) = sum_r alpha_ijr phi_r(tau) of the
 selected pairs are compared with the road graph (PEMS08_edges.csv: directed sensor links with length):
@@ -9,7 +9,8 @@ selected pairs are compared with the road graph (PEMS08_edges.csv: directed sens
   * lag centroid sum_tau tau |K| / sum |K| and peak lag of the kernel against the road distance,
   * upstream (a directed path source -> target exists) against downstream sources.
 DLT-dyn kernels are the mean input-adapted kernels over the test windows. Writes kernels_pems08.json (statistics)
-and fig_kernels_pems08.pdf / .png.
+to --out and fig_kernels_pems08.pdf / .png to --fig_dir (default: --out). Figures are kept in the paper repository
+(DLTpaper/figures), not in this one.
 """
 import argparse, glob, json, os, sys
 from pathlib import Path
@@ -19,7 +20,7 @@ from scipy.sparse.csgraph import shortest_path
 from scipy.stats import spearmanr
 
 REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / 'tslib'))
+sys.path.insert(0, str(REPO))
 
 
 def road_graph(edges_csv, C):
@@ -142,9 +143,12 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--ckpt', required=True); p.add_argument('--data', required=True)
     p.add_argument('--out', required=True); p.add_argument('--H', type=int, default=96)
+    p.add_argument('--fig_dir', default='', help='directory of the figure (default: --out)')
     a = p.parse_args()
     a.out, a.ckpt, a.data = (os.path.abspath(x) for x in (a.out, a.ckpt, a.data))   # before the chdir below
-    os.chdir(REPO / 'tslib')
+    a.fig_dir = os.path.abspath(a.fig_dir) if a.fig_dir else a.out
+    os.makedirs(a.fig_dir, exist_ok=True)
+    os.chdir(REPO)
     os.makedirs(a.out, exist_ok=True)
     C = np.load(os.path.join(a.data, 'PEMS08.npz'))['data'].shape[1]
     hops, dist, down = road_graph(os.path.join(a.data, 'PEMS08_edges.csv'), C)
@@ -159,7 +163,7 @@ def main():
             per_seed.append(s)
             if variant == 'dlt' and len(per_seed) == 1:
                 order = np.argsort(-(np.abs(K).sum(-1).sum(-1)))       # targets with the strongest cross input
-                figure(os.path.join(a.out, 'fig_kernels_pems08.pdf'), [int(order[0]), int(order[1])], idx, K, h, d, centroid)
+                figure(os.path.join(a.fig_dir, 'fig_kernels_pems08.pdf'), [int(order[0]), int(order[1])], idx, K, h, d, centroid)
         res[variant] = {'checkpoints': [os.path.basename(os.path.dirname(q)) for q in paths], 'per_seed': per_seed}
         print(variant, json.dumps(per_seed[0] if per_seed else {}, indent=1)[:1500])
     json.dump(res, open(os.path.join(a.out, 'kernels_pems08.json'), 'w'), indent=1)

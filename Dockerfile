@@ -11,7 +11,7 @@ ENV http_proxy=${http_proxy}
 ENV https_proxy=${https_proxy}
 ENV PYTHONPATH=/workspace/Time-Series-Library:$PYTHONPATH
 
-COPY requirements.txt .
+COPY requirements_tslib_full.txt requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt
 

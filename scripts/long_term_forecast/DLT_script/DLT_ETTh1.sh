@@ -1,5 +1,5 @@
 #!/bin/bash
-# DLT on ETTm2. Run from the tslib/ directory:  bash scripts/long_term_forecast/DLT_script/DLT_ETTm2.sh
+# DLT on ETTh1. Run from the repository root:  bash scripts/long_term_forecast/DLT_script/DLT_ETTh1.sh
 #   VARIANT=dlt bash ...            choose the kernel variant (default: dltdyn)
 #   EXTRA_ARGS="--no_use_gpu --num_workers 0" bash ...   force CPU
 #   EXTRA_ARGS="--use_multi_gpu --devices 0,1" bash ...  multi-GPU (DataParallel)
@@ -12,12 +12,12 @@ for pred_len in 96 192 336 720; do
     --task_name long_term_forecast \
     --is_training 1 \
     --root_path ./dataset/ETT-small/ \
-    --data_path ETTm2.csv \
-    --model_id ETTm2_96_$pred_len \
+    --data_path ETTh1.csv \
+    --model_id ETTh1_96_$pred_len \
     --model $model_name \
-    --data ETTm2 \
+    --data ETTh1 \
     --features M \
-    --freq t \
+    --freq h \
     --seq_len 96 \
     --label_len 48 \
     --pred_len $pred_len \

@@ -1,5 +1,8 @@
 # Experiments that still need a GPU
 
+**Target machine:** one RTX 4090 (24 GB), host CUDA 13.1, PyTorch 2.5.1+cu124. The cu124 wheel ships its own
+CUDA 12.4 runtime, so the host only needs a recent NVIDIA driver. All commands run from the repository root.
+
 Everything that is feasible on the 4-core CPU development machine has been run there:
 - P0 kernel and gate study: [`results/p0`](results/p0).
 - P1 comparisons: [`results/p1`](results/p1). This covers:
@@ -13,10 +16,41 @@ Everything that is feasible on the 4-core CPU development machine has been run t
 - P2 sensitivity, neighbour selection, CPU efficiency and learned kernels: [`results/p2`](results/p2).
 
 This page lists what is left: the parts that are too slow or too large for that machine. For each part it says
-what the part verifies and how to run it.
+what the part verifies and how to run it. Start with the single run of the [README quick start](README.md).
 
-The model code was checked on the CPU only. The DLT code paths are device-agnostic, but they have never run on
-a physical GPU, so step 0 comes first.
+## Status of the GPU check
+
+**First run on the RTX 4090 (2026-11-10, earlier version of `scripts/gpu/check_gpu.py`).**
+- 19 of the 23 model configurations passed the strict CPU-vs-GPU comparison of outputs and gradients. These
+  include stand-alone DLT-dyn on all three computation paths, both gates and DLTPlug with DLinear.
+- The neighbour and lag selection checks passed.
+- Four configurations were reported as failed: `DLT milldyn`, `DLTPlug PatchTST + dltdyn`,
+  `DLTPlug iTransformer + dltdyn`, `LagTS`.
+
+**Cause: the check, not the models.**
+- These four are exactly the configurations with dot-product attention.
+- The bias of an attention key projection adds the same amount to every score of a query, and the softmax ignores
+  such a shift. Its gradient is therefore exactly zero in exact arithmetic.
+- In float32 that gradient holds only rounding noise, about 1e-9 of the largest gradient of the model, and the
+  noise differs between devices.
+- The old criterion divided the difference of each gradient by the size of that same gradient. For these biases
+  it compared noise with noise and got a relative error of about 1.
+
+**Evidence without a GPU.** The same weights were evaluated in float32 and in float64 on the CPU; like a second
+device, the two differ only by rounding.
+- The old criterion fails for exactly these four configurations and for no other.
+- The only offending parameters are `k_proj.bias` (milldyn) and `attention.key_projection.bias` (PatchTST,
+  iTransformer, LagTS).
+- Their float64 gradient is below 1e-17 of the largest gradient.
+- All outputs agree to better than 1e-6, and all other gradients to about 1e-6 or better.
+
+**Fix.** The check now:
+- compares in float64 first (tolerance 1e-9);
+- measures each gradient error against at least 1e-3 of the largest gradient of the model;
+- prints the parameter with the largest error and lists the zero-gradient parameters.
+
+With the same rounding proxy all 23 configurations pass; the largest error is 1.4e-6 against a tolerance of 1e-4.
+A re-run on the RTX 4090 with `--all` is the remaining confirmation.
 
 ## Overview
 
@@ -37,65 +71,67 @@ The make script generates the complete suites. For tier 3, the generated list al
 and for tier 4 the PEMS all-neighbour runs. Those were run on the CPU, so their jobs are skipped once the final
 CPU results are copied in.
 
-Most expensive per run:
-- PatchTST with the TSLib configuration (d_model 512, batch 4 on Traffic) and TimeMixer on Traffic. Both ran
-  out of the 13 GB CPU memory at batch 32.
-- iTransformer on Traffic.
-- DLT-dyn with all neighbours on Traffic. The pair features take about 3 GB per tensor at batch 32, so the
-  peak is estimated at 15–20 GB (not measured). Use `--batch_size 16` if it does not fit.
+**Memory on one 24 GB card.**
+- DLT is small: DLT-dyn needs about 1 GB per step on Traffic at batch 32 (measured on the CPU).
+- The heavy runs are the baselines on Traffic: iTransformer (12.4 GB at batch 32 on the CPU; its TSLib script
+  uses batch 16), PatchTST with the TSLib configuration (d_model 512, batch 4) and TimeMixer (batch 8).
+- DLT-dyn with all neighbours on Traffic (tier 4) is the one to watch: the pair features take about 3 GB per
+  tensor at batch 32, so the peak is estimated at 15–20 GB (not measured). Use `--batch_size 16` if it does not fit.
 
 Run tier 0 first: its per-batch times calibrate the time needed for the other tiers.
 
 ## 0. Set-up and checks
 
 ```bash
-# environment: PyTorch for your CUDA driver, then the DLT requirements of the TSLib snapshot
-pip install torch --index-url https://download.pytorch.org/whl/cu121        # pick your CUDA version
-pip install -r tslib/requirements_dlt.txt
+pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+pip install -r requirements.txt
 pip install --no-deps einops==0.8.1 local-attention==1.11.2 reformer-pytorch==1.4.4 hyper-connections \
-    axial-positional-embedding product-key-memory==0.1.10                  # imports of other TSLib models
+    axial-positional-embedding product-key-memory==0.1.10                  # imports of the Transformer baselines
 
-DATA=/path/to/datasets      # ETTh1.csv ETTh2.csv ETTm1.csv ETTm2.csv weather.csv exchange_rate.csv
-                            # electricity.csv traffic.csv PEMS04.npz PEMS08.npz PEMS08_edges.csv
+DATA=/path/to/datasets      # one flat directory: ETTh1.csv ETTh2.csv ETTm1.csv ETTm2.csv weather.csv
+                            # exchange_rate.csv electricity.csv traffic.csv PEMS04.npz PEMS08.npz PEMS08_edges.csv
 WORK=/path/to/gpu_work
 mkdir -p $WORK && cp results/p1/results_*.jsonl $WORK/      # finished CPU runs are skipped
 
-python scripts/gpu/check_gpu.py --data $DATA                # must end with "all strict checks passed"
-python scripts/gpu/check_gpu.py --data $DATA > results/p2/check_gpu.txt
+python scripts/gpu/check_gpu.py --data $DATA                # stand-alone DLT-dyn; must end with "all checks passed"
+python scripts/gpu/check_gpu.py --data $DATA --all          # every variant, gate, DLTPlug and LagTS
 python scripts/p2/efficiency.py --device gpu --out results/p2/efficiency_gpu.jsonl
 ```
 
-`check_gpu.py` builds every DLT variant, gate and implementation path, DLTPlug (three backbones) and LagTS on the
-CPU, copies each to the GPU and compares outputs and all gradients:
-- with TF32 off: tolerance 1e-4;
-- as in training, with TF32 for cuDNN convolutions: tolerance 5e-3.
+`check_gpu.py` builds each model on the CPU, copies it to the GPU and compares outputs and all gradients:
+- in float64: tolerance 1e-9;
+- in float32 with TensorFloat-32 off: tolerance 1e-4;
+- in float32 as in training (PyTorch enables TF32 for cuDNN convolutions): reported only.
 
-It also checks that neighbour and lag selection on the GPU picks the same sets as on the CPU (real PEMS08 data).
+It also checks that neighbour selection on the GPU picks the same sources as on the CPU. Ties, for example a
+dead sensor, may be broken differently and are accepted when the scores agree.
 
 ## 1–4. Experiments
 
 ```bash
 bash scripts/gpu/make_gpu_jobs.sh $DATA $WORK         # writes jobs_gpu_tier{1,2_search,3,4}.txt, prints the counts
 
-bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier1.txt 0 1 2 3      # GPUs 0-3, one job per GPU at a time
+bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier1.txt            # one job at a time on GPU 0
 
-bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier2_search.txt 0 1 2 3
+bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier2_search.txt 0 0 0     # three DLT jobs at a time on GPU 0
 python scripts/p1/hpsearch.py select --work $WORK > $WORK/hp_select.md                      # 8 long-term datasets
 python scripts/p1/hpsearch.py tuned  --data $DATA --work $WORK --device gpu
 python scripts/p1/hpsearch.py select --work $WORK --tag _pems > $WORK/hp_select_pems.md
 python scripts/p1/hpsearch.py tuned  --data $DATA --work $WORK --device gpu --horizons 12 --tag _pems
 cat $WORK/jobs_tuned.txt $WORK/jobs_tuned_pems.txt > $WORK/jobs_gpu_tier2_tuned.txt
-bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier2_tuned.txt 0 1 2 3
+bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier2_tuned.txt 0 0 0
 
-bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier3.txt 0 1 2 3
-bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier4.txt 0 1 2 3      # optional
+bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier3.txt
+bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier4.txt            # optional
 ```
 
 How the queue runner behaves:
 - It runs only jobs whose result file has no record with the job's `--des` and seed. After an interruption,
   run the same command again.
-- Each GPU takes every n-th job, and each job sees only its GPU through `CUDA_VISIBLE_DEVICES`. TSLib's
-  `_acquire_device` now keeps a mask set by the caller.
+- One worker per listed GPU id. On the single RTX 4090, `0` runs one job at a time. `0 0 0` runs three at a
+  time, which suits the small DLT models of tier 2; keep one at a time for the Traffic baselines.
+- Each job sees only its GPU through `CUDA_VISIBLE_DEVICES`. TSLib's `_acquire_device` keeps a mask set by
+  the caller.
 
 The tuned step covers the 72 CPU runs again. They are skipped because their results were copied, and the
 selection for the 6 small datasets is the same because their search records were copied as well.

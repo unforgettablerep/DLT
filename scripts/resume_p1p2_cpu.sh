@@ -2,7 +2,7 @@
 # Resume the CPU P1/P2 pipeline of scripts/run_p1p2_cpu.sh after an interruption: runs only the jobs without a
 # result, then the hyper-parameter selection and the tuned re-runs, then the extra list (if present).
 #   bash scripts/resume_p1p2_cpu.sh <data dir> <work dir> [<code checkout to run the jobs in, default: this repo>]
-# The job lines already hold every argument; the checkout only provides tslib/ (use the frozen one of the run).
+# The job lines already hold every argument; the checkout only provides the code (use the frozen one of the run).
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 DATA=$(cd "$1" && pwd); WORK=$(cd "$2" && pwd); CODE=$(cd "${3:-$REPO}" && pwd)
 cd "$REPO"

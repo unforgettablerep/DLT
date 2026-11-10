@@ -104,7 +104,7 @@ if os.path.exists(kj):
             vals = [s[key][sub] if sub is not None else s[key] for s in seeds if s.get(key) is not None]
             cells.append((f'{np.mean(vals):.3f}' + (f' ± {np.std(vals, ddof=1):.3f}' if len(vals) > 1 else '')) if vals else '–')
         P(f'| {label} | ' + ' | '.join(cells) + ' |')
-    P(f"\nCheckpoints: {sum(len(K[v]['per_seed']) for v in K)} (DLT and DLT-dyn, PEMS08-96, P0 grid). Figure: fig_kernels_pems08.pdf.\n")
+    P(f"\nCheckpoints: {sum(len(K[v]['per_seed']) for v in K)} (DLT and DLT-dyn, PEMS08-96, P0 grid). Figure: `figures/fig_kernels_pems08.pdf` in the DLTpaper repository (written by scripts/p2/kernels.py).\n")
 
 txt = '\n'.join(L)
 os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)

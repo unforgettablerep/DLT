@@ -76,5 +76,5 @@ MillGNN (reported, A100, Traffic): 9.7 GB GPU memory; iTransformer 7.5 GB in the
 | Spearman rho(road distance, peak lag) | -0.203 ± 0.046 | -0.045 ± 0.204 |
 | Spearman rho(road distance, lag centroid) | -0.317 ± 0.020 | -0.202 ± 0.170 |
 
-Checkpoints: 6 (DLT and DLT-dyn, PEMS08-96, P0 grid). Figure: fig_kernels_pems08.pdf.
+Checkpoints: 6 (DLT and DLT-dyn, PEMS08-96, P0 grid). Figure: `figures/fig_kernels_pems08.pdf` in the DLTpaper repository (written by scripts/p2/kernels.py).
 

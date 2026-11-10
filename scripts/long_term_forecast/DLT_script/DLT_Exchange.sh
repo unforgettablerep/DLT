@@ -1,5 +1,5 @@
 #!/bin/bash
-# DLT on Exchange. Run from the tslib/ directory:  bash scripts/long_term_forecast/DLT_script/DLT_Exchange.sh
+# DLT on Exchange. Run from the repository root:  bash scripts/long_term_forecast/DLT_script/DLT_Exchange.sh
 #   VARIANT=dlt bash ...            choose the kernel variant (default: dltdyn)
 #   EXTRA_ARGS="--no_use_gpu --num_workers 0" bash ...   force CPU
 #   EXTRA_ARGS="--use_multi_gpu --devices 0,1" bash ...  multi-GPU (DataParallel)

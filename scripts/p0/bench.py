@@ -6,7 +6,7 @@ epoch_s = train step x training batches + forward x validation batches (model co
 import sys, time, types, json
 from pathlib import Path
 import torch, numpy as np
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tslib'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from models import DLT
 torch.set_num_threads(1)
 setting = sys.argv[1]

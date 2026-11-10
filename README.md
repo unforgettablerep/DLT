@@ -1,9 +1,55 @@
 # DLT: Distributed-Lag Transfer for Multivariate Time Series Forecasting
 
-> **中文简介**：本仓库是 DLT（跨变量分布滞后传递）方向的可行性原型。核心思想是为每对相关变量学习一条**多时滞核** K_ij(τ)，用共享的时滞基降低参数量，并让核系数随输入窗口自适应（DLT-dyn）。
-> 仓库包含线性原型代码、69 组对比实验的原始结果和架构图（SVG/PDF/PNG）。这些是可行性验证结果，不是论文最终结果。
+> **中文简介**：本仓库是 DLT（跨变量分布滞后传递）的代码仓库：一份 Time-Series-Library 快照加上 DLT 模型（`--model DLT`），以及全部实验脚本和结果表。核心思想是为每对相关变量学习一条**多时滞核** K_ij(τ)，用共享的时滞基降低参数量，并让核系数随输入窗口自适应（DLT-dyn）。
+> 论文稿、相关论文 PDF 和所有图片在 `DLTpaper` 仓库；本仓库只保留代码、实验记录和结果表。
 
-![architecture](figures/dlt_architecture.png)
+## Quick start: one GPU, one dataset, stand-alone DLT-dyn
+
+Reference environment: one RTX 4090, host CUDA 13.1, PyTorch 2.5.1+cu124. The cu124 wheel ships its own CUDA 12.4
+runtime, so the host only needs a recent NVIDIA driver. Run everything from the repository root.
+
+```bash
+# 1. environment
+pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+pip install -r requirements.txt
+
+# 2. data: ./dataset/weather/weather.csv (Time-Series-Library layout). A missing CSV is downloaded from
+#    Hugging Face by Time-Series-Library; the bundle is also on Google Drive / Baidu Drive (links below).
+
+# 3. the GPU computes what the CPU computes (stand-alone DLT-dyn, under a minute)
+python scripts/gpu/check_gpu.py --data ./dataset/weather          # must end with "all checks passed"
+
+# 4. one training run: DLT-dyn, Weather, horizon 96, GPU 0, seed 2021
+bash scripts/train_dltdyn.sh
+```
+
+The script ends with one line, for example (CPU, PyTorch 2.5.1, this exact command):
+
+```
+Weather_96_96 seed 2021: MSE 0.1642  MAE 0.2117  | best epoch 7 of 10, 26.2 s per epoch, 22232 parameters
+```
+
+On the GPU expect the same metrics to about three decimals: cuDNN and TensorFloat-32 are not bit-identical to the
+CPU. Other datasets and horizons: `DATASET=PEMS08 PRED_LEN=12 bash scripts/train_dltdyn.sh` (options in the script
+header). CPU reference values of the default configuration, mean ± std over seeds 2021–2023:
+
+| `DATASET` / `PRED_LEN` | DLT-dyn | same model without the cross branch (CI) | CPU s / epoch (1 thread) |
+|---|---|---|---:|
+| Weather / 96 (MSE, MAE) | 0.1637 ± 0.0006, 0.2101 ± 0.0014 | 0.1942, 0.2335 | 25 |
+| ECL / 96 (MSE, MAE) | 0.1713 ± 0.0007, 0.2619 ± 0.0003 | 0.1975, 0.2739 | 201 |
+| PEMS08 / 96 (MSE, MAE, scaled) | 0.5229 ± 0.0087, 0.4945 ± 0.0055 | 1.1681, 0.8059 | 56 |
+| PEMS08 / 12 (MAE, MAPE, RMSE; TimeMixer protocol) | 17.87 ± 0.14, 10.68 %, 28.30 | 21.84, 12.62 %, 35.01 | 54 |
+| PEMS04 / 12 (MAE, MAPE, RMSE; TimeMixer protocol) | 22.31 ± 0.06, 13.85 %, 35.10 | 27.36, 16.34 %, 43.54 | 100 |
+| ETTh1 / 96 (MSE, MAE) | 0.4102 ± 0.0055, 0.4140 ± 0.0028 | 0.3887, 0.3957 | 2 |
+
+ETTh1 is listed on purpose: on weakly coupled data the cross-variable branch does not help (see
+[`results/README.md`](results/README.md)).
+
+Datasets: the Time-Series-Library bundle ([Google Drive](https://drive.google.com/drive/folders/13Cg1KYOlzM5C7K8gK8NfC-F3EYxkM3D2?usp=sharing),
+[Baidu Drive](https://pan.baidu.com/s/1r3KhGd0Q9PJIUZdfEYoymg?pwd=i9iy),
+[Hugging Face](https://huggingface.co/datasets/thuml/Time-Series-Library)) goes to `./dataset/`. PEMS04 / PEMS08
+(`PEMS0x.npz`, flow in channel 0) are not part of it; put them in `./dataset/PEMS/`, for example
+`curl -fL -o dataset/PEMS/PEMS08.npz https://huggingface.co/datasets/jimmygao3218/PEMS08/resolve/main/PEMS08.npz`.
 
 ## Idea
 Cross-variable effects in multivariate series are often **lagged and spread over several lags**
@@ -17,7 +63,98 @@ $$z_i(t)=\sum_{j\in N(i)}\sum_{\tau=0}^{L}K_{ij}(\tau)\,\tilde x_j(t-\tau),\qqua
 with a small bank of shared basis kernels φ_r (cost linear in the number of variables), and
 **DLT-dyn** makes α input-adaptive: α_ijr(X) = α_ijr · (1 + tanh(MLP([s_i ‖ s_j]))).
 
-## Feasibility prototype
+
+## Repository layout
+```
+run.py  exp/  data_provider/  layers/  models/  utils/     Time-Series-Library; ours: models/DLT.py, DLTPlug.py, LagTS.py
+scripts/train_dltdyn.sh              quick start: one GPU, one dataset, stand-alone DLT-dyn
+scripts/gpu/                         GPU-vs-CPU check, job lists and queue of the remaining GPU experiments
+scripts/long_term_forecast/DLT_script/   DLT per dataset at four horizons (the other *_script/ folders are upstream)
+scripts/exps.py  scripts/p0 p1 p2/   experiment suites, validation search, aggregation, unit tests
+scripts/run_queue.sh  run_missing.py  run_p1p2_cpu.sh  resume_p1p2_cpu.sh     resumable CPU queues
+results/                             conclusions (README.md), tables and raw records of P0 / P1 / P2
+code/                                first feasibility prototype (proto.py) with results/runs.jsonl, results/summary.md
+DLT_CHANGES.md                       every change to the upstream snapshot
+GPU_RUNS.md                          experiments that still need a GPU, for one RTX 4090
+requirements.txt                     DLT and the classic models; requirements_tslib_full.txt = upstream list
+```
+Run-time output of `run.py` (`checkpoints/`, `results/<setting>/`, `test_results/`, `result_long_term_forecast.txt`)
+is ignored by git; `results/p0`, `p1`, `p2` are the tracked experiment records.
+
+## Experiments and results
+* **Conclusions:** [`results/README.md`](results/README.md) (P1 / P2) and [`results/p0/README.md`](results/p0/README.md) (P0).
+* P0 kernel / gate study, 195 runs: [`results/p0/summary.md`](results/p0/summary.md)
+* P1 protocol comparisons, plug-in, validation search, baselines: [`results/p1/summary.md`](results/p1/summary.md)
+* P2 sensitivity, neighbour selection, efficiency, learned kernels vs the PEMS08 road graph: [`results/p2/summary.md`](results/p2/summary.md)
+* Still to run on the GPU (Traffic, plug-in on large data, search on ECL / Traffic / PEMS, baseline re-runs,
+  GPU efficiency): [`GPU_RUNS.md`](GPU_RUNS.md)
+
+All of these ran on a 4-core CPU with the code of this repository; the unit tests are
+`python scripts/p0/test_variants.py <data dir>` and `python scripts/p0/test_p1p2.py`.
+
+## DLT in Time-Series-Library
+The repository root is a snapshot of [thuml/Time-Series-Library](https://github.com/thuml/Time-Series-Library)
+(commit `4e938a1`, MIT, see `LICENSE`) with DLT added as `--model DLT`; every change to upstream is listed in
+[`DLT_CHANGES.md`](DLT_CHANGES.md). The model is a vectorised re-implementation of `code/proto.py` (no Python
+loop over neighbours) and is device-agnostic.
+
+```bash
+bash scripts/long_term_forecast/DLT_script/DLT_PEMS08.sh                 # GPU 0, DLT-dyn, H = 12/24/48/96
+VARIANT=dlt bash scripts/long_term_forecast/DLT_script/DLT_Weather.sh    # another kernel variant
+bash scripts/long_term_forecast/DLT_script/DLT_ablation.sh               # all variants (PEMS08 + Weather)
+EXTRA_ARGS="--no_use_gpu --num_workers 0" bash scripts/long_term_forecast/DLT_script/DLT_ETTh1.sh   # CPU
+```
+Main flags (all in `run.py --help`, details in `models/DLT.py`):
+* `--dlt_variant` `dltdyn` (default) | `dlt` | `ci` | `scalar` | `shift` | `tap3` | `full` | `scalardyn` | `topk` | `mill` | `milldyn`
+* `--dlt_k` neighbours (8), `--dlt_L` maximum lag (48), `--dlt_R` basis kernels (4), `--dlt_dyn_dim` (16)
+* `--dlt_impl` `kernel` | `basis` | `dense`: identical results; `basis` is the path of all reported DLT-dyn runs
+* `--dlt_neighbours` `ccf` | `random` | `all`, `--dlt_gate` `none` | `moe` | `static`
+* `--model DLTPlug --plug_base <model>` adds the DLT branch to another forecaster; `--model LagTS` is our
+  re-implementation of LagTS
+* `--result_jsonl <file>` appends one JSON record per run; `--no_save_preds` streams the test metrics
+
+**GPU memory.** DLT itself is small (≤ 0.36 M parameters even at Traffic scale; DLT-dyn needs about 1 GB per
+training step at batch 32 on Traffic), so the 24 GB of an RTX 4090 are needed only by the baselines (e.g.
+iTransformer on Traffic: 12.4 GB at batch 32 on the CPU).
+
+### Verification of the port
+* **Equivalence with `code/proto.py`:** with identical parameters and neighbours, all 8 prototype variants (and both
+  computation paths) give the same outputs (max |Δ| ≤ 1.1e-6) and gradients (≤ 1.2e-7).
+* **Device-agnostic:** every variant runs forward + backward on PyTorch's `meta` device, i.e. no tensor is
+  pinned to the CPU inside the model. On a physical GPU (RTX 4090, PyTorch 2.5.1+cu124): see the status note in
+  [`GPU_RUNS.md`](GPU_RUNS.md).
+* **End-to-end in TSLib (CPU):** all variants train and test; without CUDA the run falls back to the CPU;
+  test-only mode (`--is_training 0`) reloads the checkpoint (incl. neighbours) and reproduces the metric.
+* **Same results as the prototype** (MSE, H = 96 unless noted; prototype = mean over its seeds, TSLib = one
+  run with TSLib's seed and data pipeline, prototype hyper-parameters: lr 3e-3, ≤ 6 epochs, patience 2):
+
+| setting | ci | scalar | dlt | scalardyn | dltdyn |
+|---|---|---|---|---|---|
+| PEMS08 – prototype | 1.168 | 1.017 | 0.863 | 0.721 | 0.552 |
+| PEMS08 – TSLib | 1.169 | 1.040 | 0.858 | 0.674 | **0.526** |
+| PEMS08 H=24 – prototype / TSLib | | | 0.179 / 0.180 | | 0.133 / **0.133** |
+| Weather – prototype | 0.193 | | 0.167 | 0.172 | 0.164 |
+| Weather – TSLib | 0.193 | | 0.167 | 0.176 | **0.165** |
+| ETTh1 – prototype | **0.390** | | 0.393 | | 0.408 |
+| ETTh1 – TSLib | **0.389** | | 0.396 | | 0.405 |
+
+  (These TSLib runs used `--dlt_impl basis`; repeating ETTh1 dlt/dltdyn, Weather dltdyn and PEMS08 H=24
+  dltdyn with the default `kernel` path gives the same MSE to four decimals.)
+
+* **Speed / memory** of one training step (CPU, 4 threads, batch 32, T = H = 96, k = 8, L = 48, R = 4):
+
+| variables | dlt (kernel) | dlt (basis) | dltdyn (kernel) | dltdyn (basis) | full | prototype loop: dlt / dltdyn |
+|---|---|---|---|---|---|---|
+| 862 (Traffic) | 0.77 s, 527 MB | 1.03 s, 904 MB | 0.85 s, 734 MB | 0.89 s, 1028 MB | 0.59 s, 552 MB | 1.79 s / 1.17 s |
+| 321 (Electricity) | 0.20 s, 271 MB | 0.36 s, 398 MB | 0.25 s, 360 MB | 0.30 s, 445 MB | 0.28 s, 262 MB | 0.35 s / 0.27 s |
+| 170 (PEMS08) | 0.13 s, 203 MB | 0.20 s, 290 MB | 0.19 s, 243 MB | 0.16 s, 310 MB | 0.13 s, 202 MB | – |
+
+  Parameters at Traffic scale: dlt 46 K, dltdyn 49 K vs. free kernel 357 K.
+
+
+## Feasibility prototype (`code/`)
+The first study of the idea, before the Time-Series-Library integration: a linear prototype, 69 runs.
+
 All variants share RevIN, the same top-k neighbour sets N(i) (selected offline by |CCF| on the
 training split), the same intra-variable head W_self and cross head W_cross. **They differ only in
 how K_ij(τ) is parameterised:**
@@ -37,7 +174,8 @@ Settings: lookback T = 96, horizon H ∈ {24, 96}; k = 8 neighbours, L = 48 lags
 Adam (lr 3e-3, ×0.5 per epoch from epoch 2), ≤ 6 epochs, early stopping on validation MSE
 (patience 2); Time-Series-Library splits (PEMS08 6:2:2), z-score on train; CPU only.
 
-## Results (69 runs)
+
+### Results (69 runs)
 MSE on the z-scored test set, mean over seeds (¹ = single seed); % = change vs. `ci`; bold = best per column.
 
 | variant | ETTh1 H=96 | Weather H=96 | Electricity H=96 | PEMS08 H=24 | PEMS08 H=96 |
@@ -68,117 +206,17 @@ a one-step (5 min) lead, and 65 % spread their response over ≥ 2 lags.
 Caveats: linear prototype, ≤ 6 epochs, no tuning, 1–2 seeds, lookback 96 only; absolute errors are far
 from deep state-of-the-art models — only the relative comparison between variants is meaningful.
 
-## Repository layout
-```
-code/proto.py        prototype model + training/eval (all 8 variants)
-code/pems_lag.py     lag premise check on PEMS08 road edges
-code/agg.py          console summary of a runs file
-code/agg_md.py       markdown results table (results/summary.md)
-code/make_arch.py    generates figures/dlt_architecture.svg
-code/render.js       SVG -> PNG/PDF with Playwright Chromium
-scripts/download_data.sh   fetch datasets into ./data (not tracked)
-scripts/run_grid.sh        reproduce all 69 runs
-results/runs.jsonl   one JSON line per run (MSE, MAE, params, time, lag statistics)
-results/summary.md   results table
-figures/             architecture figure (SVG: editable/Visio-importable; PDF: vector for LaTeX; PNG: 4800×3180)
-tslib/               Time-Series-Library snapshot with DLT (models/DLT.py, scripts/long_term_forecast/DLT_script/)
-```
 
-## Reproduce
+### Reproduce the prototype
 ```bash
-pip install -r requirements.txt
-bash scripts/download_data.sh
-
-# a single run
+bash scripts/download_data.sh                 # into ./data
 python code/proto.py --data PEMS08 --pred_len 96 --root data --variant dltdyn --out results/my_runs.jsonl
-
-# the full grid (CPU; ~1–2 h with 4 workers), then the table
-bash scripts/run_grid.sh
+bash scripts/run_grid.sh                      # the full grid (CPU; ~1–2 h with 4 workers)
 python code/agg_md.py results/runs_reproduced.jsonl
-
-# lag premise check and the figure
-python code/pems_lag.py data/PEMS08.npz data/PEMS08_edges.csv
-python code/make_arch.py figures/dlt_architecture.svg
-node code/render.js figures/dlt_architecture.svg figures/dlt_architecture.png figures/dlt_architecture.pdf 3
+python code/pems_lag.py data/PEMS08.npz data/PEMS08_edges.csv      # lag premise check
 ```
-
-## Time-Series-Library port (`tslib/`) — GPU-ready
-`tslib/` is a snapshot of [thuml/Time-Series-Library](https://github.com/thuml/Time-Series-Library)
-(commit `4e938a1`, MIT) with DLT added as `--model DLT`; every change to upstream is listed in
-[`tslib/DLT_CHANGES.md`](tslib/DLT_CHANGES.md). The TSLib model is a vectorised re-implementation
-of `code/proto.py` (no Python loop over neighbours) and is device-agnostic: CPU, single / multi-GPU
-(DataParallel), AMP and Apple MPS.
-
-```bash
-cd tslib
-pip install torch --index-url https://download.pytorch.org/whl/cu121   # pick the build for your CUDA
-pip install -r requirements_dlt.txt
-# ETT / Weather / ECL / Traffic / Exchange: put the CSVs under ./dataset/... as in the TSLib scripts
-# (missing CSVs are downloaded from the TSLib Hugging Face repo automatically).
-# PEMS08 is not in that repo:
-mkdir -p dataset/PEMS && curl -fL -o dataset/PEMS/PEMS08.npz \
-  https://huggingface.co/datasets/jimmygao3218/PEMS08/resolve/main/PEMS08.npz
-
-bash scripts/long_term_forecast/DLT_script/DLT_PEMS08.sh                 # GPU 0, DLT-dyn, H = 12/24/48/96
-VARIANT=dlt bash scripts/long_term_forecast/DLT_script/DLT_Weather.sh    # another kernel variant
-bash scripts/long_term_forecast/DLT_script/DLT_ablation.sh               # all 8 variants (PEMS08 + Weather)
-EXTRA_ARGS="--no_use_gpu --num_workers 0" bash scripts/long_term_forecast/DLT_script/DLT_ETTh1.sh   # CPU
-EXTRA_ARGS="--use_multi_gpu --devices 0,1" bash scripts/long_term_forecast/DLT_script/DLT_Traffic.sh # 2 GPUs
-EXTRA_ARGS="--use_amp" bash scripts/long_term_forecast/DLT_script/DLT_ECL.sh                        # AMP
-```
-Scripts exist for ETTh1/2, ETTm1/2, Weather, ECL, Traffic, Exchange and PEMS08. Metrics are appended
-to `tslib/result_long_term_forecast.txt`; predictions go to `tslib/results/<setting>/`.
-DLT-specific flags: `--dlt_variant {ci,scalar,shift,tap3,dlt,full,scalardyn,dltdyn}`, `--dlt_k`,
-`--dlt_L`, `--dlt_R`, `--dlt_dyn_dim`, `--dlt_ccf_len`, `--dlt_impl {kernel,basis}` (two numerically
-identical computation paths for `dlt`/`dltdyn`; `kernel` is the default and uses less memory).
-
-**GPU memory.** DLT itself is small (≤ 0.36 M parameters even at Traffic scale) and one training step at
-batch 32 needs ≤ ~0.75 GB of activations (table below), so any CUDA GPU with ≥ 4 GB runs it. For the full
-benchmark the baselines (e.g. iTransformer on Traffic) dominate; a single 24 GB card (RTX 3090/4090,
-A5000, A10) is comfortable.
-
-### Verification of the port
-* **Equivalence with `code/proto.py`:** with identical parameters and neighbours, all 8 variants (and both
-  computation paths) give the same outputs (max |Δ| ≤ 1.1e-6) and gradients (≤ 1.2e-7).
-* **Device-agnostic:** every variant runs forward + backward on PyTorch's `meta` device, i.e. no tensor is
-  pinned to the CPU inside the model. *Not yet run on a physical GPU* (the development machine had none).
-* **End-to-end in TSLib (CPU):** all variants train and test; without CUDA the run falls back to the CPU;
-  test-only mode (`--is_training 0`) reloads the checkpoint (incl. neighbours) and reproduces the metric.
-* **Same results as the prototype** (MSE, H = 96 unless noted; prototype = mean over its seeds, TSLib = one
-  run with TSLib's seed and data pipeline, prototype hyper-parameters: lr 3e-3, ≤ 6 epochs, patience 2):
-
-| setting | ci | scalar | dlt | scalardyn | dltdyn |
-|---|---|---|---|---|---|
-| PEMS08 – prototype | 1.168 | 1.017 | 0.863 | 0.721 | 0.552 |
-| PEMS08 – TSLib | 1.169 | 1.040 | 0.858 | 0.674 | **0.526** |
-| PEMS08 H=24 – prototype / TSLib | | | 0.179 / 0.180 | | 0.133 / **0.133** |
-| Weather – prototype | 0.193 | | 0.167 | 0.172 | 0.164 |
-| Weather – TSLib | 0.193 | | 0.167 | 0.176 | **0.165** |
-| ETTh1 – prototype | **0.390** | | 0.393 | | 0.408 |
-| ETTh1 – TSLib | **0.389** | | 0.396 | | 0.405 |
-
-  (These TSLib runs used `--dlt_impl basis`; repeating ETTh1 dlt/dltdyn, Weather dltdyn and PEMS08 H=24
-  dltdyn with the default `kernel` path gives the same MSE to four decimals.)
-
-* **Speed / memory** of one training step (CPU, 4 threads, batch 32, T = H = 96, k = 8, L = 48, R = 4):
-
-| variables | dlt (kernel) | dlt (basis) | dltdyn (kernel) | dltdyn (basis) | full | prototype loop: dlt / dltdyn |
-|---|---|---|---|---|---|---|
-| 862 (Traffic) | 0.77 s, 527 MB | 1.03 s, 904 MB | 0.85 s, 734 MB | 0.89 s, 1028 MB | 0.59 s, 552 MB | 1.79 s / 1.17 s |
-| 321 (Electricity) | 0.20 s, 271 MB | 0.36 s, 398 MB | 0.25 s, 360 MB | 0.30 s, 445 MB | 0.28 s, 262 MB | 0.35 s / 0.27 s |
-| 170 (PEMS08) | 0.13 s, 203 MB | 0.20 s, 290 MB | 0.19 s, 243 MB | 0.16 s, 310 MB | 0.13 s, 202 MB | – |
-
-  Parameters at Traffic scale: dlt 46 K, dltdyn 49 K vs. free kernel 357 K.
-
-## Experiments P0–P2 (Time-Series-Library, CPU)
-* P0 kernel / gate study (195 runs): [`results/p0/README.md`](results/p0/README.md) (conclusions), [`results/p0/summary.md`](results/p0/summary.md)
-* P1 protocol comparisons, plug-in, validation search: [`results/p1/summary.md`](results/p1/summary.md)
-* P2 sensitivity, neighbour selection, efficiency, learned kernels vs the PEMS08 road graph: [`results/p2/summary.md`](results/p2/summary.md)
-* Experiments that still need a GPU (Traffic, plug-in on large data, search on ECL / Traffic / PEMS, baseline
-  re-runs, GPU efficiency) with commands: [`GPU_RUNS.md`](GPU_RUNS.md)
+The architecture figure and its generator moved to the `DLTpaper` repository (`figures/`, `figures/src/`).
 
 ## Next steps
-Gate/regulariser for weakly coupled data; a stronger temporal backbone; full GPU benchmark in `tslib/`
-(ETT×4, Weather, Electricity, Traffic, Exchange, Solar, PEMS03/04/07/08; 4 horizons; 3 seeds) against
-iTransformer, PatchTST, TimeMixer, TimeFilter (already in TSLib) and DUET, CrossLinear, LIFT, VCformer,
-LagTS (to be added); visualise learned kernels on PEMS08.
+A validation-driven gate or regulariser for weakly coupled data; k and R in the search space; the GPU experiments
+of [`GPU_RUNS.md`](GPU_RUNS.md).

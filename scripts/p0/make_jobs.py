@@ -1,7 +1,7 @@
 """Job list of the priority-0 grid: 13 configurations x 5 settings x 3 seeds (TSLib, CPU, 1 thread per job).
 
     python scripts/p0/make_jobs.py <data dir> <work dir>      # writes <work dir>/jobs.txt
-Each job is run from tslib/ (see run_p0.sh); it appends one JSON line to <work dir>/results_p0.jsonl,
+Each job is run from the repository root (see run_p0.sh); it appends one JSON line to <work dir>/results_p0.jsonl,
 writes its log to <work dir>/logs/ and its checkpoint to <work dir>/ckpt/. Jobs are ordered phase by phase
 (ETTh1 / Weather / PEMS08 first, then Electricity), seed by seed, longest first (estimated from bench_*.jsonl).
 """
