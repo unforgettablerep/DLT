@@ -5,6 +5,8 @@
     python scripts/p1/hpsearch.py select --work <dir>          # -> <work>/tuned.json (+ printed table)
     python scripts/p1/hpsearch.py tuned  --data <dir> --work <dir> [--horizons 96 192 336 720] [--seeds ...]
     bash scripts/run_queue.sh <work>/jobs_tuned.txt
+--tag <suffix> keeps a second search in the same work dir, e.g. PEMS at horizon 12 (TimeMixer protocol):
+    hpsearch.py make --datasets PEMS04 PEMS08 --H 12 --tag _pems ...; select --tag _pems; tuned --horizons 12 --tag _pems
 
 Every trial is one training run with seed 2021; the configuration with the lowest best validation loss is
 selected per dataset (searched at --H and reused for all horizons when --horizons is wider: a budget choice of
@@ -47,10 +49,12 @@ def main():
     p.add_argument('--device', default='cpu', choices=['cpu', 'gpu'])
     p.add_argument('--horizons', type=int, nargs='+', default=list(exps.HORIZONS))
     p.add_argument('--seeds', type=int, nargs='+', default=[2021, 2022, 2023])
+    p.add_argument('--tag', default='', help='suffix of the suite / file names (hp<tag>, tuned<tag>)')
     a = p.parse_args()
+    HP, TU = 'hp' + a.tag, 'tuned' + a.tag
     work = os.path.abspath(a.work)
     if a.cmd == 'make':
-        a.suite = 'hp'; g = exps.Gen(a, 'hp')
+        a.suite = HP; g = exps.Gen(a, HP)
         for ds in a.datasets:
             for t, c in enumerate(trials(a.trials)):
                 proto = exps.PEMS_PROTOCOL if ds.startswith('PEMS') else ''
@@ -58,7 +62,7 @@ def main():
                       exps.cost(ds, c['dlt_k'] / 8 * c['dlt_L'] / 48))
         g.write()
     elif a.cmd == 'select':
-        rows = [json.loads(l) for l in open(f'{work}/results_hp.jsonl')]
+        rows = [json.loads(l) for l in open(f'{work}/results_{HP}.jsonl')]
         best = {}
         name = lambda r: r['des'].split('_')[0]                   # job name = <dataset>_<H>_t<trial>
         for r in rows:
@@ -76,10 +80,10 @@ def main():
             tuned[ds] = {'config': c, 'searched_at_H': r['pred_len'], 'trials': n, 'best_vali': r['best_vali']}
             print(f"| {ds} | {n} | {r['best_vali']:.4f} | {dflt[0]['best_vali'] if dflt else float('nan'):.4f} | "
                   + ' | '.join(str(v) for v in c.values()) + ' |')
-        json.dump(tuned, open(f'{work}/tuned.json', 'w'), indent=1)
+        json.dump(tuned, open(f'{work}/{TU}.json', 'w'), indent=1)
     else:
-        tuned = json.load(open(f'{work}/tuned.json'))
-        a.suite = 'tuned'; g = exps.Gen(a, 'tuned')
+        tuned = json.load(open(f'{work}/{TU}.json'))
+        a.suite = TU; g = exps.Gen(a, TU)
         for ds, t in tuned.items():
             for H, seed in itertools.product(a.horizons, a.seeds):
                 proto = exps.PEMS_PROTOCOL if ds.startswith('PEMS') else ''

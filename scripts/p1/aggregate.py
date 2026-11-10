@@ -47,10 +47,14 @@ if pems:
     P('| model | PEMS04 MAE | MAPE | RMSE | PEMS08 MAE | MAPE | RMSE |')
     P('|---|---|---|---|---|---|---|')
     names = {'dltdyn': 'DLT-dyn (L1 loss)', 'dltdyn_mse': 'DLT-dyn (MSE loss)', 'dlt': 'DLT (L1 loss)', 'ci': 'CI linear (L1 loss)'}
+    tuned_pems = load('tuned_pems')                 # validation search at horizon 12 (GPU runbook, hpsearch --tag _pems)
+    if tuned_pems:
+        names = {'tuned': 'DLT-dyn (L1 loss, tuned)', **names}
     for key, label in names.items():
         cells = []
         for ds in ('PEMS04', 'PEMS08'):
-            rs = [r for r in pems if r['des'] == f'{ds}_{key}']
+            rs = ([r for r in tuned_pems if r['des'] == f'{ds}_12_tuned'] if key == 'tuned'
+                  else [r for r in pems if r['des'] == f'{ds}_{key}'])
             cells += [ms([r['mae'] for r in rs], 2), ms([r['mape_clip5'] for r in rs], 2, 100), ms([r['rmse'] for r in rs], 2)]
         P(f'| {label} | ' + ' | '.join(cells) + ' |')
     for m, v in REP['pems'].items():

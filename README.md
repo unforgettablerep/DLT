@@ -170,6 +170,13 @@ A5000, A10) is comfortable.
 
   Parameters at Traffic scale: dlt 46 K, dltdyn 49 K vs. free kernel 357 K.
 
+## Experiments P0–P2 (Time-Series-Library, CPU)
+* P0 kernel / gate study (195 runs): [`results/p0/README.md`](results/p0/README.md) (conclusions), [`results/p0/summary.md`](results/p0/summary.md)
+* P1 protocol comparisons, plug-in, validation search: [`results/p1/summary.md`](results/p1/summary.md)
+* P2 sensitivity, neighbour selection, efficiency, learned kernels vs the PEMS08 road graph: [`results/p2/summary.md`](results/p2/summary.md)
+* Experiments that still need a GPU (Traffic, plug-in on large data, search on ECL / Traffic / PEMS, baseline
+  re-runs, GPU efficiency) with commands: [`GPU_RUNS.md`](GPU_RUNS.md)
+
 ## Next steps
 Gate/regulariser for weakly coupled data; a stronger temporal backbone; full GPU benchmark in `tslib/`
 (ETT×4, Weather, Electricity, Traffic, Exchange, Solar, PEMS03/04/07/08; 4 horizons; 3 seeds) against

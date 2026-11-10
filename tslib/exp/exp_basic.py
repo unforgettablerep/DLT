@@ -59,8 +59,9 @@ class Exp_Basic(object):
             print('MPS is not available: falling back to CPU')
             self.args.use_gpu = False
         if self.args.use_gpu and self.args.gpu_type == 'cuda':
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(
-                self.args.gpu) if not self.args.use_multi_gpu else self.args.devices
+            if 'CUDA_VISIBLE_DEVICES' not in os.environ:   # keep a device mask set by the caller (GPU job queues)
+                os.environ["CUDA_VISIBLE_DEVICES"] = str(
+                    self.args.gpu) if not self.args.use_multi_gpu else self.args.devices
             device = torch.device('cuda:{}'.format(self.args.gpu))
             print('Use GPU: cuda:{}'.format(self.args.gpu))
         elif self.args.use_gpu and self.args.gpu_type == 'mps':
