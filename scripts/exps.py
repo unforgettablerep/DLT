@@ -23,6 +23,8 @@ Suites
                    on ETTh1-96, Weather-96, PEMS08-96
   neighbours   P2  DLT-dyn / DLT with random or all neighbours instead of the CCF top-k (Weather-96, PEMS08-96)
   ci_long      P1  the channel-independent linear model (DLT without the cross branch) on the long-term benchmark
+  allnb        P1  DLT-dyn / DLT with all other variables as neighbours (dense path): PEMS04/08-12, Weather and
+                   Electricity (DLT-dyn there only with --device gpu), iTransformer + DLT-dyn on PEMS08-12
 
 --models / --datasets restrict the baselines (and ci_long) suites, e.g. the CPU-feasible subset
     python scripts/exps.py baselines --models DLinear iTransformer TimeMixer LagTS \
@@ -202,6 +204,25 @@ def main():
                   f'--plug_base {base} --dlt_variant ci {bargs} {proto}', cost(ds, rel))
             g.add(f'{ds}_{H}_{base}_dlt', 'DLTPlug', ds, H, seed,
                   f'--plug_base {base} {dlt} --dlt_lr 0.003 {bargs} {proto}', cost(ds, rel + 1))
+    elif a.suite == 'allnb':
+        # every other variable as a neighbour (dense path); follow-up of the P2 neighbour study, where all
+        # neighbours beat the CCF top-8 on Weather and PEMS08. DLT-dyn on Electricity / Traffic: GPU.
+        allnb = '--dlt_k 8 --dlt_L 48 --dlt_R 4 --dlt_impl dense --dlt_neighbours all'
+        for ds, seed in itertools.product(('PEMS08', 'PEMS04'), S):
+            for v, rel in (('dltdyn', 4.0 if ds == 'PEMS08' else 12.0), ('dlt', 0.4 if ds == 'PEMS08' else 1.2)):
+                g.add(f'{ds}_12_{v}_all', 'DLT', ds, 12, seed, f'--dlt_variant {v} {allnb} {DLT_TRAIN} {PEMS_PROTOCOL}',
+                      cost(ds, rel))
+        for ds, H, seed in itertools.product(a.datasets or ('Weather', 'ECL'), HORIZONS, S):
+            for v in ('dltdyn', 'dlt'):
+                if v == 'dltdyn' and ds in ('ECL', 'Traffic') and a.device == 'cpu':
+                    continue                                   # ~4 h per run on one CPU thread
+                g.add(f'{ds}_{H}_{v}_all', 'DLT', ds, H, seed, f'--dlt_variant {v} {allnb} {DLT_TRAIN}',
+                      cost(ds, 0.6 if v == 'dlt' else 1.0))
+        for seed in S:                                         # strongest backbone of the plug-in study
+            bargs, _ = plugin_backbone_args('iTransformer', 'PEMS08', 12)
+            g.add('PEMS08_12_iTransformer_dlt_all', 'DLTPlug', 'PEMS08', 12, seed,
+                  f'--plug_base iTransformer --dlt_variant dltdyn {allnb} --dlt_lr 0.003 {bargs} {PEMS_PROTOCOL}',
+                  cost('PEMS08', 6.0))
     elif a.suite == 'ci_long':                                 # the same linear model without the cross branch
         for ds, H, seed in itertools.product(a.datasets or LONG_SETS, HORIZONS, S):
             g.add(f'{ds}_{H}_ci', 'DLT', ds, H, seed, f'--dlt_variant ci {DLT_TRAIN}', cost(ds, 0.1))

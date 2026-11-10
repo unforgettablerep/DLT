@@ -113,6 +113,41 @@ if plug:
           f"{ms(b, dd)} / {ms([r[k2] for r in g['dlt']], dd)} | {delta} | {p} |")
     P('')
 
+# ---------------------------------------------------------------- all other variables as neighbours
+alln = load('allnb')
+if alln:
+    P('## All other variables as neighbours (dense path) vs the CCF top-8 default\n')
+    P('Follow-up of the P2 neighbour study. PEMS: horizon 12, TimeMixer protocol, MAE / MAPE (%) / RMSE; '
+      'otherwise MSE / MAE. ETT / Exchange are not listed: with 7-8 variables the default k = 8 already uses all.\n')
+    P('| dataset | H | model | CCF top-8 (default) | all neighbours | Δ (first metric) | p |')
+    P('|---|---|---|---|---|---|---|')
+    ref_sets = {'pems': pems, 'long': lt, 'plug': plug}
+    for key in sorted({(dsname(r), r['pred_len'], r['des'].rsplit('_all', 1)[0]) for r in alln},
+                      key=lambda k: (k[0], k[1], k[2])):
+        ds, H, stem = key
+        new_rows = [r for r in alln if dsname(r) == ds and r['pred_len'] == H and r['des'] == stem + '_all']
+        model = stem.split('_', 2)[2] if stem.count('_') >= 2 else stem
+        if ds.startswith('PEMS'):
+            if 'iTransformer' in stem:
+                ref = [r for r in plug if r['des'] == f'{ds}_12_iTransformer_dlt']
+            else:
+                ref = [r for r in pems if r['des'] == f"{ds}_{stem.split('_')[-1]}"]
+            f = lambda rs: (f"{ms([r['mae'] for r in rs], 2)} / {ms([r['mape_clip5'] for r in rs], 2, 100)} / "
+                            f"{ms([r['rmse'] for r in rs], 2)}") if rs else '–'
+            k1 = 'mae'
+        else:
+            v = stem.split('_')[-1]
+            ref = [r for r in lt if dsname(r) == ds and r['pred_len'] == H] if v == 'dltdyn' else []
+            f = lambda rs: f"{ms([r['mse'] for r in rs])} / {ms([r['mae'] for r in rs])}" if rs else '–'
+            k1 = 'mse'
+        a_, b_ = [r[k1] for r in ref], [r[k1] for r in new_rows]
+        delta = f'{100 * (np.mean(b_) / np.mean(a_) - 1):+.1f}%' if a_ and b_ else '–'
+        pv = f'{stats.ttest_ind(b_, a_, equal_var=False).pvalue:.3f}' if len(a_) > 1 and len(b_) > 1 else '–'
+        label = {'dltdyn': 'DLT-dyn', 'dlt': 'DLT', 'iTransformer_dlt': 'iTransformer + DLT-dyn'}.get(model, model)
+        P(f'| {ds} | {H} | {label} | {f(ref)} | {f(new_rows)} | {delta} | {pv} |')
+    P('\nDLT with the CCF top-8 on the long-term datasets was not run at every horizon (the default model is DLT-dyn); '
+      'see P0 / P2 for DLT at horizon 96.\n')
+
 # ---------------------------------------------------------------- re-run baselines
 base = load('baselines')
 if base:
