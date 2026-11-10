@@ -28,11 +28,11 @@ ETTh1 has 7 variables, so k is capped at 6 (k = 8 and k = 16 coincide).
 | variant | neighbours | Weather-96 | PEMS08-96 |
 |---|---|---|---|
 | DLT | CCF top-8 (default) | 0.1672 ± 0.0005 | 0.8583 ± 0.0047 |
-| DLT | 8 random | 0.1725 (n=1) | 0.7436 (n=1) |
-| DLT | all other variables | 0.1644 ± 0.0002 (n=2) | 0.5069 ± 0.0042 (n=2) |
+| DLT | 8 random | 0.1711 ± 0.0013 | 0.7634 ± 0.0235 |
+| DLT | all other variables | 0.1641 ± 0.0005 | 0.5108 ± 0.0073 |
 | DLT-dyn | CCF top-8 (default) | 0.1637 ± 0.0006 | 0.5229 ± 0.0087 |
-| DLT-dyn | 8 random | 0.1659 (n=1) | 0.5048 (n=1) |
-| DLT-dyn | all other variables | 0.1621 ± 0.0038 (n=2) | – |
+| DLT-dyn | 8 random | 0.1651 ± 0.0009 | 0.5093 ± 0.0053 |
+| DLT-dyn | all other variables | 0.1616 ± 0.0028 | 0.4211 ± 0.0127 |
 
 CI reference (no neighbours): Weather-96 0.1942 ± 0.0006, PEMS08-96 1.1681 ± 0.0024
 
