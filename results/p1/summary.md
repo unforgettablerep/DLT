@@ -1,6 +1,6 @@
 # P1: comparison under the standard protocols
 
-Our runs: Time-Series-Library, CPU, mean ± std over seeds 2021-2023 (n marks fewer seeds). Rows marked *reported* are copied from the papers: MillGNN (Wu et al., CIKM 2025, arXiv:2509.03852) Table 2: input 96, MSE / MAE; MillGNN tuned with NNI (20 trials); other rows as cited or re-run (*) by MillGNN. MoVE: ICLR 2026 submission, Table 4 (input 96, seed 2024; no Exchange). MillGNN Table 3 (TimeMixer protocol: input 96, horizon 12, MAE / MAPE in % / RMSE on the original scale).
+Our runs: Time-Series-Library, CPU, mean ± std over seeds 2021-2023 (n marks fewer seeds). Rows marked *reported* are copied from the papers: MillGNN (Wu et al., CIKM 2025, arXiv:2509.03852) Table 2: input 96, MSE / MAE; MillGNN tuned with NNI (20 trials); other rows as cited or re-run (*) by MillGNN. MoVE: ICLR 2026 submission, Table 4 (input 96, seed 2024; no Exchange). LagTS: Liu et al., ICASSP 2025, Table I (input 96; evaluated on ETTh1, ETTh2, Exchange and Weather only; lambda tuned in {0.05, 0.1, 0.15, 0.2}). MillGNN Table 3 (TimeMixer protocol: input 96, horizon 12, MAE / MAPE in % / RMSE on the original scale).
 
 ## PEMS04 / PEMS08, input 96, horizon 12 (TimeMixer protocol)
 
@@ -102,4 +102,111 @@ Follow-up of the P2 neighbour study. PEMS: horizon 12, TimeMixer protocol, MAE /
 | Weather | 720 | DLT-dyn | 0.351 ± 0.001 / 0.349 ± 0.000 | 0.348 ± 0.001 / 0.346 ± 0.001 | -0.8% | 0.010 |
 
 DLT with the CCF top-8 on the long-term datasets was not run at every horizon (the default model is DLT-dyn); see P0 / P2 for DLT at horizon 96.
+
+## Baselines re-run with the official TSLib hyper-parameters (MSE / MAE)
+
+| dataset | H | model | ours (re-run) | reported |
+|---|---|---|---|---|
+| ECL | 96 | DLinear | 0.210 ± 0.000 / 0.302 ± 0.000 | 0.197 / 0.282 |
+| ECL | 192 | DLinear | 0.210 ± 0.000 / 0.305 ± 0.000 | 0.196 / 0.285 |
+| ECL | 336 | DLinear | 0.223 ± 0.000 / 0.319 ± 0.000 | 0.209 / 0.301 |
+| ECL | 720 | DLinear | 0.258 ± 0.000 / 0.350 ± 0.000 | 0.245 / 0.333 |
+| ETTh1 | 96 | DLinear | 0.397 ± 0.003 / 0.412 ± 0.003 | 0.386 / 0.400 |
+| ETTh1 | 96 | LagTS | 0.394 ± 0.000 / 0.410 ± 0.000 | 0.384 / 0.402 |
+| ETTh1 | 96 | TimeMixer | 0.383 ± 0.004 / 0.400 ± 0.004 | 0.375 / 0.400 |
+| ETTh1 | 96 | iTransformer | 0.387 ± 0.000 / 0.404 ± 0.001 | 0.386 / 0.405 |
+| ETTh1 | 192 | DLinear | 0.448 ± 0.005 / 0.444 ± 0.005 | 0.437 / 0.432 |
+| ETTh1 | 192 | LagTS | 0.453 ± 0.001 / 0.444 ± 0.001 | 0.437 / 0.435 |
+| ETTh1 | 192 | TimeMixer | 0.433 ± 0.007 / 0.431 ± 0.003 | 0.429 / 0.421 |
+| ETTh1 | 192 | iTransformer | 0.441 ± 0.001 / 0.436 ± 0.000 | 0.441 / 0.436 |
+| ETTh1 | 336 | DLinear | 0.488 ± 0.001 / 0.467 ± 0.001 | 0.481 / 0.459 |
+| ETTh1 | 336 | LagTS | 0.495 ± 0.002 / 0.467 ± 0.002 | 0.470 / 0.449 |
+| ETTh1 | 336 | TimeMixer | 0.487 ± 0.011 / 0.452 ± 0.006 | 0.484 / 0.458 |
+| ETTh1 | 336 | iTransformer | 0.488 ± 0.000 / 0.462 ± 0.001 | 0.487 / 0.458 |
+| ETTh1 | 720 | DLinear | 0.514 ± 0.005 / 0.511 ± 0.004 | 0.519 / 0.516 |
+| ETTh1 | 720 | LagTS | 0.503 ± 0.001 / 0.493 ± 0.001 | 0.466 / 0.469 |
+| ETTh1 | 720 | TimeMixer | 0.495 ± 0.015 / 0.476 ± 0.004 | 0.498 / 0.482 |
+| ETTh1 | 720 | iTransformer | 0.505 ± 0.008 / 0.493 ± 0.004 | 0.503 / 0.491 |
+| ETTh2 | 96 | DLinear | 0.349 ± 0.004 / 0.402 ± 0.003 | 0.333 / 0.387 |
+| ETTh2 | 96 | LagTS | 0.356 ± 0.001 / 0.389 ± 0.000 | 0.305 / 0.351 |
+| ETTh2 | 96 | TimeMixer | 0.289 ± 0.003 / 0.342 ± 0.001 | 0.289 / 0.341 |
+| ETTh2 | 96 | iTransformer | 0.300 ± 0.001 / 0.350 ± 0.001 | 0.297 / 0.349 |
+| ETTh2 | 192 | DLinear | 0.481 ± 0.002 / 0.479 ± 0.001 | 0.477 / 0.476 |
+| ETTh2 | 192 | LagTS | 0.430 ± 0.000 / 0.431 ± 0.000 | 0.381 / 0.399 |
+| ETTh2 | 192 | TimeMixer | 0.373 ± 0.006 / 0.394 ± 0.002 | 0.372 / 0.392 |
+| ETTh2 | 192 | iTransformer | 0.380 ± 0.001 / 0.398 ± 0.000 | 0.380 / 0.400 |
+| ETTh2 | 336 | DLinear | 0.596 ± 0.007 / 0.543 ± 0.003 | 0.594 / 0.541 |
+| ETTh2 | 336 | LagTS | 0.457 ± 0.000 / 0.456 ± 0.000 | 0.416 / 0.428 |
+| ETTh2 | 336 | TimeMixer | 0.438 ± 0.007 / 0.438 ± 0.007 | 0.386 / 0.414 |
+| ETTh2 | 336 | iTransformer | 0.422 ± 0.001 / 0.431 ± 0.001 | 0.428 / 0.432 |
+| ETTh2 | 720 | DLinear | 0.825 ± 0.010 / 0.655 ± 0.004 | 0.831 / 0.657 |
+| ETTh2 | 720 | LagTS | 0.454 ± 0.000 / 0.462 ± 0.000 | 0.425 / 0.444 |
+| ETTh2 | 720 | TimeMixer | 0.450 ± 0.013 / 0.456 ± 0.008 | 0.412 / 0.434 |
+| ETTh2 | 720 | iTransformer | 0.428 ± 0.002 / 0.446 ± 0.000 | 0.427 / 0.445 |
+| ETTm1 | 96 | DLinear | 0.345 ± 0.000 / 0.372 ± 0.000 | 0.345 / 0.372 |
+| ETTm1 | 96 | LagTS | 0.489 ± 0.006 / 0.456 ± 0.002 | – |
+| ETTm1 | 96 | TimeMixer | 0.319 ± 0.003 / 0.359 ± 0.003 | 0.320 / 0.357 |
+| ETTm1 | 96 | iTransformer | 0.342 ± 0.001 / 0.377 ± 0.001 | 0.334 / 0.368 |
+| ETTm1 | 192 | DLinear | 0.382 ± 0.000 / 0.391 ± 0.001 | 0.380 / 0.389 |
+| ETTm1 | 192 | LagTS | 0.562 ± 0.012 / 0.492 ± 0.005 | – |
+| ETTm1 | 192 | TimeMixer | 0.365 ± 0.010 / 0.383 ± 0.003 | 0.361 / 0.381 |
+| ETTm1 | 192 | iTransformer | 0.383 ± 0.001 / 0.396 ± 0.001 | 0.377 / 0.391 |
+| ETTm1 | 336 | DLinear | 0.413 ± 0.000 / 0.413 ± 0.001 | 0.413 / 0.413 |
+| ETTm1 | 336 | LagTS | 0.632 ± 0.014 / 0.527 ± 0.006 | – |
+| ETTm1 | 336 | TimeMixer | 0.396 ± 0.006 / 0.409 ± 0.005 | 0.390 / 0.404 |
+| ETTm1 | 336 | iTransformer | 0.418 ± 0.002 / 0.418 ± 0.001 | 0.426 / 0.420 |
+| ETTm1 | 720 | DLinear | 0.472 ± 0.001 / 0.450 ± 0.002 | 0.474 / 0.453 |
+| ETTm1 | 720 | LagTS | 0.708 ± 0.009 / 0.565 ± 0.004 | – |
+| ETTm1 | 720 | TimeMixer | 0.457 ± 0.004 / 0.444 ± 0.003 | 0.454 / 0.441 |
+| ETTm1 | 720 | iTransformer | 0.488 ± 0.002 / 0.456 ± 0.002 | 0.491 / 0.459 |
+| ETTm2 | 96 | DLinear | 0.195 ± 0.001 / 0.295 ± 0.001 | 0.193 / 0.292 |
+| ETTm2 | 96 | LagTS | 0.229 ± 0.000 / 0.307 ± 0.000 | – |
+| ETTm2 | 96 | TimeMixer | 0.176 ± 0.002 / 0.259 ± 0.003 | 0.175 / 0.258 |
+| ETTm2 | 96 | iTransformer | 0.185 ± 0.000 / 0.268 ± 0.001 | 0.180 / 0.264 |
+| ETTm2 | 192 | DLinear | 0.278 ± 0.009 / 0.355 ± 0.009 | 0.284 / 0.362 |
+| ETTm2 | 192 | LagTS | 0.284 ± 0.000 / 0.337 ± 0.000 | – |
+| ETTm2 | 192 | TimeMixer | 0.240 ± 0.000 / 0.302 ± 0.003 | 0.237 / 0.299 |
+| ETTm2 | 192 | iTransformer | 0.253 ± 0.001 / 0.313 ± 0.001 | 0.250 / 0.309 |
+| ETTm2 | 336 | DLinear | 0.373 ± 0.005 / 0.419 ± 0.003 | 0.369 / 0.427 |
+| ETTm2 | 336 | LagTS | 0.338 ± 0.000 / 0.369 ± 0.000 | – |
+| ETTm2 | 336 | TimeMixer | 0.299 ± 0.000 / 0.340 ± 0.002 | 0.298 / 0.340 |
+| ETTm2 | 336 | iTransformer | 0.318 ± 0.004 / 0.354 ± 0.003 | 0.311 / 0.348 |
+| ETTm2 | 720 | DLinear | 0.542 ± 0.011 / 0.515 ± 0.007 | 0.554 / 0.522 |
+| ETTm2 | 720 | LagTS | 0.433 ± 0.000 / 0.419 ± 0.000 | – |
+| ETTm2 | 720 | TimeMixer | 0.393 ± 0.003 / 0.395 ± 0.002 | 0.391 / 0.396 |
+| ETTm2 | 720 | iTransformer | 0.414 ± 0.002 / 0.407 ± 0.002 | 0.412 / 0.407 |
+| Exchange | 96 | DLinear | 0.095 ± 0.001 / 0.228 ± 0.001 | 0.088 / 0.218 |
+| Exchange | 96 | LagTS | 0.139 ± 0.000 / 0.269 ± 0.000 | 0.085 / 0.206 |
+| Exchange | 96 | TimeMixer | 0.089 ± 0.005 / 0.208 ± 0.006 | 0.085 / 0.204 |
+| Exchange | 96 | iTransformer | 0.087 ± 0.001 / 0.208 ± 0.001 | 0.086 / 0.206 |
+| Exchange | 192 | DLinear | 0.184 ± 0.002 / 0.324 ± 0.003 | 0.176 / 0.315 |
+| Exchange | 192 | LagTS | 0.235 ± 0.001 / 0.352 ± 0.001 | 0.181 / 0.304 |
+| Exchange | 192 | TimeMixer | 0.187 ± 0.001 / 0.305 ± 0.001 | 0.172 / 0.295 |
+| Exchange | 192 | iTransformer | 0.182 ± 0.002 / 0.305 ± 0.002 | 0.177 / 0.299 |
+| Exchange | 336 | DLinear | 0.326 ± 0.002 / 0.434 ± 0.000 | 0.313 / 0.427 |
+| Exchange | 336 | LagTS | 0.383 ± 0.002 / 0.454 ± 0.001 | 0.331 / 0.416 |
+| Exchange | 336 | TimeMixer | 0.350 ± 0.015 / 0.427 ± 0.010 | 0.377 / 0.445 |
+| Exchange | 336 | iTransformer | 0.336 ± 0.001 / 0.421 ± 0.001 | 0.331 / 0.417 |
+| Exchange | 720 | DLinear | 0.765 ± 0.015 / 0.669 ± 0.005 | 0.839 / 0.695 |
+| Exchange | 720 | LagTS | 0.933 ± 0.000 / 0.736 ± 0.000 | 0.768 / 0.663 |
+| Exchange | 720 | TimeMixer | 0.912 ± 0.027 / 0.718 ± 0.013 | 0.934 / 0.728 |
+| Exchange | 720 | iTransformer | 0.863 ± 0.010 / 0.703 ± 0.006 | 0.847 / 0.691 |
+| Weather | 96 | DLinear | 0.196 ± 0.000 / 0.256 ± 0.001 | 0.196 / 0.255 |
+| Weather | 192 | DLinear | 0.236 ± 0.000 / 0.295 ± 0.000 | 0.237 / 0.296 |
+| Weather | 336 | DLinear | 0.282 ± 0.001 / 0.333 ± 0.002 | 0.283 / 0.335 |
+| Weather | 720 | DLinear | 0.346 ± 0.001 / 0.383 ± 0.002 | 0.345 / 0.381 |
+
+### Average MSE / MAE over the four horizons, all trained in this pipeline
+
+| dataset | DLT-dyn (default) | DLT-dyn (tuned) | CI linear | DLinear | LagTS | TimeMixer | iTransformer |
+|---|---|---|---|---|---|---|---|
+| ETTh1 | 0.467 / 0.449 | 0.451 / 0.435 | **0.448** / 0.435 | 0.462 / 0.458 | 0.461 / 0.453 | 0.450 / 0.440 | 0.455 / 0.449 |
+| ETTh2 | 0.424 / 0.425 | 0.395 / 0.412 | **0.377** / 0.399 | 0.563 / 0.520 | 0.424 / 0.434 | 0.388 / 0.408 | 0.382 / 0.406 |
+| ETTm1 | 0.402 / 0.406 | 0.403 / 0.405 | 0.413 / 0.407 | 0.403 / 0.406 | 0.598 / 0.510 | **0.384** / 0.399 | 0.408 / 0.412 |
+| ETTm2 | 0.287 / 0.330 | 0.284 / 0.327 | 0.286 / 0.327 | 0.347 / 0.396 | 0.321 / 0.358 | **0.277** / 0.324 | 0.292 / 0.335 |
+| Exchange | 0.538 / 0.466 | 0.482 / 0.443 | 0.353 / 0.398 | **0.343** / 0.414 | 0.422 / 0.453 | 0.385 / 0.414 | 0.367 / 0.409 |
+| Weather | **0.249** / 0.277 | 0.250 / 0.277 | 0.272 / 0.291 | 0.265 / 0.317 | – | – | – |
+| ECL | **0.197** / 0.284 | – | 0.215 / 0.292 | 0.225 / 0.319 | – | – | – |
+
+Bold: lowest average MSE among the models trained here.
 

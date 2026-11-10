@@ -131,15 +131,36 @@ Test MSE of DLT-dyn relative to the same model without the cross branch (CI line
 - The interpretability claim must therefore stop at "the selected sources are road-near and act with a lag".
   "The kernels recover travel times" is not supported.
 
-## 8. Baselines re-run on CPU (official TSLib hyper-parameters)
+## 8. Baselines re-run on CPU (official TSLib hyper-parameters, 264 runs)
 
-- DLinear (all seven CPU datasets) reproduces the reported numbers closely: Weather-96 0.196 vs 0.196, ETTh1-720
-  0.514 vs 0.519. LagTS, iTransformer and TimeMixer were re-run on the four ETT datasets and Exchange.
-- Our LagTS re-implementation: ETTh1-96 0.394 / 0.410 vs reported 0.384 / 0.402 (λ fixed at 0.1; the paper
-  tunes it).
-- The LagTS paper does not evaluate ETTm1 / ETTm2. Our configuration there, copied from ETTh, is still
-  improving at the last epoch on ETTm1, so those numbers are not representative.
-- Horizon-averaged results of every model trained in this pipeline: last table of [`p1/summary.md`](p1/summary.md).
+**Re-run vs reported.** MSE averaged over the four horizons; the reported numbers are those cited by MillGNN.
+
+| | ETTh1 | ETTh2 | ETTm1 | ETTm2 | Exchange | Weather | ECL |
+|---|---|---|---|---|---|---|---|
+| DLinear | +1.3 % | +0.7 % | +0.1 % | −0.9 % | −3.2 % | 0.0 % | +6.3 % |
+| iTransformer | +0.3 % | −0.1 % | +0.2 % | +1.5 % | +2.0 % | GPU | GPU |
+| TimeMixer | +0.6 % | +6.5 % | +0.8 % | +0.7 % | −1.9 % | GPU | GPU |
+| LagTS (our re-implementation) | +5.0 % | +11.1 % | – | – | +23.9 % | GPU | – |
+
+- The pipeline reproduces the published DLinear, iTransformer and TimeMixer numbers within about 2 % in most
+  cells. The exceptions are DLinear on ECL and TimeMixer on ETTh2 (about 6 %).
+- **LagTS re-implementation.** No code is available, and we fix λ at 0.1 where the paper tunes it. It stays 5–24 % behind the LagTS paper. On
+  ETTm1 / ETTm2, which the paper does not cover, it is still improving at the last epoch on ETTm1. Compare with LagTS through its reported
+  numbers (now in [`../scripts/p1/reported.json`](../scripts/p1/reported.json)). The re-implementation is
+  supplementary at most.
+
+**Horizon-averaged MSE of the models trained in this pipeline:**
+
+| | ETTh1 | ETTh2 | ETTm1 | ETTm2 | Exchange | Weather | ECL |
+|---|---|---|---|---|---|---|---|
+| DLT-dyn (default / tuned) | 0.467 / 0.451 | 0.424 / 0.395 | 0.402 / 0.403 | 0.287 / 0.284 | 0.538 / 0.482 | **0.249** | **0.197** |
+| CI linear | **0.448** | **0.377** | 0.413 | 0.286 | 0.353 | 0.272 | 0.215 |
+| DLinear | 0.462 | 0.563 | 0.403 | 0.347 | **0.343** | 0.265 | 0.225 |
+| iTransformer | 0.455 | 0.382 | 0.408 | 0.292 | 0.367 | GPU | GPU |
+| TimeMixer | 0.450 | 0.388 | **0.384** | **0.277** | 0.385 | GPU | GPU |
+
+On Weather and ECL only CI and DLinear were re-run here. The GPU runs are needed before claiming the best
+result among re-run models there.
 
 ## Consequences for the paper
 
