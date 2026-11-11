@@ -25,6 +25,8 @@ Suites
   ci_long      P1  the channel-independent linear model (DLT without the cross branch) on the long-term benchmark
   allnb        P1  DLT-dyn / DLT with all other variables as neighbours (dense path): PEMS04/08-12, Weather and
                    Electricity (DLT-dyn there only with --device gpu), iTransformer + DLT-dyn on PEMS08-12
+  plugin_probe P1  diagnosis of the plug-in on Traffic-96: + DLT-dyn with the backbone's learning rate, with a
+                   static gate, and with both (PatchTST, iTransformer; use --seeds 2021 for six runs)
 
 --models / --datasets restrict the baselines (and ci_long) suites, e.g. the CPU-feasible subset
     python scripts/exps.py baselines --models DLinear iTransformer TimeMixer LagTS \
@@ -204,6 +206,20 @@ def main():
                   f'--plug_base {base} --dlt_variant ci {bargs} {proto}', cost(ds, rel))
             g.add(f'{ds}_{H}_{base}_dlt', 'DLTPlug', ds, H, seed,
                   f'--plug_base {base} {dlt} --dlt_lr 0.003 {bargs} {proto}', cost(ds, rel + 1))
+    elif a.suite == 'plugin_probe':
+        # Why does the DLT-dyn branch hurt PatchTST / iTransformer on Traffic (GPU tier 1c)? Three variants of the
+        # "+ DLT-dyn" arm at horizon 96, to be compared with the finished alone / default arms of plugin_large:
+        #   samelr       the branch trains with the learning rate of the backbone (no --dlt_lr)
+        #   gate         the branch starts at 4.7 % strength (--dlt_gate static); branch lr 3e-3 as before
+        #   gate_samelr  both
+        for ds, seed in itertools.product(a.datasets or ('Traffic',), S):
+            for base in a.models or ('PatchTST', 'iTransformer'):
+                bargs, _ = plugin_backbone_args(base, ds, 96)
+                rel = {'DLinear': 0.3, 'PatchTST': 3.0, 'iTransformer': 1.5}[base] + 1
+                for name, extra in (('samelr', ''), ('gate', '--dlt_gate static --dlt_lr 0.003'),
+                                    ('gate_samelr', '--dlt_gate static')):
+                    g.add(f'{ds}_96_{base}_dlt_{name}', 'DLTPlug', ds, 96, seed,
+                          f'--plug_base {base} {dlt} {extra} {bargs}', cost(ds, rel))
     elif a.suite == 'allnb':
         # every other variable as a neighbour (dense path); follow-up of the P2 neighbour study, where all
         # neighbours beat the CCF top-8 on Weather and PEMS08. DLT-dyn on Electricity / Traffic: GPU.

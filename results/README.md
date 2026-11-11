@@ -8,7 +8,8 @@
 **Sources.**
 - Tables: [`p1/summary.md`](p1/summary.md) and [`p2/summary.md`](p2/summary.md).
 - P0 (kernel and gate study): [`p0/README.md`](p0/README.md).
-- Experiments that still need a GPU: [`../GPU_RUNS.md`](../GPU_RUNS.md).
+- Experiments that still need a GPU: [`../GPU_RUNS.md`](../GPU_RUNS.md). First GPU results (Traffic stand-alone,
+  plug-in on Electricity and Traffic): [`gpu/README.md`](gpu/README.md).
 - Numbers marked *reported* are copied from the papers, never re-computed.
 
 ## 1. Stand-alone accuracy under the standard protocols
@@ -76,8 +77,18 @@ Test MSE of DLT-dyn relative to the same model without the cross branch (CI line
 | PEMS08-12 (MAE) | −26.7 % (p < 0.001) | GPU only | −3.6 % (p = 0.004) |
 | ETTh1-96 (MSE) | +2.2 % (p = 0.016) | −2.6 % (n.s.) | +2.9 % (p = 0.047) |
 
-- The branch improves every backbone on coupled data. On ETTh1 it costs 2–3 %, consistent with point 2.
-- Large data (Electricity, Traffic, PEMS04) is in GPU tier 1c.
+- On these three datasets the branch improves every backbone where the data is coupled. On ETTh1 it costs
+  2–3 %, consistent with point 2.
+- **Large data (GPU, two seeds, [`gpu/README.md`](gpu/README.md)) qualifies this.** Averaged over four horizons:
+
+  | | DLinear | PatchTST | iTransformer |
+  |---|---:|---:|---:|
+  | Electricity (MSE) | −10.3 % | −8.2 % | −0.9 % |
+  | Traffic (MSE) | −13.0 % | +13.6 % | +11.5 % |
+
+  The gain shrinks as the backbone gets stronger, and on Traffic the branch damages PatchTST and iTransformer
+  with the current training recipe. Where the plug-in hurt on the CPU, its best validation loss was worse than
+  that of the backbone alone, so the harm can be seen before the test split is touched.
 
 ## 4. Neighbours (P2 study and follow-up)
 
@@ -166,8 +177,11 @@ result among re-run models there.
 
 1. **Lead with:**
    - the controlled kernel study (P0: DLT-dyn beats the MillGNN-style kernels by 5–43 % on coupled data);
-   - the plug-in gains (point 3);
+   - the gain of the cross branch for linear models on every coupled dataset, Traffic included (−13 to −20 %);
    - the efficiency (point 6).
+
+   The plug-in can be a lead claim only for linear and channel-independent backbones, and only after the Traffic
+   result of point 3 is understood ([`gpu/README.md`](gpu/README.md), section 4).
 2. **State the scope:** the branch helps coupled data and must be switched off or regularised for weakly
    coupled data (point 2). Report the Exchange and ETTh results honestly.
 3. **Do not claim** CCF neighbour selection as an accuracy contribution (point 4) or travel-time

@@ -52,6 +52,35 @@ device, the two differ only by rounding.
 With the same rounding proxy all 23 configurations pass; the largest error is 1.4e-6 against a tolerance of 1e-4.
 A re-run on the RTX 4090 with `--all` is the remaining confirmation.
 
+## Status of the experiments (2026-11-11)
+
+Evaluation of the results so far: [`results/gpu/README.md`](results/gpu/README.md).
+
+| tier | state |
+|---|---|
+| 1a Traffic, stand-alone DLT-dyn and CI | **done**, 3 seeds. The cross branch lowers the MSE of the linear model by 15 %; DLT-dyn (0.529) stays far behind iTransformer (0.428 reported). |
+| 1b PatchTST ± DLT-dyn on PEMS08-12 | no result seen; check the logs for failed runs |
+| 1c plug-in on ECL and Traffic | seeds 2021 and 2022 done. DLinear gains 10–13 %, PatchTST gains 8 % on ECL, iTransformer is unchanged on ECL, and on Traffic the branch costs PatchTST 13.6 % and iTransformer 11.5 %. |
+| 1c plug-in on PEMS04-12 | no result seen; check the logs for failed runs |
+| 0, 2, 3, 4 | not started |
+
+**What to run next.**
+1. Stop the tier 1 queue. The 32 remaining runs repeat finished configurations with seed 2023 and cannot change
+   a conclusion; the + DLT-dyn arms on Traffic need a changed recipe first.
+2. `python scripts/p1/plugin_diag.py $WORK`: epochs, best epoch and best validation loss of every plug-in arm
+   (no new runs).
+3. The plug-in probe on Traffic at horizon 96 (six runs):
+   ```bash
+   python scripts/exps.py plugin_probe --seeds 2021 --device gpu --data $DATA --work $WORK
+   bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_plugin_probe.txt
+   python scripts/p1/plugin_diag.py $WORK
+   ```
+4. Tier 0 (efficiency table), and the PEMS runs of tier 1 once the reason for their absence is known:
+   `python scripts/run_missing.py $WORK/jobs_gpu_tier1.txt | grep -c PEMS` counts them, and
+   `grep -l -E "Error|Traceback" $WORK/logs/plugin*/*PEMS*.log` lists failed ones.
+5. Tier 2 for PEMS only. The gaps of the stand-alone model on ECL and Traffic are too large for a search of k, R
+   and the learning rate to close. Tier 3 as far as the baseline table needs it.
+
 ## Overview
 
 Job counts are runs that have no result yet; they assume the CPU results are copied into the work directory.
