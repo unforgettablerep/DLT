@@ -1,7 +1,10 @@
 """P2: parameters, training / inference time per batch and peak memory of DLT and the baselines.
 
-    python scripts/p2/efficiency.py --device cpu --threads 4 --out results/p2/efficiency_cpu.jsonl
-    python scripts/p2/efficiency.py --device gpu --out results/p2/efficiency_gpu.jsonl      # on a CUDA machine
+    python scripts/p2/efficiency.py --device gpu          # on the CUDA machine -> results/p2/efficiency_gpu.jsonl
+    python scripts/p2/efficiency.py --device cpu --threads 4                 # -> results/p2/efficiency_cpu.jsonl
+
+Default models: DLT-dyn and the eight representative baselines (Informer, TimesNet, DLinear, PatchTST, iTransformer,
+TimeMixer, TimeXer, S-Mamba). --variants adds the kernel variants of the controlled study, the plug-in and LagTS.
 
 Every (dataset, model) is measured in a fresh subprocess (clean peak-memory counter) on random data with the
 dataset's shape: batch 32, input 96, horizon 96. Baselines use the official TSLib hyper-parameters of that
@@ -13,24 +16,28 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 
 DATASETS = {'Weather': 21, 'PEMS08': 170, 'ECL': 321, 'Traffic': 862}
-MODELS = {  # name: (TSLib model, extra args); baselines get their official per-dataset arguments as well
+# name: (TSLib model, extra args). Baselines also get their official arguments for the dataset (scripts/exps.py).
+OURS = {'DLT-dyn': ('DLT', '--dlt_variant dltdyn --dlt_impl basis')}
+BASELINES = {'Informer': ('Informer', ''), 'TimesNet': ('TimesNet', ''), 'DLinear': ('DLinear', ''),
+             'PatchTST': ('PatchTST', ''), 'iTransformer': ('iTransformer', ''), 'TimeMixer': ('TimeMixer', ''),
+             'TimeXer': ('TimeXer', ''), 'S-Mamba': ('SMamba', '')}
+VARIANTS = {   # --variants: the kernels of the controlled study, the plug-in and further configurations
     'CI (RLinear-style)': ('DLT', '--dlt_variant ci'),
     'scalar': ('DLT', '--dlt_variant scalar'),
     'full kernel': ('DLT', '--dlt_variant full'),
     'top-5 lags': ('DLT', '--dlt_variant topk'),
     'MillGNN-dyn kernel': ('DLT', '--dlt_variant milldyn'),
     'DLT': ('DLT', '--dlt_variant dlt --dlt_impl kernel'),
-    'DLT-dyn': ('DLT', '--dlt_variant dltdyn --dlt_impl basis'),
     'DLT-dyn (kernel path)': ('DLT', '--dlt_variant dltdyn --dlt_impl kernel'),
-    'iTransformer': ('iTransformer', ''),
     'iTransformer + DLT-dyn': ('DLTPlug', '--plug_base iTransformer --dlt_variant dltdyn --dlt_impl basis'),
-    'PatchTST': ('PatchTST', ''),
     'PatchTST (paper config)': ('PatchTST', '--e_layers 3 --d_model 128 --d_ff 256 --n_heads 16'),
-    'DLinear': ('DLinear', ''),
-    'TimeMixer': ('TimeMixer', ''),
     'LagTS': ('LagTS', ''),
 }
-SKIP_CPU = {('PatchTST', 'Traffic'), ('LagTS', 'ECL'), ('LagTS', 'Traffic'), ('LagTS', 'PEMS08')}
+MODELS = {**OURS, **BASELINES, **VARIANTS}
+# too slow or too large for the 13 GB CPU machine at batch 32 (they are measured on the GPU)
+SKIP_CPU = {('PatchTST', 'Traffic'), ('PatchTST', 'ECL'), ('TimeMixer', 'Traffic'),
+            ('TimeXer', 'Traffic'),
+            ('LagTS', 'ECL'), ('LagTS', 'Traffic'), ('LagTS', 'PEMS08')}
 
 
 def one(spec):
@@ -55,6 +62,8 @@ def one(spec):
     rss0 = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     if dev.type == 'cuda':
         torch.cuda.reset_peak_memory_stats(); m0 = torch.cuda.memory_allocated()
+    if model_name == 'SMamba' and dev.type == 'cpu':
+        args.mamba_impl = 'torch'                     # mamba_ssm needs CUDA
     model = import_module(f'models.{model_name}').Model(args).float().to(dev)
     if hasattr(model, 'prepare'):
         model.prepare(np.random.randn(4000, C).cumsum(0))
@@ -84,7 +93,8 @@ def one(spec):
     return {'dataset': spec['dataset'], 'C': C, 'model': spec['name'], 'device': spec['device'],
             'threads': spec['threads'], 'batch': B, 'H': H, 'params': int(sum(p.numel() for p in model.parameters())),
             'train_ms': round(train_ms, 1), 'infer_ms': round(infer_ms, 1), 'mem_MB': round(mem, 1),
-            'gpu': torch.cuda.get_device_name() if dev.type == 'cuda' else None}
+            'gpu': torch.cuda.get_device_name() if dev.type == 'cuda' else None,
+            **({'mamba_impl': model.mamba_impl} if model_name == 'SMamba' else {})}
 
 
 def main():
@@ -93,18 +103,21 @@ def main():
     p.add_argument('--threads', type=int, default=4)
     p.add_argument('--steps', type=int, default=8, help='measured training steps on the CPU')
     p.add_argument('--datasets', nargs='+', default=list(DATASETS))
-    p.add_argument('--models', nargs='+', default=list(MODELS))
-    p.add_argument('--out', required=True)
+    p.add_argument('--models', nargs='+', help='default: DLT-dyn and the eight representative baselines')
+    p.add_argument('--variants', action='store_true', help='also the kernel variants, the plug-in and LagTS')
+    p.add_argument('--out', help='default: results/p2/efficiency_<device>.jsonl')
     p.add_argument('--one', help=argparse.SUPPRESS)
     a = p.parse_args()
+    a.models = a.models or list(OURS) + list(BASELINES) + (list(VARIANTS) if a.variants else [])
+    a.out = a.out or str(REPO / 'results' / 'p2' / f'efficiency_{a.device}.jsonl')
     if a.one:
         print('RESULT ' + json.dumps(one(json.loads(a.one))))
         return
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     for ds in a.datasets:
         for name in a.models:
-            if a.device == 'cpu' and (MODELS[name][0], ds) in SKIP_CPU:
-                continue
+            if a.device == 'cpu' and ((MODELS[name][0], ds) in SKIP_CPU or MODELS[name][0] == 'SMamba'):
+                continue                              # S-Mamba: the CPU block is a slow fallback, not a measurement
             spec = {'dataset': ds, 'name': name, 'device': a.device, 'threads': a.threads, 'steps': a.steps}
             r = subprocess.run([sys.executable, __file__, '--out', a.out, '--one', json.dumps(spec)],
                                capture_output=True, text=True, env={**os.environ, 'OMP_NUM_THREADS': str(a.threads)})

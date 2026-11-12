@@ -4,6 +4,9 @@
 * --dlt_neighbours random / all: valid neighbour sets (no self, distinct, reproducible per seed)
 * DLTPlug == backbone + sigma * W_c z; with --dlt_variant ci it is the backbone alone
 * LagTS lag relation loss == an explicit loop over pairs and steps (Eq. 7-9)
+* S-Mamba: the pure-PyTorch Mamba block == the independent block of models/MambaSimple.py (same parameters), is
+  causal and initialised like mamba_ssm; the model is bidirectional over the variates and drops the mark tokens
+* every representative baseline has a configuration for every long-term dataset and horizon
 """
 import sys, types
 from pathlib import Path
@@ -106,4 +109,52 @@ ref = 0.5 * acc / cnt
 ok(f'LagTS lag relation loss == explicit loop ({loss:.6f} vs {ref:.6f})', abs(loss - ref) < 1e-9)
 y = lt(xe, None, None, None)
 ok('LagTS forward shape (B, S, N)', tuple(y.shape) == (2, 12, 4))
+
+# ---- S-Mamba
+import math
+from layers.MambaPy import Mamba
+from models import SMamba
+from models.MambaSimple import MambaBlock
+torch.manual_seed(5)
+worst = 0.0
+for d_model, d_state, d_conv, expand, Lq in ((32, 16, 2, 1, 11), (48, 2, 2, 1, 25), (64, 32, 4, 2, 9)):
+    blk = Mamba(d_model, d_state=d_state, d_conv=d_conv, expand=expand)
+    ref = MambaBlock(types.SimpleNamespace(d_model=d_model, d_ff=d_state, d_conv=d_conv, expand=expand),
+                     d_inner=d_model * expand, dt_rank=math.ceil(d_model / 16))
+    ref.load_state_dict(blk.state_dict(), strict=True)          # same parameter names and shapes
+    hq = torch.randn(3, Lq, d_model)
+    with torch.no_grad():
+        worst = max(worst, (blk(hq) - ref(hq)).abs().max().item())
+ok(f'Mamba block (PyTorch) == MambaSimple block with the same parameters (max err {worst:.1e})', worst < 1e-10)
+blk = Mamba(32, d_state=8, d_conv=2, expand=1)
+hq = torch.randn(2, 12, 32); h2 = hq.clone(); h2[:, 7:] += 1.0
+with torch.no_grad():
+    moved = (blk(hq) - blk(h2)).abs().amax(-1)[0].nonzero().flatten().tolist()
+ok('Mamba block is causal (a change at token 7 moves outputs 7.. only)', moved == list(range(7, 12)))
+sp = torch.nn.functional.softplus(blk.dt_proj.bias)
+ok('Mamba block initialisation as in mamba_ssm (dt in [1e-3, 1e-1], A = -(1..d_state), D = 1)',
+   bool(sp.min() >= 1e-3 - 1e-9 and sp.max() <= 0.1 + 1e-9) and torch.allclose(-torch.exp(blk.A_log[0]).double(), -torch.arange(1., 9.).double(), atol=1e-6)
+   and bool((blk.D == 1).all()))
+c = cfg(enc_in=6, dec_in=6, c_out=6, d_model=32, d_ff=32, e_layers=2, d_state=4, mamba_impl='torch', use_norm=1)
+import contextlib, io
+with contextlib.redirect_stdout(io.StringIO()):
+    sm = SMamba.Model(c).eval()
+xq, mq = torch.randn(2, 96, 6), torch.randn(2, 96, 4)
+with torch.no_grad():
+    yq = sm(xq, mq, None, None)
+    x3 = xq.clone(); x3[:, :, 3] += torch.randn(2, 96)          # change variate 3 only
+    dy = (sm(x3, mq, None, None) - yq).abs().amax((0, 1))
+ok('S-Mamba forward shape (B, H, N) without the mark tokens', tuple(yq.shape) == (2, 24, 6))
+ok('S-Mamba is bidirectional over the variates (variate 3 reaches variates before and after it)', bool((dy > 1e-9).all()))
+with torch.no_grad():
+    ys = sm(xq * 3.0 + 5.0, mq, None, None)                     # instance normalisation: scale and shift pass through
+err = (ys - (yq * 3.0 + 5.0)).abs().max().item()               # exact up to the 1e-5 inside sqrt(var + 1e-5)
+ok(f'S-Mamba instance normalisation (output follows scale and shift of the input, max err {err:.1e})', err < 1e-4)
+
+# ---- configurations of the representative baselines
+sys.path.insert(0, str(REPO / 'scripts'))
+import exps
+missing = [(m, ds, H) for m in exps.BASELINES for ds in exps.LONG_SETS for H in exps.HORIZONS
+           if exps.backbone_args(m, ds, H)[1] == 'fallback' and m != 'DLinear' and not exps.FALLBACK.get(m, {}).get(ds)]
+ok(f'official or documented configuration for every baseline, dataset and horizon ({len(exps.BASELINES)} models)', not missing)
 print('ALL PASS' if ok_all else 'SOME CHECKS FAILED')

@@ -18,9 +18,9 @@ z_i(t) = sum_{j in N(i)} sum_tau K[i,j,tau] * x_j(t - tau)
 y_hat_i = W_self x_i + W_cross z_i
 
 Example:
-  python code/proto.py --data PEMS08 --pred_len 96 --root data --variant dltdyn --out results/runs.jsonl
+  python code/proto.py --data PEMS08 --pred_len 96 --variant dltdyn --out results/runs.jsonl
 """
-import argparse, json, os, time
+import argparse, json, os, sys, time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -29,14 +29,21 @@ import torch.nn.functional as F
 
 # ----------------------------------------------------------------- data
 def load(name, root, seq_len):
+    """root: a directory with the files, or None for the fixed data directory of the repository (scripts/paths.py)"""
+    if root is None:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
+        import paths
+        locate = lambda f: str(paths.path_of(f))
+    else:
+        locate = lambda f: os.path.join(root, f)
     if name == "PEMS08":
-        d = np.load(os.path.join(root, "PEMS08.npz"), allow_pickle=False)["data"][:, :, 0].astype(np.float64)
+        d = np.load(locate("PEMS08.npz"), allow_pickle=False)["data"][:, :, 0].astype(np.float64)
         n = len(d)
         b1 = [0, int(0.6 * n) - seq_len, int(0.8 * n) - seq_len]
         b2 = [int(0.6 * n), int(0.8 * n), n]
     else:
         import pandas as pd
-        df = pd.read_csv(os.path.join(root, f"{name}.csv"))
+        df = pd.read_csv(locate(f"{name}.csv"))
         d = df.iloc[:, 1:].values.astype(np.float64)
         n = len(d)
         if name.startswith("ETTh"):
@@ -208,7 +215,7 @@ def evaluate(model, loader):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
-    ap.add_argument("--root", required=True)
+    ap.add_argument("--root", default=None, help="directory of the data files (default: the fixed dataset/ directory)")
     ap.add_argument("--variant", required=True)
     ap.add_argument("--pred_len", type=int, default=96)
     ap.add_argument("--seq_len", type=int, default=96)

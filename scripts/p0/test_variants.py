@@ -1,6 +1,6 @@
 """Verification of the DLT kernels and gates in models/DLT.py.
 
-    python scripts/p0/test_variants.py <dir with ETTh1.csv>
+    python scripts/p0/test_variants.py          # reads ETTh1.csv from the fixed data directory (scripts/paths.py)
 
 Checks (float64): every variant's cross() against an explicit loop over pairs and lags of
 z_i(t) = sum_j sum_tau K_ij(tau) x_j(t - tau); the top-K lag sets against a reference CCF loop;
@@ -20,7 +20,8 @@ tmp = tempfile.NamedTemporaryFile('w', suffix='.py', delete=False); tmp.write(ol
 spec = importlib.util.spec_from_file_location('DLT_old', tmp.name); old = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(old); os.unlink(tmp.name)
 torch.set_default_dtype(torch.float64)          # exact comparisons
-data = sys.argv[1]
+sys.path.insert(0, str(REPO / 'scripts'))
+import paths  # noqa: E402
 
 def cfg(**kw):
     c = dict(task_name='long_term_forecast', seq_len=96, pred_len=24, enc_in=12, dlt_variant='dltdyn', dlt_k=4,
@@ -31,7 +32,7 @@ ok = lambda name, cond: print(('PASS ' if cond else 'FAIL ') + name) or cond
 allok = True
 
 # ---- 1. neighbour selection is unchanged (real data)
-ett = pd.read_csv(f'{data}/ETTh1.csv').values[:, 1:].astype(float)[:8545]
+ett = pd.read_csv(paths.path_of('ETTh1.csv')).values[:, 1:].astype(float)[:8545]
 ett = (ett - ett.mean(0)) / ett.std(0)
 i0, l0 = old.select_neighbours(ett, 6, 48)
 i1, l1 = new.select_neighbours(ett, 6, 48)

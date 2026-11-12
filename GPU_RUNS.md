@@ -50,7 +50,7 @@ device, the two differ only by rounding.
 - prints the parameter with the largest error and lists the zero-gradient parameters.
 
 With the same rounding proxy all 23 configurations pass; the largest error is 1.4e-6 against a tolerance of 1e-4.
-A re-run on the RTX 4090 with `--all` is the remaining confirmation.
+A re-run on the RTX 4090 with `--ablation` (every configuration) is the remaining confirmation.
 
 ## Status of the experiments (2026-11-11)
 
@@ -67,43 +67,88 @@ Evaluation of the results so far: [`results/gpu/README.md`](results/gpu/README.m
 **What to run next.**
 1. Stop the tier 1 queue. The 32 remaining runs repeat finished configurations with seed 2023 and cannot change
    a conclusion; the + DLT-dyn arms on Traffic need a changed recipe first.
-2. `python scripts/p1/plugin_diag.py $WORK`: epochs, best epoch and best validation loss of every plug-in arm
+2. `python scripts/p1/plugin_diag.py`: epochs, best epoch and best validation loss of every plug-in arm
    (no new runs).
-3. The plug-in probe on Traffic at horizon 96 (six runs):
+3. The plug-in probe on Traffic at horizon 96 (six runs; the list is written by `make_gpu_jobs.sh`):
    ```bash
-   python scripts/exps.py plugin_probe --seeds 2021 --device gpu --data $DATA --work $WORK
-   bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_plugin_probe.txt
-   python scripts/p1/plugin_diag.py $WORK
+   bash scripts/gpu/run_gpu_queue.sh plugin_probe
+   python scripts/p1/plugin_diag.py
    ```
 4. Tier 0 (efficiency table), and the PEMS runs of tier 1 once the reason for their absence is known:
-   `python scripts/run_missing.py $WORK/jobs_gpu_tier1.txt | grep -c PEMS` counts them, and
-   `grep -l -E "Error|Traceback" $WORK/logs/plugin*/*PEMS*.log` lists failed ones.
+   `python scripts/run_missing.py gpu_tier1 | grep -c PEMS` counts them, and
+   `grep -l -E "Error|Traceback" work/logs/plugin*/*PEMS*.log` lists failed ones. A missing `PEMS04.npz` or
+   `PEMS08.npz` is now reported when the job lists are written.
 5. Tier 2 for PEMS only. The gaps of the stand-alone model on ECL and Traffic are too large for a search of k, R
    and the learning rate to close. Tier 3 as far as the baseline table needs it.
 
+## Fixed locations
+
+Every script reads the datasets from `dataset/` and writes job lists, logs, checkpoints and result records to
+`work/`, both in the repository root ([`scripts/paths.py`](scripts/paths.py)); no path argument and no environment
+variable is needed. Both directories are ignored by git.
+
+- `dataset/`: the Time-Series-Library layout (`dataset/ETT-small/ETTh1.csv`, `dataset/weather/weather.csv`,
+  `dataset/electricity/electricity.csv`, `dataset/traffic/traffic.csv`, `dataset/exchange_rate/exchange_rate.csv`,
+  `dataset/PEMS/PEMS04.npz`, `PEMS08.npz`, `PEMS08_edges.csv`), or all files directly in `dataset/`.
+  `bash scripts/download_data.sh traffic` fetches everything but PEMS04. A missing CSV is downloaded by
+  Time-Series-Library at run time; a missing PEMS file makes its jobs fail.
+- `work/`: if results of an earlier run live in another directory, move that directory to `work`
+  (`mv <old work directory> work`) or link it (`ln -s <old work directory> work`). Finished runs are recognised
+  by job name and seed, wherever the list was generated.
+- If the data is elsewhere, link it the same way (`ln -s <data directory> dataset`) or edit the two lines of
+  `scripts/paths.py`.
+- Our per-dataset scripts (`scripts/long_term_forecast/DLT_script/*.sh`, `*_script/SMamba*.sh`) take the data from
+  `dataset/` in either layout as well; the other upstream scripts of `scripts/` expect the Time-Series-Library layout.
+
 ## Overview
 
-Job counts are runs that have no result yet; they assume the CPU results are copied into the work directory.
-Every run is one training with seed 2021, 2022 or 2023.
+Job counts are runs that have no result yet, starting from the CPU records of this repository
+(`make_gpu_jobs.sh` merges them into `work/`). Tiers 1, 2 and 4 use seeds 2021, 2022 and 2023; tier 3 uses seed 2021.
 
 | tier | experiments | runs | what it verifies / which table it completes |
 |---|---|---:|---|
-| 0 | GPU correctness check; efficiency on the GPU | – | The GPU code paths match the CPU reference. Parameters, time per batch and peak GPU memory for 15 models on Weather, PEMS08, ECL and Traffic (paper efficiency table; MillGNN reports 9.7 GB, iTransformer 7.5 GB). |
+| 0 | GPU correctness check; efficiency on the GPU | – | The GPU code paths match the CPU reference. Parameters, time per batch and peak GPU memory of DLT-dyn and the eight baselines on Weather, PEMS08, ECL and Traffic (paper efficiency table; MillGNN reports 9.7 GB, iTransformer 7.5 GB). |
 | 1a | DLT-dyn and CI linear on Traffic, 4 horizons | 24 | The last dataset of the long-term table, and whether the cross branch helps on Traffic. |
 | 1b | PatchTST ± DLT-dyn on PEMS08-12 | 6 | The plug-in claim for the third backbone on PEMS08. |
 | 1c | Plug-in on large data: DLinear / PatchTST / iTransformer ± DLT-dyn on ECL and Traffic (4 horizons each) and PEMS04-12 | 162 | Whether the plug-in gains (Weather −7 to −17 %, PEMS08 −4 to −27 %) hold on large data. |
+| probe | + DLT-dyn on Traffic-96 with the learning rate of the backbone, with a static gate, and with both (PatchTST, iTransformer) | 6 | Why the plug-in hurts on Traffic ([`results/gpu/README.md`](results/gpu/README.md), section 4). |
 | 2 | 20-trial validation search on ECL, Traffic (H = 96) and PEMS04/08 (H = 12), then the selected configurations: ECL/Traffic × 4 horizons, PEMS04/08 at H = 12 | 80 + 30 | Fair tuning budget against MillGNN (20 NNI trials) on the data where DLT is strongest. |
-| 3 | Baselines re-run with the official TSLib hyper-parameters, not run on CPU: PatchTST (all 8 datasets); iTransformer and TimeMixer on Weather, ECL, Traffic; DLinear on Traffic; LagTS on Weather | 192 | Reported vs re-run baseline numbers under one pipeline (fairness). |
+| 3 | The eight representative baselines with their official hyper-parameters on the 8 long-term datasets × 4 horizons, one seed; 81 of the 256 runs were done on the CPU | 175 | Reported vs re-run baseline numbers under one pipeline (fairness). |
 | 4 (optional) | All other variables as neighbours: DLT-dyn on ECL; DLT and DLT-dyn on Traffic | 36 | Whether more neighbours help on large data. Low priority: at horizon 12 and for DLT on ECL they overfitted. |
 
-The make script generates the complete suites. For tier 3, the generated list also holds the light baselines,
-and for tier 4 the PEMS all-neighbour runs. Those were run on the CPU, so their jobs are skipped once the final
-CPU results are copied in.
+**The eight representative baselines** (`BASELINES` in [`scripts/exps.py`](scripts/exps.py)), one per model family:
+
+| model | family | hyper-parameters |
+|---|---|---|
+| Informer | classic Transformer | TSLib scripts (one generic setting) |
+| TimesNet | CNN on 2-D period maps | TSLib scripts |
+| DLinear | linear | TSLib scripts |
+| PatchTST | channel-independent patch Transformer | TSLib scripts |
+| iTransformer | Transformer over variate tokens | TSLib scripts |
+| TimeMixer | multi-scale MLP mixing | TSLib scripts |
+| TimeXer | patch and variate tokens | TSLib scripts (ETTh1 setting on Exchange) |
+| S-Mamba | bidirectional Mamba over variate tokens | official S-Mamba scripts, as `scripts/long_term_forecast/*_script/SMamba*.sh` |
+
+S-Mamba is not part of Time-Series-Library; `models/SMamba.py` re-implements it after the official code. It uses
+`mamba_ssm` when that package is installed and a pure-PyTorch block otherwise (same model, sequential scan).
+Trained on the CPU with the official settings it reproduces the published numbers: the average over the four
+horizons is within +0.9 % (ETTh1), +0.3 % (ETTh2) and −0.6 % (Exchange) of the paper's MSE, Weather-96 within
++1.1 %; single horizons lie between −1.1 % and +4.2 % (13 runs in `results/p1/results_baselines.jsonl`).
+With the PyTorch block one step per variate token is taken in Python, which is slow on Electricity and Traffic:
+install `mamba-ssm` before tier 3 (set-up below). LagTS (our re-implementation, at most 21 variables) is no
+longer in the default set; `python scripts/exps.py baselines --models LagTS` adds it.
+
+**Cost of tier 3.** TimesNet is the expensive model: 150 M parameters on Electricity and 302 M on Traffic with its
+official settings (112 s and 123 s per training batch on the 4-thread CPU). Order the list by need:
+`python scripts/exps.py baselines --seeds 2021 --device gpu --models <models> --datasets <datasets>` writes a
+smaller list `baselines`.
 
 **Memory on one 24 GB card.**
 - DLT is small: DLT-dyn needs about 1 GB per step on Traffic at batch 32 (measured on the CPU).
 - The heavy runs are the baselines on Traffic: iTransformer (12.4 GB at batch 32 on the CPU; its TSLib script
-  uses batch 16), PatchTST with the TSLib configuration (d_model 512, batch 4) and TimeMixer (batch 8).
+  uses batch 16), PatchTST with the TSLib configuration (d_model 512, batch 4), TimeMixer (batch 8), TimesNet
+  (5.9 GB at batch 32 on the CPU) and TimeXer (10.9 GB on Electricity at batch 32 on the CPU; its script uses
+  batch 4 there and batch 16 on Traffic).
 - DLT-dyn with all neighbours on Traffic (tier 4) is the one to watch: the pair features take about 3 GB per
   tensor at batch 32, so the peak is estimated at 15–20 GB (not measured). Use `--batch_size 16` if it does not fit.
 
@@ -116,15 +161,13 @@ pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
 pip install --no-deps einops==0.8.1 local-attention==1.11.2 reformer-pytorch==1.4.4 hyper-connections \
     axial-positional-embedding product-key-memory==0.1.10                  # imports of the Transformer baselines
+# S-Mamba: the compiled Mamba block (optional but needed for speed on Electricity / Traffic). Prebuilt wheels for
+# torch 2.5 + CUDA 12 are on the mamba releases page; pick the file of your Python version, for Python 3.11:
+pip install https://github.com/state-spaces/mamba/releases/download/v2.2.6.post3/mamba_ssm-2.2.6.post3+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
 
-DATA=/path/to/datasets      # one flat directory: ETTh1.csv ETTh2.csv ETTm1.csv ETTm2.csv weather.csv
-                            # exchange_rate.csv electricity.csv traffic.csv PEMS04.npz PEMS08.npz PEMS08_edges.csv
-WORK=/path/to/gpu_work
-mkdir -p $WORK && cp results/p1/results_*.jsonl $WORK/      # finished CPU runs are skipped
-
-python scripts/gpu/check_gpu.py --data $DATA                # stand-alone DLT-dyn; must end with "all checks passed"
-python scripts/gpu/check_gpu.py --data $DATA --all          # every variant, gate, DLTPlug and LagTS
-python scripts/p2/efficiency.py --device gpu --out results/p2/efficiency_gpu.jsonl
+python scripts/gpu/check_gpu.py                 # stand-alone DLT-dyn; must end with "all checks passed"
+python scripts/gpu/check_gpu.py --all           # the ten representative configurations, incl. plug-in and S-Mamba
+python scripts/p2/efficiency.py --device gpu    # -> results/p2/efficiency_gpu.jsonl
 ```
 
 `check_gpu.py` builds each model on the CPU, copies it to the GPU and compares outputs and all gradients:
@@ -132,46 +175,51 @@ python scripts/p2/efficiency.py --device gpu --out results/p2/efficiency_gpu.jso
 - in float32 with TensorFloat-32 off: tolerance 1e-4;
 - in float32 as in training (PyTorch enables TF32 for cuDNN convolutions): reported only.
 
-It also checks that neighbour selection on the GPU picks the same sources as on the CPU. Ties, for example a
-dead sensor, may be broken differently and are accepted when the scores agree.
+It also checks that neighbour selection on the GPU picks the same sources as on the CPU (ties, for example a
+dead sensor, may be broken differently and are accepted when the scores agree) and, when `mamba-ssm` is installed,
+that S-Mamba with the `mamba_ssm` block equals S-Mamba with the pure-PyTorch block. `--ablation` adds the other
+kernel variants of the P0 study and LagTS.
 
 ## 1–4. Experiments
 
 ```bash
-bash scripts/gpu/make_gpu_jobs.sh $DATA $WORK         # writes jobs_gpu_tier{1,2_search,3,4}.txt, prints the counts
+bash scripts/gpu/make_gpu_jobs.sh                     # writes the lists into work/ and prints the counts
 
-bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier1.txt            # one job at a time on GPU 0
+bash scripts/gpu/run_gpu_queue.sh gpu_tier1           # one job at a time on GPU 0
+bash scripts/gpu/run_gpu_queue.sh plugin_probe        # the six diagnosis runs
 
-bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier2_search.txt 0 0 0     # three DLT jobs at a time on GPU 0
-python scripts/p1/hpsearch.py select --work $WORK > $WORK/hp_select.md                      # 8 long-term datasets
-python scripts/p1/hpsearch.py tuned  --data $DATA --work $WORK --device gpu
-python scripts/p1/hpsearch.py select --work $WORK --tag _pems > $WORK/hp_select_pems.md
-python scripts/p1/hpsearch.py tuned  --data $DATA --work $WORK --device gpu --horizons 12 --tag _pems
-cat $WORK/jobs_tuned.txt $WORK/jobs_tuned_pems.txt > $WORK/jobs_gpu_tier2_tuned.txt
-bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier2_tuned.txt 0 0 0
+bash scripts/gpu/run_gpu_queue.sh gpu_tier2_search 0 0 0     # three DLT jobs at a time on GPU 0
+python scripts/p1/hpsearch.py select > work/hp_select.md                        # 8 long-term datasets
+python scripts/p1/hpsearch.py tuned  --device gpu
+python scripts/p1/hpsearch.py select --tag _pems > work/hp_select_pems.md
+python scripts/p1/hpsearch.py tuned  --device gpu --horizons 12 --tag _pems
+cat work/jobs_tuned.txt work/jobs_tuned_pems.txt > work/jobs_gpu_tier2_tuned.txt
+bash scripts/gpu/run_gpu_queue.sh gpu_tier2_tuned 0 0 0
 
-bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier3.txt
-bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_gpu_tier4.txt            # optional
+bash scripts/gpu/run_gpu_queue.sh gpu_tier3
+bash scripts/gpu/run_gpu_queue.sh gpu_tier4           # optional
 ```
 
 How the queue runner behaves:
+- A list is named by its suite (`work/jobs_<name>.txt`).
 - It runs only jobs whose result file has no record with the job's `--des` and seed. After an interruption,
   run the same command again.
-- One worker per listed GPU id. On the single RTX 4090, `0` runs one job at a time. `0 0 0` runs three at a
-  time, which suits the small DLT models of tier 2; keep one at a time for the Traffic baselines.
+- One worker per listed GPU id. On the single RTX 4090, no id (or `0`) runs one job at a time. `0 0 0` runs three
+  at a time, which suits the small DLT models of tier 2; keep one at a time for the Traffic baselines.
 - Each job sees only its GPU through `CUDA_VISIBLE_DEVICES`. TSLib's `_acquire_device` keeps a mask set by
   the caller.
 
-The tuned step covers the 72 CPU runs again. They are skipped because their results were copied, and the
-selection for the 6 small datasets is the same because their search records were copied as well.
+The tuned step covers the 72 CPU runs again. They are skipped because their records are in `work/`, and the
+selection for the 6 small datasets is the same because their search records are there as well.
 
 ## Tables
 
 ```bash
-python scripts/p1/aggregate.py $WORK results/p1/summary.md      # CPU + GPU rows; PEMS table gains "DLT-dyn (tuned)"
-cp $WORK/results_*.jsonl $WORK/tuned*.json $WORK/hp_select*.md results/p1/
-python scripts/p2/aggregate.py results/p0/results_p0.jsonl $WORK results/p2 results/p2/summary.md   # adds efficiency_gpu
+python scripts/collect_results.py     # merges work/results_*.jsonl into results/p0, p1, p2 and rebuilds the three summary.md
 ```
+
+Records are merged by job name and seed, so nothing in `results/` is lost; `efficiency.py` writes into
+`results/p2` directly. Commit `results/` afterwards.
 
 ## Notes
 
@@ -184,5 +232,6 @@ python scripts/p2/aggregate.py results/p0/results_p0.jsonl $WORK results/p2 resu
   - MillGNN has no public code; it is compared through its reported numbers (Tables 2 and 3).
   - MoVE is compared through Table 4 of its submission (input 96, seed 2024).
   - The MillGNN-style and MoVE-style mechanisms are re-implemented inside DLT for the controlled study (P0).
-- **If the GPU budget is small.** Run tier 0, then 1a and 1b, then 1c with iTransformer only. Run tier 2 for
-  PEMS only (40 + 6 runs). Use reported numbers for tier 3.
+- **If the GPU budget is small.** Run tier 0, then 1a and 1b, the probe, then 1c with iTransformer only. Run tier 2
+  for PEMS only (40 + 6 runs). In tier 3 leave out TimesNet on Electricity and Traffic and use its reported
+  numbers (`scripts/p1/reported.json` holds them, next to those of S-Mamba).

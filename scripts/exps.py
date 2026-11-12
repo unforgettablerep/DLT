@@ -1,13 +1,13 @@
 """Job lists for the P1 / P2 experiments (Time-Series-Library, one JSON line per run).
 
-    python scripts/exps.py <suite> --data <dir> --work <dir> [--device cpu|gpu] [--seeds 2021 2022 2023]
+    python scripts/exps.py <suite> [--device cpu|gpu] [--seeds 2021 2022 2023]
                            [--dlt "<extra --dlt_* args for the proposed model>"]
 
-<dir> must contain the dataset files (ETTh1.csv ... traffic.csv, PEMS04.npz, PEMS08.npz). The job list is
-written to <work>/jobs_<suite>.txt (one shell command per line, longest first); every job appends its JSON
-record to <work>/results_<suite>.jsonl and logs to <work>/logs/<suite>/. Run a list with
-    bash scripts/run_queue.sh <work>/jobs_<suite>.txt [parallel jobs]
-from anywhere (the runner changes into the repository root). On a GPU use --device gpu and run one job per GPU.
+Datasets are read from dataset/ and everything is written to work/ (fixed, see scripts/paths.py): the job list
+work/jobs_<suite>.txt (one shell command per line, longest first), one JSON record per run in
+work/results_<suite>.jsonl, logs in work/logs/<suite>/ and checkpoints in work/ckpt/. Run a list with
+    bash scripts/run_queue.sh <suite> [parallel jobs]          CPU
+    bash scripts/gpu/run_gpu_queue.sh <suite> [gpu ids]        GPU (--device gpu when generating)
 
 Suites
   pems12       P1  PEMS04/08, input 96, horizon 12, TimeMixer protocol (L1 training loss, validation MAE and
@@ -17,8 +17,9 @@ Suites
   plugin       P1  DLinear / PatchTST / iTransformer, alone and + DLT-dyn (DLTPlug) on ETTh1, Weather, PEMS08-12
                    (PatchTST on PEMS08 only with --device gpu; PatchTST uses the configurations of its paper)
   plugin_large P1  the same on Electricity / Traffic (all horizons) and PEMS04-12 (GPU)
-  baselines    P1  iTransformer, PatchTST, DLinear, TimeMixer, LagTS (small data only) on the long-term
-                   benchmark with the official TSLib hyper-parameters (GPU recommended)
+  baselines    P1  the eight representative baselines (BASELINES below: Informer, TimesNet, DLinear, PatchTST,
+                   iTransformer, TimeMixer, TimeXer, S-Mamba) on the long-term benchmark with their official
+                   hyper-parameters (GPU recommended). --models LagTS adds our LagTS re-implementation (<= 21 variables)
   sensitivity  P2  DLT-dyn, one factor at a time: L in {12,24,96}, R in {2,8}, k in {4,16} (default 48/4/8)
                    on ETTh1-96, Weather-96, PEMS08-96
   neighbours   P2  DLT-dyn / DLT with random or all neighbours instead of the CCF top-k (Weather-96, PEMS08-96)
@@ -29,14 +30,20 @@ Suites
                    static gate, and with both (PatchTST, iTransformer; use --seeds 2021 for six runs)
 
 --models / --datasets restrict the baselines (and ci_long) suites, e.g. the CPU-feasible subset
-    python scripts/exps.py baselines --models DLinear iTransformer TimeMixer LagTS \
-        --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange --data <dir> --work <dir>
+    python scripts/exps.py baselines --models DLinear iTransformer TimeMixer --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange
 """
-import argparse, os, re, json, itertools
+import argparse, os, re, json, itertools, sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import paths  # noqa: E402
+
+REPO = paths.REPO
 TSLIB = REPO
+# The representative baselines of every comparison (accuracy and efficiency): one model per family.
+#   Informer (classic Transformer), TimesNet (CNN), DLinear (linear), PatchTST (channel-independent Transformer),
+#   iTransformer (variate tokens), TimeMixer (multi-scale MLP), TimeXer (patch + variate tokens), S-Mamba (state space)
+BASELINES = ('Informer', 'TimesNet', 'DLinear', 'PatchTST', 'iTransformer', 'TimeMixer', 'TimeXer', 'SMamba')
 HORIZONS = (96, 192, 336, 720)
 LONG_SETS = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', 'Traffic')
 
@@ -63,9 +70,10 @@ def official_args(model, data_file, H):
     """Hyper-parameters of a baseline from the official TSLib script (scripts/long_term_forecast/*_script)."""
     keys = ('e_layers', 'd_layers', 'factor', 'd_model', 'd_ff', 'n_heads', 'batch_size', 'learning_rate',
             'train_epochs', 'patience', 'dropout', 'down_sampling_layers', 'down_sampling_window',
-            'down_sampling_method', 'channel_independence', 'top_k', 'moving_avg', 'label_len', 'use_norm')
+            'down_sampling_method', 'channel_independence', 'top_k', 'moving_avg', 'label_len', 'use_norm',
+            'd_state')
     for path in sorted((TSLIB / 'scripts' / 'long_term_forecast').glob(f'*_script/{model}*.sh')):
-        txt = re.sub(r'\\\s*\n', ' ', path.read_text())
+        txt = re.sub(r'\\[ \t]*\n', ' ', path.read_text())      # a backslash continues one line only
         var = dict(re.findall(r'^(\w+)=(\S+)', txt, re.M))
         for line in txt.splitlines():
             if 'run.py' not in line or line.lstrip().startswith('#'):
@@ -105,8 +113,17 @@ FALLBACK = {
               'ETTm2': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
               'Exchange': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
               'Weather': '--e_layers 3 --d_model 512 --d_ff 512 --learning_rate 0.0001'},
+    # official S-Mamba scripts for PEMS at horizon 12 (scripts/multivariate_forecasting/PEMS/S_Mamba_0x.sh)
+    'SMamba': {'PEMS04': '--e_layers 4 --d_model 1024 --d_ff 1024 --learning_rate 0.0003 --use_norm 0',
+               'PEMS08': '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.001 --use_norm 1'},
 }
-MODEL_EXTRA = {'TimeMixer': '--down_sampling_method avg', 'PatchTST': '', 'iTransformer': '', 'DLinear': '', 'LagTS': ''}
+# no official configuration for this dataset: the configuration of another dataset at the same horizon.
+# Informer has one generic setting in every TSLib script; TimeXer was not tuned on Exchange (small-data setting of ETTh1).
+FALLBACK_FROM = {'Informer': {d: 'ETTh1' for d in ('ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'Traffic',
+                                                    'PEMS04', 'PEMS08')},
+                 'TimeXer': {'Exchange': 'ETTh1', 'PEMS04': 'ECL', 'PEMS08': 'ECL'},
+                 'TimesNet': {'PEMS04': 'ECL', 'PEMS08': 'ECL'}}
+MODEL_EXTRA = {'TimeMixer': '--down_sampling_method avg'}
 
 
 # PatchTST in the plug-in study: the configurations of the PatchTST paper (TSLib's scripts use d_model 512 /
@@ -126,6 +143,10 @@ def plugin_backbone_args(model, ds, H):
 
 def backbone_args(model, ds, H):
     args, src = official_args(model, DATASETS[ds][1], H)
+    if args is None and ds in FALLBACK_FROM.get(model, {}):
+        other = FALLBACK_FROM[model][ds]
+        args, src = official_args(model, DATASETS[other][1], H if H in HORIZONS else 96)
+        src = f'{src} ({other} configuration)'
     if args is None:
         args, src = FALLBACK.get(model, {}).get(ds, ''), 'fallback'
     return (args + ' ' + MODEL_EXTRA.get(model, '')).strip(), src
@@ -133,8 +154,8 @@ def backbone_args(model, ds, H):
 
 class Gen:
     def __init__(self, a, suite):
-        self.a, self.suite, self.jobs = a, suite, []
-        self.work = os.path.abspath(a.work)
+        self.a, self.suite, self.jobs, self.files = a, suite, [], set()
+        self.work = str(paths.WORK)
         os.makedirs(f'{self.work}/logs/{suite}', exist_ok=True)
 
     def add(self, name, model, ds, H, seed, args, cost):
@@ -142,13 +163,14 @@ class Gen:
         dev = '--no_use_gpu --num_workers 0' if self.a.device == 'cpu' else '--num_workers 4'
         label = '0' if ds.startswith('PEMS') else '48'
         cmd = (f'python -u run.py --task_name long_term_forecast --is_training 1 --model {model} '
-               f'--model_id {self.suite}_{ds}_{H} --root_path {os.path.abspath(self.a.data)} --data {dflag} '
+               f'--model_id {self.suite}_{ds}_{H} --root_path {paths.root_of(dfile)} --data {dflag} '
                f'--data_path {dfile} --freq {freq} --features M --seq_len 96 --label_len {label} --pred_len {H} '
                f'--enc_in {C} --dec_in {C} --c_out {C} --des {name} --fix_seed {seed} {args} {dev} '
                f'--checkpoints {self.work}/ckpt --no_epoch_test --no_save_preds '
                f'--result_jsonl {self.work}/results_{self.suite}.jsonl '
                f'> {self.work}/logs/{self.suite}/{name}_s{seed}.log 2>&1')
         self.jobs.append((cost, f'{name}_s{seed}', cmd))
+        self.files.add(dfile)
 
     def write(self):
         # seed-major order (every configuration gets its first seed early), longest first inside a seed
@@ -159,7 +181,11 @@ class Gen:
         path = f'{self.work}/jobs_{self.suite}.txt'
         open(path, 'w').write('\n'.join(j[2] for j in ordered) + '\n')
         hours = sum(j[0] for j in ordered) / 3600
-        print(f'{self.suite}: {len(ordered)} jobs -> {path}; rough CPU estimate {hours:.1f} core-hours')
+        print(f'{self.suite}: {len(ordered)} jobs -> {os.path.relpath(path, paths.REPO)}; rough CPU estimate {hours:.1f} core-hours')
+        for f in sorted(self.files):
+            if not paths.exists(f):
+                print(f'  note: {os.path.relpath(paths.path_of(f), paths.REPO)} is missing: ' + (
+                    'these jobs will fail' if f.endswith('.npz') else 'Time-Series-Library will download it from Hugging Face'))
 
 
 def cost(ds, rel=1.0):
@@ -171,8 +197,6 @@ def cost(ds, rel=1.0):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('suite')
-    p.add_argument('--data', required=True)
-    p.add_argument('--work', required=True)
     p.add_argument('--device', default='cpu', choices=['cpu', 'gpu'])
     p.add_argument('--seeds', type=int, nargs='+', default=[2021, 2022, 2023])
     p.add_argument('--dlt', default='', help='extra --dlt_* arguments of the proposed model (e.g. a gate)')
@@ -244,7 +268,7 @@ def main():
             g.add(f'{ds}_{H}_ci', 'DLT', ds, H, seed, f'--dlt_variant ci {DLT_TRAIN}', cost(ds, 0.1))
     elif a.suite == 'baselines':
         for ds, H, seed in itertools.product(a.datasets or LONG_SETS, HORIZONS, S):
-            for base in a.models or ('iTransformer', 'PatchTST', 'DLinear', 'TimeMixer', 'LagTS'):
+            for base in a.models or BASELINES:
                 if base == 'LagTS' and DATASETS[ds][2] > 21:
                     continue                                   # O(N^2) pairs: the paper uses N <= 21
                 bargs, _ = backbone_args(base, ds, H)

@@ -187,3 +187,7 @@ results/runs_reproduced.jsonl
 /results/quickstart*.jsonl
 /results/**/*.pdf
 /results/**/*.png
+
+# fixed data and work directories (scripts/paths.py); without a trailing slash so that symbolic links are ignored too
+/dataset
+/work

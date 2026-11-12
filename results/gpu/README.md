@@ -83,7 +83,7 @@ Not established yet; the lines above carry no training information.
 - A branch that fits fast and then overfits stops the improvement of the validation loss, so early stopping
   (patience 3) ends the run before the backbone has converged.
 
-**What the CPU runs already show** (`python scripts/p1/plugin_diag.py results/p1`). Where the plug-in hurt, the
+**What the CPU runs already show** (`python scripts/p1/plugin_diag.py`). Where the plug-in hurt, the
 + DLT-dyn arm stopped earlier and its best validation loss was worse than that of the backbone alone:
 
 | | best epoch, alone → + DLT-dyn | best validation loss, alone → + DLT-dyn | Δ test |
@@ -98,14 +98,14 @@ In these cases the harm is visible on the validation split. Choosing between "ba
 DLT-dyn" by validation loss would have avoided it.
 
 **Checks, in this order.**
-1. `python scripts/p1/plugin_diag.py $WORK` on the GPU work directory: epochs, best epoch and best validation loss
+1. `python scripts/p1/plugin_diag.py` with the GPU records in `work/`: epochs, best epoch and best validation loss
    of the Traffic arms. No new runs.
 2. Six runs, Traffic at horizon 96, seed 2021, PatchTST and iTransformer: the branch with the learning rate of
    the backbone, with a static gate (it starts at 4.7 % strength), and with both.
    ```bash
-   python scripts/exps.py plugin_probe --seeds 2021 --device gpu --data $DATA --work $WORK
-   bash scripts/gpu/run_gpu_queue.sh $WORK/jobs_plugin_probe.txt
-   python scripts/p1/plugin_diag.py $WORK
+   python scripts/exps.py plugin_probe --seeds 2021 --device gpu
+   bash scripts/gpu/run_gpu_queue.sh plugin_probe
+   python scripts/p1/plugin_diag.py
    ```
 3. If a variant removes the loss on Traffic, re-run the + DLT-dyn arms with it (ECL and Weather too, to see that
    their gains stay). If none does, the plug-in claim has to be limited to channel-independent or linear

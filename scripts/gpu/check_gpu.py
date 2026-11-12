@@ -1,9 +1,13 @@
 """Check the GPU code paths against the CPU (the CPU runs are the reference of all reported results).
 
-    python scripts/gpu/check_gpu.py [--data <dataset file or directory>] [--device cuda] [--all]
+    python scripts/gpu/check_gpu.py [--all] [--ablation] [--device cuda]
 
-Default: the stand-alone DLT-dyn model (both implementation paths). --all adds every other DLT variant and gate,
-DLTPlug with DLinear / PatchTST / iTransformer and LagTS.
+Default     the stand-alone DLT-dyn model (both implementation paths).
+--all       the ten representative configurations of our code: DLT-dyn (kernel / basis / dense path), static DLT,
+            the CI linear model, DLT-dyn with the static gate, DLTPlug with DLinear / PatchTST / iTransformer,
+            and the S-Mamba baseline.
+--ablation  also the other kernel variants of the P0 study, the MoVE-style gate, all-neighbour models and LagTS.
+The dataset of the selection check is read from the fixed data directory (scripts/paths.py).
 
 1. Each model is built and prepared on the CPU, copied to the GPU, and the forward output and the gradient of
    every parameter are compared in three settings:
@@ -16,6 +20,8 @@ DLTPlug with DLinear / PatchTST / iTransformer and LagTS.
    compared with itself. Such parameters are listed as "zero-gradient".
 2. Neighbour selection (prepare) on the GPU picks the same sources as on the CPU. Ties (e.g. a dead sensor,
    whose correlation with every source is 0) may be broken differently and are accepted if the scores agree.
+3. With --all on a GPU where mamba-ssm is installed: S-Mamba with the mamba_ssm block equals S-Mamba with the
+   pure-PyTorch block (same parameters), i.e. the fallback of layers/MambaPy.py is the same function.
 
 Exit code 1 if a float64 or float32/TF32-off check fails. --device cpu compares the CPU with itself (dry run).
 """
@@ -25,13 +31,15 @@ import numpy as np, torch
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(REPO / 'scripts'))
 os.chdir(REPO)
 from models import DLT  # noqa: E402
+import paths  # noqa: E402
 
 p = argparse.ArgumentParser()
-p.add_argument('--data', default='', help='dataset file (.csv / .npz) or a directory that holds one, for the selection check')
 p.add_argument('--device', default='cuda')
-p.add_argument('--all', action='store_true', help='also the other DLT variants, gates, DLTPlug and LagTS')
+p.add_argument('--all', action='store_true', help='the ten representative configurations (DLT, plug-in, S-Mamba)')
+p.add_argument('--ablation', action='store_true', help='also the other kernel variants, gates and LagTS')
 a = p.parse_args()
 dev = torch.device(a.device)
 if dev.type == 'cuda' and not torch.cuda.is_available():
@@ -50,23 +58,31 @@ def cfg(**kw):
              individual=False, d_model=64, d_ff=64, n_heads=4, e_layers=2, d_layers=1, factor=3, dropout=0.0,
              activation='gelu', embed='timeF', freq='h', output_attention=False, use_norm=1, patch_len=16, stride=8,
              lagts_rel_dim=8, lagts_lambda=0.1, plug_base='DLinear', down_sampling_layers=0, down_sampling_window=1,
-             down_sampling_method=None, channel_independence=1, decomp_method='moving_avg', top_k=5, num_kernels=6)
+             down_sampling_method=None, channel_independence=1, decomp_method='moving_avg', top_k=5, num_kernels=6,
+             d_state=8, mamba_impl='torch')
     c.update(kw)
     return types.SimpleNamespace(**c)
 
 
 SPECS = [(f'DLT dltdyn impl={i}', DLT.Model, dict(dlt_variant='dltdyn', dlt_impl=i)) for i in ('kernel', 'basis')]
-if a.all:
-    from models import DLTPlug, LagTS  # noqa: E402
-    SPECS += [(f'DLT {v}', DLT.Model, dict(dlt_variant=v)) for v in
-              ('ci', 'scalar', 'shift', 'tap3', 'full', 'topk', 'mill', 'milldyn', 'scalardyn', 'dlt')]
-    SPECS += [('DLT dlt impl=basis', DLT.Model, dict(dlt_variant='dlt', dlt_impl='basis'))]
-    SPECS += [(f'DLT {v} impl=dense', DLT.Model, dict(dlt_variant=v, dlt_impl='dense')) for v in ('dlt', 'dltdyn')]
-    SPECS += [(f'DLT dltdyn gate={g}', DLT.Model, dict(dlt_gate=g)) for g in ('moe', 'static')]
-    SPECS += [(f'DLT {v} all neighbours (dense)', DLT.Model, dict(dlt_variant=v, dlt_impl='dense', dlt_neighbours='all'))
-              for v in ('dlt', 'dltdyn')]
+if a.all or a.ablation:
+    from models import DLTPlug, SMamba  # noqa: E402
+    SPECS += [('DLT dltdyn impl=dense', DLT.Model, dict(dlt_variant='dltdyn', dlt_impl='dense')),
+              ('DLT dlt', DLT.Model, dict(dlt_variant='dlt')),
+              ('DLT ci', DLT.Model, dict(dlt_variant='ci')),
+              ('DLT dltdyn gate=static', DLT.Model, dict(dlt_gate='static'))]
     SPECS += [(f'DLTPlug {b} + dltdyn', DLTPlug.Model, dict(plug_base=b, dlt_impl='basis'))
               for b in ('DLinear', 'PatchTST', 'iTransformer')]
+    SPECS += [('S-Mamba (PyTorch block)', SMamba.Model, dict())]
+if a.ablation:
+    from models import LagTS  # noqa: E402
+    SPECS += [(f'DLT {v}', DLT.Model, dict(dlt_variant=v)) for v in
+              ('scalar', 'shift', 'tap3', 'full', 'topk', 'mill', 'milldyn', 'scalardyn')]
+    SPECS += [('DLT dlt impl=basis', DLT.Model, dict(dlt_variant='dlt', dlt_impl='basis')),
+              ('DLT dlt impl=dense', DLT.Model, dict(dlt_variant='dlt', dlt_impl='dense')),
+              ('DLT dltdyn gate=moe', DLT.Model, dict(dlt_gate='moe'))]
+    SPECS += [(f'DLT {v} all neighbours (dense)', DLT.Model, dict(dlt_variant=v, dlt_impl='dense', dlt_neighbours='all'))
+              for v in ('dlt', 'dltdyn')]
     SPECS += [('LagTS', LagTS.Model, dict(enc_in=7, dec_in=7, c_out=7))]
 
 MODES = [('float64', torch.float64, None, 1e-9, True),
@@ -82,8 +98,8 @@ def build(name, cls, kw):
     """model on the CPU (float32) with prepared neighbour sets and every parameter moved off its initial value"""
     c = cfg(**kw)
     torch.manual_seed(1)
-    m = cls(c).float()
     with contextlib.redirect_stdout(io.StringIO()):
+        m = cls(c).float()
         if hasattr(m, 'prepare'):
             m.prepare(Xtr[:, :c.enc_in])
     with torch.no_grad():
@@ -137,13 +153,34 @@ if zero_note:
         print(f'  {name}: ' + ', '.join(zs))
 
 
+# ---- S-Mamba: the mamba_ssm block against the pure-PyTorch block
+if (a.all or a.ablation) and dev.type == 'cuda':
+    print('\n== S-Mamba: mamba_ssm block vs pure-PyTorch block (float32, same parameters)')
+    try:
+        import mamba_ssm  # noqa: F401
+    except ImportError:
+        print('skipped: mamba-ssm is not installed, so S-Mamba runs use the pure-PyTorch block (slower, same model)')
+    else:
+        name, c, m = next(x for x in models if x[0].startswith('S-Mamba'))
+        with contextlib.redirect_stdout(io.StringIO()):
+            ms = SMamba.Model(cfg(mamba_impl='ssm')).float()
+        ms.load_state_dict(m.state_dict())
+        ms = ms.to(dev).eval()
+        yc, gc = run(copy.deepcopy(m), c, name, torch.device('cpu'), torch.float32)
+        yd, gd = run(ms, c, name, dev, torch.float32)
+        e_out = ((yd - yc).abs().max() / yc.abs().max()).item()
+        G = max(g.abs().max().item() for g in gc.values())
+        errs = {n: (gd[n] - gc[n]).abs().max().item() / max(gc[n].abs().max().item(), FLOOR * G) for n in gc}
+        worst = max(errs, key=errs.get)
+        ok = e_out < 1e-4 and errs[worst] < 1e-4
+        print(f"{'PASS' if ok else 'FAIL'}  output {e_out:.1e}   gradients {errs[worst]:.1e} (largest at {worst})")
+        if not ok:
+            fails.append('S-Mamba: mamba_ssm vs PyTorch block')
+
+
 # ---- neighbour selection on the device
 def load_values(path):
-    """(train split of a dataset, label) from a .csv / .npz file or the first known file in a directory"""
-    if os.path.isdir(path):
-        cand = [os.path.join(path, f) for f in ('weather.csv', 'PEMS08.npz', 'PEMS04.npz', 'electricity.csv', 'ETTh1.csv')]
-        cand += sorted(str(q) for q in Path(path).glob('*.csv')) + sorted(str(q) for q in Path(path).glob('*.npz'))
-        path = next((q for q in cand if os.path.exists(q)), '')
+    """(train split of a dataset, label) from a .csv / .npz file"""
     if path.endswith('.npz'):
         d = np.load(path)['data']
         d = d[..., 0] if d.ndim == 3 else d
@@ -152,10 +189,12 @@ def load_values(path):
         import pandas as pd
         d = pd.read_csv(path).iloc[:, 1:].values
         return d[:int(0.7 * len(d))].astype(np.float64), f'{os.path.basename(path)} (first 70 %)'
-    return Xtr, 'synthetic data (pass --data for a real dataset)'
+    return Xtr, 'synthetic data (no dataset found in dataset/)'
 
 
-values, src = load_values(a.data) if a.data else load_values('')
+found = next((str(paths.path_of(f)) for f in ('weather.csv', 'PEMS08.npz', 'PEMS04.npz', 'electricity.csv', 'ETTh1.csv')
+              if paths.exists(f)), '')
+values, src = load_values(found)
 print(f'\n== neighbour selection on {dev} vs cpu: {src}, {values.shape[1]} variables')
 x = DLT._diff_standardise(values, 8000, 'cpu')
 score = torch.stack([DLT._abs_ccf(x, tau) for tau in range(49)]).max(0).values       # (target, source)
@@ -171,7 +210,7 @@ for mode in ('ccf', 'random'):
           + (f', {int((~same & tied).sum())} with ties broken differently' if not same.all() else ''))
     if not ok:
         fails.append(f'neighbour selection ({mode})')
-if a.all:
+if a.ablation:
     ic = DLT.select_neighbours(values, 8, 48, device='cpu')[0]
     tc = DLT.select_lags(values, ic, 5, 48, device='cpu').cpu()
     tg = DLT.select_lags(values, ic.to(dev), 5, 48, device=dev).cpu()

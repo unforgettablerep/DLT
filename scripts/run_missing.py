@@ -1,12 +1,18 @@
 """Print the job lines of a job list (scripts/exps.py, hpsearch.py) that have no result yet.
 
-    python scripts/run_missing.py <jobs file> [<jobs file> ...] > missing.txt
+    python scripts/run_missing.py <list> [<list> ...] > missing.txt
+
+<list> is a suite name (work/jobs_<name>.txt, e.g. plugin_probe or gpu_tier1) or a file.
 
 A job counts as done when its --result_jsonl file holds a record with the job's --des and --fix_seed. This
 makes every queue resumable after an interruption (killed jobs, a restarted machine): run only the
 missing lines with scripts/run_queue.sh.
 """
 import json, os, re, sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import paths  # noqa: E402
 
 done = {}
 
@@ -25,7 +31,7 @@ def finished(path):
 
 
 for jobs in sys.argv[1:]:
-    for line in open(jobs):
+    for line in open(paths.jobs_file(jobs)):
         if not line.strip():
             continue
         arg = lambda k, d=None: (re.search(rf'--{k} (\S+)', line) or [None, d])[1]

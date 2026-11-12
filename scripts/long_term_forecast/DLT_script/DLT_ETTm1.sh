@@ -1,5 +1,5 @@
 #!/bin/bash
-# DLT on ETTm1. Run from the repository root:  bash scripts/long_term_forecast/DLT_script/DLT_ETTm1.sh
+# DLT on ETTm1. Run from the repository root (data: the fixed dataset/ directory, scripts/paths.py):  bash scripts/long_term_forecast/DLT_script/DLT_ETTm1.sh
 #   VARIANT=dlt bash ...            choose the kernel variant (default: dltdyn)
 #   EXTRA_ARGS="--no_use_gpu --num_workers 0" bash ...   force CPU
 #   EXTRA_ARGS="--use_multi_gpu --devices 0,1" bash ...  multi-GPU (DataParallel)
@@ -11,7 +11,7 @@ for pred_len in 96 192 336 720; do
   python -u run.py \
     --task_name long_term_forecast \
     --is_training 1 \
-    --root_path ./dataset/ETT-small/ \
+    --root_path "$(python scripts/paths.py root ETTm1.csv)/" \
     --data_path ETTm1.csv \
     --model_id ETTm1_96_$pred_len \
     --model $model_name \

@@ -38,7 +38,18 @@ CI reference (no neighbours): Weather-96 0.1942 ± 0.0006, PEMS08-96 1.1681 ± 0
 
 ## Efficiency on cpu, 4 threads: parameters / training ms per batch / inference ms per batch / peak memory MB
 
-Batch 32, input 96, horizon 96, random data; baselines with the official TSLib hyper-parameters of each dataset.
+Batch 32, input 96, horizon 96, random data; baselines with their official hyper-parameters for each dataset. First block: DLT-dyn and the eight representative baselines; second block: kernel variants of the controlled study, the plug-in and further configurations.
+
+| model | Weather | PEMS08 | ECL | Traffic |
+|---|---|---|---|---|
+| DLT-dyn | 22K / 14 / 2 / 123 | 27K / 84 / 26 / 308 | 32K / 171 / 64 / 446 | 49K / 493 / 159 / 994 |
+| Informer | 11378K / 1142 / 205 / 1034 | 11912K / 1111 / 297 / 1035 | 12454K / 1014 / 222 / 1042 | 14393K / 1080 / 250 / 1121 |
+| TimesNet | 1194K / 1069 / 250 / 213 | 150150K / 75610 / 17816 / 3295 | 150305K / 111583 / 12574 / 3300 | 301693K / 122965 / 26956 / 5868 |
+| DLinear | 19K / 2 / 1 / 88 | 19K / 10 / 5 / 109 | 19K / 13 / 3 / 137 | 19K / 40 / 23 / 202 |
+| PatchTST | 6904K / 1454 / 250 / 1298 | 415K / 1731 / 314 / 2163 | – | – |
+| iTransformer | 4834K / 132 / 23 / 269 | 3256K / 583 / 109 / 897 | 4834K / 2253 / 378 / 2567 | 6412K / 18361 / 3952 / 12401 |
+| TimeMixer | 104K / 200 / 45 / 434 | 894K / 156 / 43 / 341 | 107K / 3275 / 770 / 4920 | – |
+| TimeXer | 998K / 120 / 16 / 273 | 11009K / 9427 / 2127 / 5713 | 11086K / 19993 / 4787 / 10943 | – |
 
 | model | Weather | PEMS08 | ECL | Traffic |
 |---|---|---|---|---|
@@ -48,15 +59,11 @@ Batch 32, input 96, horizon 96, random data; baselines with the official TSLib h
 | top-5 lags | 19K / 7 / 3 / 106 | 25K / 72 / 34 / 236 | 31K / 99 / 71 / 361 | 53K / 368 / 263 / 834 |
 | MillGNN-dyn kernel | 21K / 11 / 9 / 108 | 25K / 54 / 38 / 251 | 28K / 107 / 80 / 396 | 41K / 425 / 268 / 887 |
 | DLT | 19K / 11 / 4 / 108 | 24K / 56 / 26 / 206 | 29K / 107 / 46 / 254 | 46K / 329 / 143 / 514 |
-| DLT-dyn | 22K / 14 / 2 / 123 | 27K / 84 / 26 / 308 | 32K / 171 / 64 / 446 | 49K / 493 / 159 / 994 |
 | DLT-dyn (kernel path) | 22K / 9 / 2 / 118 | 27K / 86 / 30 / 236 | 32K / 146 / 44 / 350 | 49K / 406 / 149 / 717 |
-| iTransformer | 4834K / 132 / 23 / 269 | 3256K / 583 / 109 / 897 | 4834K / 2253 / 378 / 2567 | 6412K / 18361 / 3952 / 12401 |
 | iTransformer + DLT-dyn | 4847K / 155 / 26 / 298 | 3274K / 693 / 120 / 988 | 4856K / 2463 / 363 / 2635 | 6452K / 19787 / 4033 / 12885 |
-| PatchTST | 6904K / 1454 / 250 / 1298 | 415K / 1731 / 314 / 2163 | – | – |
 | PatchTST (paper config) | 547K / 266 / 54 / 472 | 547K / 2450 / 446 / 2896 | 547K / 6291 / 1822 / 4294 | – |
-| DLinear | 19K / 2 / 1 / 88 | 19K / 10 / 5 / 109 | 19K / 13 / 3 / 137 | 19K / 40 / 23 / 202 |
-| TimeMixer | 104K / 200 / 45 / 434 | 894K / 156 / 43 / 341 | 107K / 3275 / 770 / 4920 | – |
 | LagTS | 5642K / 310 / 89 / 489 | – | – | – |
+
 
 MillGNN (reported, A100, Traffic): 9.7 GB GPU memory; iTransformer 7.5 GB in the same figure.
 

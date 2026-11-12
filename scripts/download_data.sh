@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
-# Download the datasets used in the feasibility study into ./data
-# (Time-Series-Library CSVs from the official THUML Hugging Face repo;
-#  PEMS08 flow data + road-network edge list from a community mirror).
+# Download the datasets into the fixed data directory dataset/ (Time-Series-Library layout, scripts/paths.py):
+# the Time-Series-Library CSVs from the official THUML Hugging Face repository, PEMS08 flow data and its
+# road-network edge list from a community mirror. PEMS04 (PEMS04.npz) is not on these mirrors; put it into
+# dataset/PEMS/ by hand.
+#   bash scripts/download_data.sh            # ETT, Weather, Exchange, Electricity, PEMS08
+#   bash scripts/download_data.sh traffic    # also Traffic (136 MB)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mkdir -p data
+D=dataset
+mkdir -p $D/ETT-small $D/weather $D/electricity $D/traffic $D/exchange_rate $D/PEMS
 
 TSL=https://huggingface.co/datasets/thuml/Time-Series-Library/resolve/main
-curl -fL -o data/ETTh1.csv       "$TSL/ETT-small/ETTh1.csv"
-curl -fL -o data/weather.csv     "$TSL/weather/weather.csv"
-curl -fL -o data/electricity.csv "$TSL/electricity/electricity.csv"
-# optional (not used in the reported runs):
-# curl -fL -o data/traffic.csv   "$TSL/traffic/traffic.csv"
+get() { [ -f "$2" ] || curl -fL -o "$2" "$1"; }
+for f in ETTh1 ETTh2 ETTm1 ETTm2; do get "$TSL/ETT-small/$f.csv" $D/ETT-small/$f.csv; done
+get "$TSL/weather/weather.csv"             $D/weather/weather.csv
+get "$TSL/exchange_rate/exchange_rate.csv" $D/exchange_rate/exchange_rate.csv
+get "$TSL/electricity/electricity.csv"     $D/electricity/electricity.csv
+[ "${1:-}" = traffic ] && get "$TSL/traffic/traffic.csv" $D/traffic/traffic.csv
 
 PEMS=https://huggingface.co/datasets/jimmygao3218/PEMS08/resolve/main
-curl -fL -o data/PEMS08.npz       "$PEMS/PEMS08.npz"   # (17856, 170, 3); channel 0 = flow
-curl -fL -o data/PEMS08_edges.csv "$PEMS/PEMS08.csv"   # from,to,cost
+get "$PEMS/PEMS08.npz" $D/PEMS/PEMS08.npz          # (17856, 170, 3); channel 0 = flow
+get "$PEMS/PEMS08.csv" $D/PEMS/PEMS08_edges.csv    # from,to,cost
 
-ls -la data
+find $D -type f | sort

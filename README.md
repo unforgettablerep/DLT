@@ -13,15 +13,19 @@ runtime, so the host only needs a recent NVIDIA driver. Run everything from the 
 pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
 
-# 2. data: ./dataset/weather/weather.csv (Time-Series-Library layout). A missing CSV is downloaded from
-#    Hugging Face by Time-Series-Library; the bundle is also on Google Drive / Baidu Drive (links below).
+# 2. data: fixed directory ./dataset (Time-Series-Library layout, e.g. dataset/weather/weather.csv)
+bash scripts/download_data.sh             # or copy / link an existing copy; a missing CSV is also downloaded at run time
 
 # 3. the GPU computes what the CPU computes (stand-alone DLT-dyn, under a minute)
-python scripts/gpu/check_gpu.py --data ./dataset/weather          # must end with "all checks passed"
+python scripts/gpu/check_gpu.py           # must end with "all checks passed"
 
 # 4. one training run: DLT-dyn, Weather, horizon 96, GPU 0, seed 2021
 bash scripts/train_dltdyn.sh
 ```
+
+There is nothing to configure: every script reads the datasets from `dataset/` and writes job lists, logs,
+checkpoints and result records to `work/` ([`scripts/paths.py`](scripts/paths.py)). Both directories are ignored
+by git; if the data or an earlier work directory is elsewhere, make `dataset` or `work` a symbolic link to it.
 
 The script ends with one line, for example (CPU, PyTorch 2.5.1, this exact command):
 
@@ -30,10 +34,11 @@ Weather_96_96 seed 2021: MSE 0.1642  MAE 0.2117  | best epoch 7 of 10, 26.2 s pe
 ```
 
 On the GPU expect the same metrics to about three decimals: cuDNN and TensorFloat-32 are not bit-identical to the
-CPU. Other datasets and horizons: `DATASET=PEMS08 PRED_LEN=12 bash scripts/train_dltdyn.sh` (options in the script
-header). CPU reference values of the default configuration, mean ± std over seeds 2021–2023:
+CPU. Other datasets and horizons: `bash scripts/train_dltdyn.sh PEMS08 12` (dataset, horizon, then optionally the
+seed and further `run.py` arguments; see the script header). CPU reference values of the default configuration,
+mean ± std over seeds 2021–2023:
 
-| `DATASET` / `PRED_LEN` | DLT-dyn | same model without the cross branch (CI) | CPU s / epoch (1 thread) |
+| dataset / horizon | DLT-dyn | same model without the cross branch (CI) | CPU s / epoch (1 thread) |
 |---|---|---|---:|
 | Weather / 96 (MSE, MAE) | 0.1637 ± 0.0006, 0.2101 ± 0.0014 | 0.1942, 0.2335 | 25 |
 | ECL / 96 (MSE, MAE) | 0.1713 ± 0.0007, 0.2619 ± 0.0003 | 0.1975, 0.2739 | 201 |
@@ -45,11 +50,11 @@ header). CPU reference values of the default configuration, mean ± std over see
 ETTh1 is listed on purpose: on weakly coupled data the cross-variable branch does not help (see
 [`results/README.md`](results/README.md)).
 
-Datasets: the Time-Series-Library bundle ([Google Drive](https://drive.google.com/drive/folders/13Cg1KYOlzM5C7K8gK8NfC-F3EYxkM3D2?usp=sharing),
-[Baidu Drive](https://pan.baidu.com/s/1r3KhGd0Q9PJIUZdfEYoymg?pwd=i9iy),
-[Hugging Face](https://huggingface.co/datasets/thuml/Time-Series-Library)) goes to `./dataset/`. PEMS04 / PEMS08
-(`PEMS0x.npz`, flow in channel 0) are not part of it; put them in `./dataset/PEMS/`, for example
-`curl -fL -o dataset/PEMS/PEMS08.npz https://huggingface.co/datasets/jimmygao3218/PEMS08/resolve/main/PEMS08.npz`.
+Datasets: `scripts/download_data.sh` fetches the Time-Series-Library CSVs and PEMS08 into `dataset/`. The bundle
+is also on [Google Drive](https://drive.google.com/drive/folders/13Cg1KYOlzM5C7K8gK8NfC-F3EYxkM3D2?usp=sharing),
+[Baidu Drive](https://pan.baidu.com/s/1r3KhGd0Q9PJIUZdfEYoymg?pwd=i9iy) and
+[Hugging Face](https://huggingface.co/datasets/thuml/Time-Series-Library). PEMS04 / PEMS08 (`PEMS0x.npz`, flow in
+channel 0) are not part of it; they belong in `dataset/PEMS/` (PEMS04 has to be added by hand).
 
 ## Idea
 Cross-variable effects in multivariate series are often **lagged and spread over several lags**
@@ -66,12 +71,16 @@ with a small bank of shared basis kernels φ_r (cost linear in the number of var
 
 ## Repository layout
 ```
-run.py  exp/  data_provider/  layers/  models/  utils/     Time-Series-Library; ours: models/DLT.py, DLTPlug.py, LagTS.py
+run.py  exp/  data_provider/  layers/  models/  utils/     Time-Series-Library; ours: models/DLT.py, DLTPlug.py,
+                                     LagTS.py, SMamba.py (S-Mamba baseline) and layers/MambaPy.py
+scripts/paths.py                     the fixed data and work directories (dataset/, work/)
 scripts/train_dltdyn.sh              quick start: one GPU, one dataset, stand-alone DLT-dyn
 scripts/gpu/                         GPU-vs-CPU check, job lists and queue of the remaining GPU experiments
-scripts/long_term_forecast/DLT_script/   DLT per dataset at four horizons (the other *_script/ folders are upstream)
+scripts/long_term_forecast/DLT_script/   DLT per dataset at four horizons; */SMamba*.sh: official S-Mamba settings
+                                     (the other scripts of the *_script/ folders are upstream)
 scripts/exps.py  scripts/p0 p1 p2/   experiment suites, validation search, aggregation, unit tests
-scripts/run_queue.sh  run_missing.py  run_p1p2_cpu.sh  resume_p1p2_cpu.sh     resumable CPU queues
+scripts/run_queue.sh  run_missing.py  run_p1p2_cpu.sh     resumable CPU queues
+scripts/collect_results.py           merges the records of work/ into results/ and rebuilds the tables
 results/                             conclusions (README.md), tables and raw records of P0 / P1 / P2
 code/                                first feasibility prototype (proto.py) with results/runs.jsonl, results/summary.md
 DLT_CHANGES.md                       every change to the upstream snapshot
@@ -90,7 +99,13 @@ is ignored by git; `results/p0`, `p1`, `p2` are the tracked experiment records.
   GPU efficiency): [`GPU_RUNS.md`](GPU_RUNS.md)
 
 All of these ran on a 4-core CPU with the code of this repository; the unit tests are
-`python scripts/p0/test_variants.py <data dir>` and `python scripts/p0/test_p1p2.py`.
+`python scripts/p0/test_variants.py` and `python scripts/p0/test_p1p2.py`.
+
+**Baselines.** Every comparison (accuracy and efficiency) uses the same eight representative models, one per
+family: Informer, TimesNet, DLinear, PatchTST, iTransformer, TimeMixer, TimeXer and S-Mamba (`BASELINES` in
+[`scripts/exps.py`](scripts/exps.py)), each with its official hyper-parameters. S-Mamba is not in
+Time-Series-Library; `models/SMamba.py` re-implements it after the official code (`mamba_ssm` block if
+installed, a pure-PyTorch block otherwise).
 
 ## DLT in Time-Series-Library
 The repository root is a snapshot of [thuml/Time-Series-Library](https://github.com/thuml/Time-Series-Library)
@@ -209,11 +224,11 @@ from deep state-of-the-art models — only the relative comparison between varia
 
 ### Reproduce the prototype
 ```bash
-bash scripts/download_data.sh                 # into ./data
-python code/proto.py --data PEMS08 --pred_len 96 --root data --variant dltdyn --out results/my_runs.jsonl
+bash scripts/download_data.sh                 # into the fixed dataset/ directory
+python code/proto.py --data PEMS08 --pred_len 96 --variant dltdyn --out results/my_runs.jsonl
 bash scripts/run_grid.sh                      # the full grid (CPU; ~1–2 h with 4 workers)
 python code/agg_md.py results/runs_reproduced.jsonl
-python code/pems_lag.py data/PEMS08.npz data/PEMS08_edges.csv      # lag premise check
+python code/pems_lag.py                       # lag premise check
 ```
 The architecture figure and its generator moved to the `DLTpaper` repository (`figures/`, `figures/src/`).
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# DLT on ECL. Run from the repository root:  bash scripts/long_term_forecast/DLT_script/DLT_ECL.sh
+# DLT on ECL. Run from the repository root (data: the fixed dataset/ directory, scripts/paths.py):  bash scripts/long_term_forecast/DLT_script/DLT_ECL.sh
 #   VARIANT=dlt bash ...            choose the kernel variant (default: dltdyn)
 #   EXTRA_ARGS="--no_use_gpu --num_workers 0" bash ...   force CPU
 #   EXTRA_ARGS="--use_multi_gpu --devices 0,1" bash ...  multi-GPU (DataParallel)
@@ -11,7 +11,7 @@ for pred_len in 96 192 336 720; do
   python -u run.py \
     --task_name long_term_forecast \
     --is_training 1 \
-    --root_path ./dataset/electricity/ \
+    --root_path "$(python scripts/paths.py root electricity.csv)/" \
     --data_path electricity.csv \
     --model_id ECL_96_$pred_len \
     --model $model_name \

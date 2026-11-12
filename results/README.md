@@ -142,15 +142,36 @@ Test MSE of DLT-dyn relative to the same model without the cross branch (CI line
 - The interpretability claim must therefore stop at "the selected sources are road-near and act with a lag".
   "The kernels recover travel times" is not supported.
 
-## 8. Baselines re-run on CPU (official TSLib hyper-parameters, 264 runs)
+## 8. Baselines re-run on CPU (official hyper-parameters, 277 runs)
 
-**Re-run vs reported.** MSE averaged over the four horizons; the reported numbers are those cited by MillGNN.
+**The representative set.** Every comparison now uses eight baselines, one per model family: Informer, TimesNet,
+DLinear, PatchTST, iTransformer, TimeMixer, TimeXer and S-Mamba (`BASELINES` in
+[`../scripts/exps.py`](../scripts/exps.py)). The CPU covered DLinear, iTransformer and TimeMixer on the small
+datasets and S-Mamba on ETTh1, ETTh2, Exchange and Weather-96; the rest is GPU tier 3. LagTS stays available but is
+no longer part of the default set.
+
+**S-Mamba port.** `models/SMamba.py` re-implements S-Mamba (not part of Time-Series-Library) after the official
+code; these runs use its pure-PyTorch Mamba block. With the official hyper-parameters it reproduces the published
+numbers (MSE, one seed):
+
+| | 96 | 192 | 336 | 720 | average |
+|---|---:|---:|---:|---:|---:|
+| ETTh1 | +0.7 % | +0.4 % | +0.4 % | +1.8 % | +0.9 % |
+| ETTh2 | +1.6 % | +0.6 % | −0.5 % | −0.2 % | +0.3 % |
+| Exchange | +4.2 % | −0.3 % | −0.6 % | −1.1 % | −0.6 % |
+| Weather | +1.1 % | | | | |
+
+Change against the S-Mamba paper (Wang et al., Neurocomputing 2025, Tables 3 and 4).
+
+**Re-run vs reported.** MSE averaged over the four horizons; the reported numbers are those cited by MillGNN
+(S-Mamba: its own paper; LagTS: its own paper).
 
 | | ETTh1 | ETTh2 | ETTm1 | ETTm2 | Exchange | Weather | ECL |
 |---|---|---|---|---|---|---|---|
 | DLinear | +1.3 % | +0.7 % | +0.1 % | −0.9 % | −3.2 % | 0.0 % | +6.3 % |
 | iTransformer | +0.3 % | −0.1 % | +0.2 % | +1.5 % | +2.0 % | GPU | GPU |
 | TimeMixer | +0.6 % | +6.5 % | +0.8 % | +0.7 % | −1.9 % | GPU | GPU |
+| S-Mamba (our port, see above) | +0.9 % | +0.3 % | GPU | GPU | −0.6 % | +1.1 % (96 only) | GPU |
 | LagTS (our re-implementation) | +5.0 % | +11.1 % | – | – | +23.9 % | GPU | – |
 
 - The pipeline reproduces the published DLinear, iTransformer and TimeMixer numbers within about 2 % in most
@@ -169,6 +190,7 @@ Test MSE of DLT-dyn relative to the same model without the cross branch (CI line
 | DLinear | 0.462 | 0.563 | 0.403 | 0.347 | **0.343** | 0.265 | 0.225 |
 | iTransformer | 0.455 | 0.382 | 0.408 | 0.292 | 0.367 | GPU | GPU |
 | TimeMixer | 0.450 | 0.388 | **0.384** | **0.277** | 0.385 | GPU | GPU |
+| S-Mamba | 0.459 | 0.382 | GPU | GPU | 0.365 | GPU | GPU |
 
 On Weather and ECL only CI and DLinear were re-run here. The GPU runs are needed before claiming the best
 result among re-run models there.

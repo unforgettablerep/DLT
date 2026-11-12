@@ -53,3 +53,14 @@
 {"dataset": "Traffic", "C": 862, "model": "iTransformer + DLT-dyn", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 6451704, "train_ms": 19787.0, "infer_ms": 4032.6, "mem_MB": 12885.1, "gpu": null}
 {"dataset": "Traffic", "C": 862, "model": "DLinear", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 18624, "train_ms": 40.2, "infer_ms": 22.7, "mem_MB": 201.9, "gpu": null}
 {"dataset": "Traffic", "model": "TimeMixer", "device": "cpu", "error": "?"}
+{"dataset": "Weather", "C": 21, "model": "Informer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 11378197, "train_ms": 1142.2, "infer_ms": 204.6, "mem_MB": 1033.8, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "TimesNet", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 1193749, "train_ms": 1069.4, "infer_ms": 249.6, "mem_MB": 212.6, "gpu": null}
+{"dataset": "Weather", "C": 21, "model": "TimeXer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 997728, "train_ms": 120.5, "infer_ms": 16.5, "mem_MB": 272.9, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "Informer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 11912362, "train_ms": 1111.3, "infer_ms": 297.3, "mem_MB": 1035.2, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "TimesNet", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 150149994, "train_ms": 75609.7, "infer_ms": 17815.7, "mem_MB": 3294.9, "gpu": null}
+{"dataset": "PEMS08", "C": 170, "model": "TimeXer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 11008608, "train_ms": 9427.1, "infer_ms": 2126.9, "mem_MB": 5712.6, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "Informer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 12453697, "train_ms": 1014.4, "infer_ms": 222.5, "mem_MB": 1041.7, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "TimesNet", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 150304769, "train_ms": 111583.1, "infer_ms": 12573.7, "mem_MB": 3299.5, "gpu": null}
+{"dataset": "ECL", "C": 321, "model": "TimeXer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 11085920, "train_ms": 19992.6, "infer_ms": 4787.1, "mem_MB": 10943.2, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "Informer", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 14393182, "train_ms": 1079.6, "infer_ms": 249.5, "mem_MB": 1120.7, "gpu": null}
+{"dataset": "Traffic", "C": 862, "model": "TimesNet", "device": "cpu", "threads": 4, "batch": 32, "H": 96, "params": 301692958, "train_ms": 122965.1, "infer_ms": 26955.5, "mem_MB": 5868.4, "gpu": null}

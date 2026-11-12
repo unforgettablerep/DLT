@@ -1,13 +1,14 @@
 #!/bin/bash
-# Run the jobs of a list that have no result yet (scripts/run_missing.py) on the GPU.
-#   bash scripts/gpu/run_gpu_queue.sh <jobs file>            one job at a time on GPU 0 (single-GPU default)
-#   bash scripts/gpu/run_gpu_queue.sh <jobs file> 0 0 0      three jobs at a time on GPU 0 (small models)
-#   bash scripts/gpu/run_gpu_queue.sh <jobs file> 0 1        one job at a time on each of GPU 0 and GPU 1
+# Run the jobs of a list that have no result yet on the GPU.
+#   bash scripts/gpu/run_gpu_queue.sh <list>            one job at a time on GPU 0 (single-GPU default)
+#   bash scripts/gpu/run_gpu_queue.sh <list> 0 0 0      three jobs at a time on GPU 0 (small models)
+#   bash scripts/gpu/run_gpu_queue.sh <list> 0 1        one job at a time on each of GPU 0 and GPU 1
+# <list> is a suite name (work/jobs_<name>.txt, e.g. gpu_tier1 or plugin_probe) or a file.
 # One worker per listed GPU id; worker i takes every n-th missing job (the lists are ordered longest first) and
 # its jobs see only that GPU through CUDA_VISIBLE_DEVICES (TSLib keeps a mask set by the caller).
 # Safe to re-run after an interruption: finished jobs are skipped.
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
-JOBS=$(cd "$(dirname "$1")" && pwd)/$(basename "$1"); shift
+JOBS=$(python "$REPO/scripts/paths.py" jobs "$1") || exit 1; shift
 GPUS=("$@"); [ ${#GPUS[@]} -gt 0 ] || GPUS=(0)
 python "$REPO/scripts/run_missing.py" "$JOBS" > "$JOBS.missing"
 echo "$(wc -l < "$JOBS.missing") of $(wc -l < "$JOBS") jobs to run, ${#GPUS[@]} worker(s) on GPU ${GPUS[*]} ($(date))"

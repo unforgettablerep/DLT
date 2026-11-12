@@ -1,13 +1,15 @@
 """Tables of the priority-0 experiments.
 
-    python scripts/p0/aggregate.py results/p0/results_p0.jsonl results/p0/summary.md
+    python scripts/p0/aggregate.py          # reads results/p0/results_p0.jsonl, writes results/p0/summary.md
 """
 import json, sys, collections
+from pathlib import Path
 import numpy as np
 from scipy import stats
 
-path = sys.argv[1]
-out = sys.argv[2] if len(sys.argv) > 2 else None
+P0 = Path(__file__).resolve().parents[2] / 'results' / 'p0'
+path = sys.argv[1] if len(sys.argv) > 1 else str(P0 / 'results_p0.jsonl')
+out = sys.argv[2] if len(sys.argv) > 2 else str(P0 / 'summary.md')
 rows = [json.loads(l) for l in open(path) if l.strip()]
 SETTINGS = ['ETTh1_96', 'Weather_96', 'ECL_96', 'PEMS08_24', 'PEMS08_96']
 CONFIGS = [('ci', 'none'), ('scalar', 'none'), ('shift', 'none'), ('tap3', 'none'), ('full', 'none'),

@@ -1,15 +1,20 @@
 """Plug-in diagnosis: accuracy and training length of every arm, side by side.
 
-    python scripts/p1/plugin_diag.py <dir with results_plugin*.jsonl> [<more dirs> ...]
+    python scripts/p1/plugin_diag.py
 
-Reads results_plugin.jsonl, results_plugin_large.jsonl and results_plugin_probe.jsonl. For every dataset, horizon and
-backbone it prints one line per arm (alone, + DLT-dyn, and the probe arms samelr / gate / gate_samelr): test MSE and
+Reads results_plugin.jsonl, results_plugin_large.jsonl, results_plugin_probe.jsonl and results_allnb.jsonl from
+results/p1 and from the work directory (fixed locations; a run present in both is taken from work/). For every
+dataset, horizon and backbone it prints one line per arm (alone, + DLT-dyn, and the probe arms samelr / gate / gate_samelr): test MSE and
 MAE, the change against the backbone alone, epochs run, the epoch of the best validation loss, and that loss.
 An arm that stops much earlier than the backbone alone points to the training recipe (the fast DLT branch
 triggers early stopping before the backbone has converged), not to the branch itself.
 """
 import collections, glob, json, os, sys
+from pathlib import Path
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import paths  # noqa: E402
 
 FILES = {'ETTh1.csv': 'ETTh1', 'ETTh2.csv': 'ETTh2', 'ETTm1.csv': 'ETTm1', 'ETTm2.csv': 'ETTm2', 'weather.csv': 'Weather',
          'exchange_rate.csv': 'Exchange', 'electricity.csv': 'ECL', 'traffic.csv': 'Traffic', 'PEMS04.npz': 'PEMS04',
@@ -19,10 +24,14 @@ LABEL = {'alone': 'alone', 'dlt': '+ DLT-dyn (branch lr 3e-3)', 'dlt_samelr': '+
          'dlt_gate': '+ DLT-dyn, static gate', 'dlt_gate_samelr': '+ DLT-dyn, gate + backbone lr',
          'dlt_all': '+ DLT-dyn, all neighbours'}
 
-rows = []
-for d in sys.argv[1:]:
+runs = {}
+for d in sys.argv[1:] or [paths.REPO / 'results' / 'p1', paths.WORK]:
     for f in sorted(glob.glob(os.path.join(d, 'results_plugin*.jsonl')) + glob.glob(os.path.join(d, 'results_allnb.jsonl'))):
-        rows += [json.loads(l) for l in open(f) if l.strip()]
+        for line in open(f):
+            if line.strip():
+                r = json.loads(line)
+                runs[(os.path.basename(f), r.get('des'), r.get('seed'))] = r      # later directories win
+rows = list(runs.values())
 groups = collections.defaultdict(lambda: collections.defaultdict(list))
 for r in rows:
     if r.get('model') != 'DLTPlug':

@@ -1,12 +1,13 @@
 """Random hyper-parameter search for DLT-dyn on the validation split (fairness w.r.t. MillGNN's 20-trial NNI search).
 
-    python scripts/p1/hpsearch.py make   --data <dir> --work <dir> [--datasets ETTh1 ...] [--H 96] [--trials 20] [--device cpu]
-    bash scripts/run_queue.sh <work>/jobs_hp.txt
-    python scripts/p1/hpsearch.py select --work <dir>          # -> <work>/tuned.json (+ printed table)
-    python scripts/p1/hpsearch.py tuned  --data <dir> --work <dir> [--horizons 96 192 336 720] [--seeds ...]
-    bash scripts/run_queue.sh <work>/jobs_tuned.txt
---tag <suffix> keeps a second search in the same work dir, e.g. PEMS at horizon 12 (TimeMixer protocol):
-    hpsearch.py make --datasets PEMS04 PEMS08 --H 12 --tag _pems ...; select --tag _pems; tuned --horizons 12 --tag _pems
+    python scripts/p1/hpsearch.py make   [--datasets ETTh1 ...] [--H 96] [--trials 20] [--device cpu]
+    bash scripts/run_queue.sh hp
+    python scripts/p1/hpsearch.py select                       # -> work/tuned.json (+ printed table)
+    python scripts/p1/hpsearch.py tuned  [--horizons 96 192 336 720] [--seeds ...]
+    bash scripts/run_queue.sh tuned
+Everything is read from and written to the fixed work directory (scripts/paths.py).
+--tag <suffix> keeps a second search next to the first, e.g. PEMS at horizon 12 (TimeMixer protocol):
+    hpsearch.py make --datasets PEMS04 PEMS08 --H 12 --tag _pems; select --tag _pems; tuned --horizons 12 --tag _pems
 
 Every trial is one training run with seed 2021; the configuration with the lowest best validation loss is
 selected per dataset (searched at --H and reused for all horizons when --horizons is wider: a budget choice of
@@ -42,7 +43,6 @@ def cfg_args(c):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('cmd', choices=['make', 'select', 'tuned'])
-    p.add_argument('--data'); p.add_argument('--work', required=True)
     p.add_argument('--datasets', nargs='+', default=['ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather'])
     p.add_argument('--H', type=int, default=96)
     p.add_argument('--trials', type=int, default=20)
@@ -52,7 +52,7 @@ def main():
     p.add_argument('--tag', default='', help='suffix of the suite / file names (hp<tag>, tuned<tag>)')
     a = p.parse_args()
     HP, TU = 'hp' + a.tag, 'tuned' + a.tag
-    work = os.path.abspath(a.work)
+    work = str(exps.paths.WORK)
     if a.cmd == 'make':
         a.suite = HP; g = exps.Gen(a, HP)
         for ds in a.datasets:

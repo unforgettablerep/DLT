@@ -63,6 +63,9 @@ def get_parser():
     # model define
     parser.add_argument('--expand', type=int, default=2, help='expansion factor for Mamba')
     parser.add_argument('--d_conv', type=int, default=4, help='conv kernel size for Mamba')
+    parser.add_argument('--d_state', type=int, default=32, help='S-Mamba: state size of the Mamba blocks')
+    parser.add_argument('--mamba_impl', type=str, default='auto', choices=['auto', 'ssm', 'torch'],
+                        help='S-Mamba: mamba_ssm block (ssm), pure-PyTorch block (torch), or ssm if installed (auto)')
     parser.add_argument('--tv_dt', type=int, default=0, help='whether to use time variant dt for MambaSL')
     parser.add_argument('--tv_B', type=int, default=0, help='whether to use time variant B for MambaSL')
     parser.add_argument('--tv_C', type=int, default=0, help='whether to use time variant C for MambaSL')

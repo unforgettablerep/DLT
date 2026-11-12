@@ -1,7 +1,10 @@
 """P2: learned lag kernels on PEMS08 against the road network.
 
-    python scripts/p2/kernels.py --ckpt <dir with P0 checkpoints> --data <dir with PEMS08.npz, PEMS08_edges.csv> \
-                                 --out results/p2 [--fig_dir ../DLTpaper/figures] [--H 96]
+    python scripts/p2/kernels.py [--fig_dir <dir>] [--H 96]
+
+Fixed locations (scripts/paths.py): PEMS08.npz and PEMS08_edges.csv from dataset/, the P0 checkpoints from
+work/ckpt, statistics to results/p2. The figure goes to ../DLTpaper/figures if that repository is checked out next
+to this one, else to results/p2 (ignored by git there).
 
 For every trained DLT / DLT-dyn checkpoint (all seeds) the kernels K_ij(tau) = sum_r alpha_ijr phi_r(tau) of the
 selected pairs are compared with the road graph (PEMS08_edges.csv: directed sensor links with length):
@@ -9,7 +12,7 @@ selected pairs are compared with the road graph (PEMS08_edges.csv: directed sens
   * lag centroid sum_tau tau |K| / sum |K| and peak lag of the kernel against the road distance,
   * upstream (a directed path source -> target exists) against downstream sources.
 DLT-dyn kernels are the mean input-adapted kernels over the test windows. Writes kernels_pems08.json (statistics)
-to --out and fig_kernels_pems08.pdf / .png to --fig_dir (default: --out). Figures are kept in the paper repository
+to results/p2 and fig_kernels_pems08.pdf / .png to --fig_dir. Figures are kept in the paper repository
 (DLTpaper/figures), not in this one.
 """
 import argparse, glob, json, os, sys
@@ -21,6 +24,8 @@ from scipy.stats import spearmanr
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(REPO / 'scripts'))
+import paths as fixed  # noqa: E402
 
 
 def road_graph(edges_csv, C):
@@ -141,17 +146,19 @@ def figure(path_pdf, examples, idx, K, h, d, centroid):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--ckpt', required=True); p.add_argument('--data', required=True)
-    p.add_argument('--out', required=True); p.add_argument('--H', type=int, default=96)
-    p.add_argument('--fig_dir', default='', help='directory of the figure (default: --out)')
+    p.add_argument('--H', type=int, default=96)
+    p.add_argument('--fig_dir', default='', help='directory of the figure (default: ../DLTpaper/figures if present)')
     a = p.parse_args()
-    a.out, a.ckpt, a.data = (os.path.abspath(x) for x in (a.out, a.ckpt, a.data))   # before the chdir below
-    a.fig_dir = os.path.abspath(a.fig_dir) if a.fig_dir else a.out
+    a.out, a.ckpt = str(REPO / 'results' / 'p2'), str(fixed.WORK / 'ckpt')
+    a.data = str(fixed.root_of('PEMS08.npz'))
+    paper = next((d / 'figures' for d in REPO.parent.iterdir()                 # the paper repository next to this one
+                  if d.name.lower() == 'dltpaper' and (d / 'figures').is_dir()), None)
+    a.fig_dir = os.path.abspath(a.fig_dir) if a.fig_dir else (str(paper) if paper else a.out)
     os.makedirs(a.fig_dir, exist_ok=True)
     os.chdir(REPO)
     os.makedirs(a.out, exist_ok=True)
     C = np.load(os.path.join(a.data, 'PEMS08.npz'))['data'].shape[1]
-    hops, dist, down = road_graph(os.path.join(a.data, 'PEMS08_edges.csv'), C)
+    hops, dist, down = road_graph(str(fixed.path_of('PEMS08_edges.csv')), C)
     res = {}
     for variant in ('dlt', 'dltdyn'):
         paths = sorted(glob.glob(os.path.join(a.ckpt, f'*PEMS08_{a.H}_DLT_*_pl{a.H}_*_{variant}_k8_L48_R4*', 'checkpoint.pth')))

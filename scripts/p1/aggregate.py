@@ -1,13 +1,18 @@
 """Tables of the P1 experiments (our runs: mean ± std over seeds; published numbers marked as reported).
 
-    python scripts/p1/aggregate.py <work dir with results_*.jsonl> results/p1/summary.md
+    python scripts/p1/aggregate.py
+
+Reads the records results/p1/results_*.jsonl and writes results/p1/summary.md (fixed locations). New runs of the
+work directory are merged into results/p1 by scripts/collect_results.py, which also calls this script.
 """
 import json, os, sys, collections
 from pathlib import Path
 import numpy as np
 from scipy import stats
 
-work, out = sys.argv[1], sys.argv[2]
+REPO = Path(__file__).resolve().parents[2]
+work = sys.argv[1] if len(sys.argv) > 1 else str(REPO / 'results' / 'p1')             # directory of the records
+out = sys.argv[2] if len(sys.argv) > 2 else str(REPO / 'results' / 'p1' / 'summary.md')
 REP = json.load(open(Path(__file__).with_name('reported.json')))
 HS = ['96', '192', '336', '720']
 
@@ -17,6 +22,7 @@ FILES = {'ETTh1.csv': 'ETTh1', 'ETTh2.csv': 'ETTh2', 'ETTm1.csv': 'ETTm1', 'ETTm
          'PEMS08.npz': 'PEMS08'}
 dsname = lambda r: FILES[r['data_path']]
 LONG = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', 'Traffic')
+NAME = {'SMamba': 'S-Mamba', 'LagTS': 'LagTS (our re-impl.)'}
 
 
 def load(suite):
@@ -67,9 +73,10 @@ tuned = load('tuned')
 ci = load('ci_long')
 if lt or tuned:
     P('## Long-term forecasting, input 96 (MSE / MAE)\n')
-    others = ['MillGNN', 'MoVE', 'TimeMixer', 'iTransformer', 'PatchTST', 'DLinear']
+    others = ['MillGNN', 'MoVE', 'SMamba', 'TimeMixer', 'iTransformer', 'PatchTST', 'TimesNet', 'DLinear']
     ours = (('DLT-dyn (default)', lt), ('DLT-dyn (tuned)', tuned), ('CI linear (ours)', ci))
-    P('| dataset | H | ' + ' | '.join(o[0] for o in ours) + ' | ' + ' | '.join(f'{m} *rep.*' for m in others) + ' |')
+    P('| dataset | H | ' + ' | '.join(o[0] for o in ours) + ' | '
+      + ' | '.join(f"{'S-Mamba' if m == 'SMamba' else m} *rep.*" for m in others) + ' |')
     P('|---|---|' + '---|' * (len(ours) + len(others)))
     for ds in LONG:
         sets = [[r for r in rows if dsname(r) == ds] for _, rows in ours]
@@ -92,7 +99,8 @@ if lt or tuned:
                 rep.append(f'{v[0]:.3f} / {v[1]:.3f}' if v else '–')
             P(f'| {ds} | {H} | ' + ' | '.join(cells) + ' | ' + ' | '.join(rep) + ' |')
     P('\nDLT-dyn (tuned): configuration chosen by the validation search (scripts/p1/hpsearch.py, see tuned.json). '
-      'CI linear: the same model without the cross-variable branch (RevIN + one linear map per variable).\n')
+      'CI linear: the same model without the cross-variable branch (RevIN + one linear map per variable). '
+      'Informer and TimeXer, the other two representative baselines, have no reported numbers here; they are re-run (table below).\n')
 
 # ---------------------------------------------------------------- plug-in
 plug = load('plugin') + load('plugin_large')
@@ -163,13 +171,15 @@ if base:
         g[(dsname(r), r['pred_len'], r['model'])].append(r)
     for (ds, H, m), rs in sorted(g.items()):
         v = REP['long_term'].get(m, {}).get(ds, {}).get(str(H))
-        P(f"| {ds} | {H} | {m} | {ms([r['mse'] for r in rs])} / {ms([r['mae'] for r in rs])} | "
+        P(f"| {ds} | {H} | {NAME.get(m, m)} | {ms([r['mse'] for r in rs])} / {ms([r['mae'] for r in rs])} | "
           + (f'{v[0]:.3f} / {v[1]:.3f}' if v else '–') + ' |')
     P('')
     # averages over the four horizons, every model trained by us with the same pipeline
     models = sorted({m for (_, _, m) in g})
+    order = ['Informer', 'TimesNet', 'DLinear', 'PatchTST', 'iTransformer', 'TimeMixer', 'TimeXer', 'SMamba']
+    models = [m for m in order if m in models] + [m for m in models if m not in order]       # representative set first
     cols = [('DLT-dyn (default)', lt), ('DLT-dyn (tuned)', tuned), ('CI linear', ci)] + \
-           [(m, [r for r in base if r['model'] == m]) for m in models]
+           [(NAME.get(m, m), [r for r in base if r['model'] == m]) for m in models]
     P('### Average MSE / MAE over the four horizons, all trained in this pipeline\n')
     P('| dataset | ' + ' | '.join(c[0] for c in cols) + ' |')
     P('|---|' + '---|' * len(cols))

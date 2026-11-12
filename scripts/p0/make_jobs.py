@@ -1,15 +1,17 @@
 """Job list of the priority-0 grid: 13 configurations x 5 settings x 3 seeds (TSLib, CPU, 1 thread per job).
 
-    python scripts/p0/make_jobs.py <data dir> <work dir>      # writes <work dir>/jobs.txt
-Each job is run from the repository root (see run_p0.sh); it appends one JSON line to <work dir>/results_p0.jsonl,
-writes its log to <work dir>/logs/ and its checkpoint to <work dir>/ckpt/. Jobs are ordered phase by phase
+    python scripts/p0/make_jobs.py          # writes work/jobs_p0.txt (fixed locations, scripts/paths.py)
+Each job is run from the repository root (see run_p0.sh); it appends one JSON line to work/results_p0.jsonl,
+writes its log to work/logs/p0/ and its checkpoint to work/ckpt/. Jobs are ordered phase by phase
 (ETTh1 / Weather / PEMS08 first, then Electricity), seed by seed, longest first (estimated from bench_*.jsonl).
 """
 import json, sys, os
 from pathlib import Path
-DATA = os.path.abspath(sys.argv[1])
-SP = os.path.abspath(sys.argv[2])
-os.makedirs(SP, exist_ok=True)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import paths  # noqa: E402
+SP = str(paths.WORK)
+os.makedirs(f'{SP}/logs/p0', exist_ok=True)
+root = lambda dargs: paths.root_of(dargs.split('--data_path ')[1].split()[0])
 BENCH = Path(__file__).resolve().parents[2] / 'results' / 'p0'
 settings = {   # name: (data args, C, H, bench key)
     'ETTh1_96':  ('--data ETTh1 --data_path ETTh1.csv', 7, 96, 'ETTh1'),
@@ -35,15 +37,15 @@ for phase in (('ETTh1_96', 'Weather_96', 'PEMS08_24', 'PEMS08_96'), ('ECL_96',))
             for v, g in configs:
                 name = f'{s}_{v}_{g}_s{seed}'
                 cmd = (f'python -u run.py --task_name long_term_forecast --is_training 1 --model DLT --model_id P0_{s} '
-                       f'--root_path {DATA} {dargs} --features M --seq_len 96 --label_len 48 --pred_len {H} '
+                       f'--root_path {root(dargs)} {dargs} --features M --seq_len 96 --label_len 48 --pred_len {H} '
                        f'--enc_in {C} --dec_in {C} --c_out {C} --dlt_variant {v} --dlt_gate {g} --dlt_impl {impl(v)} '
                        f'--dlt_k 8 --dlt_L 48 --dlt_R 4 --dlt_topk 5 --learning_rate 0.003 --batch_size 32 '
                        f'--train_epochs 10 --patience 3 --num_workers 0 --no_use_gpu --des P0 --fix_seed {seed} '
                        f'--checkpoints {SP}/ckpt --no_epoch_test --no_save_preds --result_jsonl {SP}/results_p0.jsonl '
-                       f'> {SP}/logs/{name}.log 2>&1')
+                       f'> {SP}/logs/p0/{name}.log 2>&1')
                 batch.append((cost.get((bkey, v, g, impl(v)), cost.get((bkey, v, g, 'kernel'))), name, cmd))
         jobs += sorted(batch, reverse=True)                     # longest first inside each seed batch
-open(f'{SP}/jobs.txt', 'w').write('\n'.join(j[2] for j in jobs) + '\n')
+open(f'{SP}/jobs_p0.txt', 'w').write('\n'.join(j[2] for j in jobs) + '\n')
 tot = sum(j[0] for j in jobs)
 print(len(jobs), 'jobs; model-compute estimate', round(tot / 3600, 1), 'core-hours, ~', round(tot / 3600 / 4, 1), 'h on 4 cores')
 pa = sum(j[0] for j in jobs if not j[1].startswith('ECL'))

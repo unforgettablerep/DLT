@@ -1,28 +1,40 @@
 #!/bin/bash
-# Every CPU-feasible P1 / P2 experiment, in priority order (this machine: 4 cores, no GPU).
-#   DLT_EXTRA="<extra --dlt_* args of the proposed model>" bash scripts/run_p1p2_cpu.sh <data dir> <work dir> <P0 checkpoint dir>
+# Every CPU-feasible P1 / P2 experiment, in the order of the finished CPU campaign (4 cores, no GPU).
+#   bash scripts/run_p1p2_cpu.sh
+# Fixed locations (scripts/paths.py): datasets in dataset/, job lists, logs, checkpoints and records in work/.
+# Resumable: every queue skips the runs that already have a record, so the same command continues after an
+# interruption. The kernel analysis needs the P0 checkpoints in work/ckpt (bash scripts/p0/run_p0.sh).
 # Order: kernel analysis and CPU efficiency (alone, 4 threads) -> PEMS04/08 horizon 12 -> long-term small datasets
-# -> plug-in -> sensitivity -> neighbour selection -> hyper-parameter search -> Electricity long-term
-# -> re-run of the searched configurations. Traffic, the large plug-in suite and the re-run baselines need a GPU
-# (scripts/exps.py ... --device gpu).
+# -> plug-in -> sensitivity -> neighbour selection -> hyper-parameter search -> Electricity long-term -> re-run of
+# the searched configurations -> CI linear model, all-neighbour runs and the light baselines.
+# Traffic, the large plug-in suite and the heavy baselines need a GPU (GPU_RUNS.md).
 set -e
-REPO=$(cd "$(dirname "$0")/.." && pwd)
-DATA=$(cd "$1" && pwd); WORK=$(mkdir -p "$2" && cd "$2" && pwd); CKPT=$3
-cd "$REPO"
+REPO=$(cd "$(dirname "$0")/.." && pwd); cd "$REPO"
+WORK=$(python scripts/paths.py work)
 mkdir -p results/p1 results/p2
-OMP_NUM_THREADS=4 python scripts/p2/kernels.py --ckpt "$CKPT" --data "$DATA" --out results/p2 > "$WORK/kernels.log" 2>&1 || echo "kernels failed (see $WORK/kernels.log)"
-OMP_NUM_THREADS=4 python scripts/p2/efficiency.py --device cpu --threads 4 --out results/p2/efficiency_cpu.jsonl > "$WORK/efficiency.log" 2>&1 || echo "efficiency failed"
-for s in pems12 long_small plugin sensitivity neighbours long_large; do
-  python scripts/exps.py $s --data "$DATA" --work "$WORK" --dlt "$DLT_EXTRA"
-done
-python scripts/p1/hpsearch.py make --data "$DATA" --work "$WORK"
+[ -f results/p2/kernels_pems08.json ] || OMP_NUM_THREADS=4 python scripts/p2/kernels.py > "$WORK/kernels.log" 2>&1 \
+  || echo "kernel analysis failed (see work/kernels.log)"
+[ -f results/p2/efficiency_cpu.jsonl ] || OMP_NUM_THREADS=4 python scripts/p2/efficiency.py --device cpu --threads 4 \
+  > "$WORK/efficiency.log" 2>&1 || echo "efficiency measurement failed (see work/efficiency.log)"
+
+for s in pems12 long_small plugin sensitivity neighbours long_large allnb; do python scripts/exps.py $s; done
+python scripts/exps.py ci_long --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange Weather ECL
+python scripts/p1/hpsearch.py make
 cat "$WORK"/jobs_pems12.txt "$WORK"/jobs_long_small.txt "$WORK"/jobs_plugin.txt "$WORK"/jobs_sensitivity.txt \
     "$WORK"/jobs_neighbours.txt "$WORK"/jobs_hp.txt > "$WORK/jobs_cpu_all.txt"
 grep -v "traffic.csv" "$WORK/jobs_long_large.txt" >> "$WORK/jobs_cpu_all.txt"     # Electricity only; Traffic on a GPU
-echo "queue start $(date)" >> "$WORK/runner.log"
-bash scripts/run_queue.sh "$WORK/jobs_cpu_all.txt" 4 || echo "some jobs failed $(date) (see $WORK/logs)" >> "$WORK/runner.log"
-python scripts/p1/hpsearch.py select --work "$WORK" > "$WORK/hp_select.md"
-python scripts/p1/hpsearch.py tuned --data "$DATA" --work "$WORK"
-echo "tuned start $(date)" >> "$WORK/runner.log"
-bash scripts/run_queue.sh "$WORK/jobs_tuned.txt" 4 || echo "some tuned jobs failed $(date)" >> "$WORK/runner.log"
-echo "P12DONE $(date)" >> "$WORK/runner.log"
+bash scripts/run_queue.sh cpu_all 4 || echo "some jobs of the main queue failed (see work/logs)"
+
+python scripts/p1/hpsearch.py select > "$WORK/hp_select.md"
+python scripts/p1/hpsearch.py tuned
+bash scripts/run_queue.sh tuned 4 || echo "some tuned jobs failed"
+
+python scripts/exps.py baselines --models DLinear --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange Weather ECL
+mv "$WORK/jobs_baselines.txt" "$WORK/jobs_baselines_a.txt"
+python scripts/exps.py baselines --models iTransformer TimeMixer LagTS --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange
+mv "$WORK/jobs_baselines.txt" "$WORK/jobs_baselines_b.txt"
+cat "$WORK"/jobs_ci_long.txt "$WORK"/jobs_allnb.txt "$WORK"/jobs_baselines_a.txt "$WORK"/jobs_baselines_b.txt \
+    > "$WORK/jobs_cpu_extra.txt"
+bash scripts/run_queue.sh cpu_extra 4 || echo "some jobs of the extra queue failed"
+
+python scripts/collect_results.py

@@ -1,12 +1,20 @@
 """Tables of the P2 experiments.
 
-    python scripts/p2/aggregate.py <P0 results_p0.jsonl> <work dir with results_sensitivity / results_neighbours>
-                                   <results/p2 dir with efficiency_*.jsonl and kernels_pems08.json> results/p2/summary.md
+    python scripts/p2/aggregate.py
+
+Reads results/p0/results_p0.jsonl and results/p2 (results_sensitivity.jsonl, results_neighbours.jsonl,
+efficiency_*.jsonl, kernels_pems08.json) and writes results/p2/summary.md (fixed locations).
 """
 import json, os, sys, collections, glob
+from pathlib import Path
 import numpy as np
 
-p0_path, work, p2dir, out = sys.argv[1:5]
+REPO = Path(__file__).resolve().parents[2]
+p0_path, work, p2dir, out = (list(sys.argv[1:5]) + [None] * 4)[:4]
+p0_path = p0_path or str(REPO / 'results' / 'p0' / 'results_p0.jsonl')
+p2dir = p2dir or str(REPO / 'results' / 'p2')
+work = work or p2dir
+out = out or os.path.join(p2dir, 'summary.md')
 FILES = {'ETTh1.csv': 'ETTh1', 'weather.csv': 'Weather', 'PEMS08.npz': 'PEMS08'}
 load = lambda f: [json.loads(l) for l in open(f)] if os.path.exists(f) else []
 p0 = load(p0_path)
@@ -68,16 +76,28 @@ for f in sorted(glob.glob(os.path.join(p2dir, 'efficiency_*.jsonl'))):
     dev = rows[0]['device'] + (f" ({rows[0]['gpu']})" if rows[0].get('gpu') else f", {rows[0]['threads']} threads")
     dss = [d for d in ('Weather', 'PEMS08', 'ECL', 'Traffic') if any(r['dataset'] == d for r in rows)]
     P(f'## Efficiency on {dev}: parameters / training ms per batch / inference ms per batch / peak memory MB\n')
-    P('Batch 32, input 96, horizon 96, random data; baselines with the official TSLib hyper-parameters of each dataset.\n')
-    P('| model | ' + ' | '.join(dss) + ' |')
-    P('|---|' + '---|' * len(dss))
-    models = list(dict.fromkeys(r['model'] for r in rows))
-    for m in models:
-        cells = []
-        for d in dss:
-            r = next((x for x in rows if x['model'] == m and x['dataset'] == d), None)
-            cells.append(f"{r['params'] / 1e3:.0f}K / {r['train_ms']:.0f} / {r['infer_ms']:.0f} / {r['mem_MB']:.0f}" if r else '–')
-        P(f'| {m} | ' + ' | '.join(cells) + ' |')
+    P('Batch 32, input 96, horizon 96, random data; baselines with their official hyper-parameters for each dataset. '
+      'First block: DLT-dyn and the eight representative baselines; second block: kernel variants of the controlled '
+      'study, the plug-in and further configurations.\n')
+    main = ['DLT-dyn', 'Informer', 'TimesNet', 'DLinear', 'PatchTST', 'iTransformer', 'TimeMixer', 'TimeXer', 'S-Mamba']
+    seen = list(dict.fromkeys(r['model'] for r in rows))
+    note = ''
+    for block in ([m for m in main if m in seen], [m for m in seen if m not in main]):
+        if not block:
+            continue
+        P('| model | ' + ' | '.join(dss) + ' |')
+        P('|---|' + '---|' * len(dss))
+        for m in block:
+            cells = []
+            for d in dss:
+                r = next((x for x in reversed(rows) if x['model'] == m and x['dataset'] == d), None)    # latest record
+                cells.append(f"{r['params'] / 1e3:.0f}K / {r['train_ms']:.0f} / {r['infer_ms']:.0f} / {r['mem_MB']:.0f}" if r else '–')
+                if r and r.get('mamba_impl') == 'torch':
+                    note = '\nS-Mamba was measured with the pure-PyTorch Mamba block (mamba-ssm not installed): its time is an upper bound.\n'
+            P(f'| {m} | ' + ' | '.join(cells) + ' |')
+        P('')
+    if note:
+        P(note)
     P('\nMillGNN (reported, A100, Traffic): 9.7 GB GPU memory; iTransformer 7.5 GB in the same figure.\n')
 
 kj = os.path.join(p2dir, 'kernels_pems08.json')
