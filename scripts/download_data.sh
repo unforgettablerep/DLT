@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Download the datasets into the fixed data directory dataset/ (Time-Series-Library layout, scripts/paths.py):
+# Download the datasets into the fixed data directory (dataset/, or ../data next to the repository; scripts/paths.py),
 # the Time-Series-Library CSVs from the official THUML Hugging Face repository, PEMS08 flow data and its
 # road-network edge list from a community mirror. PEMS04 (PEMS04.npz) is not on these mirrors; put it into
 # dataset/PEMS/ by hand.
@@ -7,7 +7,7 @@
 #   bash scripts/download_data.sh traffic    # also Traffic (136 MB)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-D=dataset
+D=$(python scripts/paths.py data)
 mkdir -p $D/ETT-small $D/weather $D/electricity $D/traffic $D/exchange_rate $D/PEMS
 
 TSL=https://huggingface.co/datasets/thuml/Time-Series-Library/resolve/main

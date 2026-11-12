@@ -157,10 +157,12 @@ if zero_note:
 if (a.all or a.ablation) and dev.type == 'cuda':
     print('\n== S-Mamba: mamba_ssm block vs pure-PyTorch block (float32, same parameters)')
     try:
-        import mamba_ssm  # noqa: F401
-    except ImportError:
-        print('skipped: mamba-ssm is not installed, so S-Mamba runs use the pure-PyTorch block (slower, same model)')
+        _, _, note = SMamba.mamba_block('ssm')                  # environment, else ../mamba and ../causal-conv1d
+    except ImportError as e:
+        print(f'skipped: mamba_ssm cannot be imported ({e}).\n'
+              'S-Mamba runs use the pure-PyTorch block (slower, same model); python scripts/gpu/check_mamba.py says why.')
     else:
+        print(f'mamba_ssm: {note}')
         name, c, m = next(x for x in models if x[0].startswith('S-Mamba'))
         with contextlib.redirect_stdout(io.StringIO()):
             ms = SMamba.Model(cfg(mamba_impl='ssm')).float()

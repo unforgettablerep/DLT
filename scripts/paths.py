@@ -1,17 +1,23 @@
-"""Fixed locations of the datasets and of the experiment work directory.
+"""Fixed locations of the datasets, the experiment work directory and the Mamba sources.
 
-Every script takes them from here: no environment variable and no path argument.
+Every script takes them from here: no environment variable and no path argument. The repository may sit next to
+the data and the Mamba sources, as on the GPU machine:
 
-    DATA = <repo>/dataset    the datasets, either in the Time-Series-Library layout
-                                 dataset/ETT-small/ETTh1.csv ETTh2.csv ETTm1.csv ETTm2.csv
-                                 dataset/weather/weather.csv          dataset/electricity/electricity.csv
-                                 dataset/traffic/traffic.csv          dataset/exchange_rate/exchange_rate.csv
-                                 dataset/PEMS/PEMS04.npz PEMS08.npz PEMS08_edges.csv
-                             or with all files directly in dataset/
-    WORK = <repo>/work       job lists, logs, checkpoints and result records of the experiment queues
+    ~/DLT              this repository
+    ~/data             the datasets (used when DLT/dataset does not exist)
+    ~/mamba            state-spaces/mamba source checkout (used when mamba_ssm is not installed in the environment)
+    ~/causal-conv1d    Dao-AILab/causal-conv1d source checkout (same)
 
-Both directories are ignored by git. If the data or an existing work directory is somewhere else, make
-`dataset` or `work` a symbolic link to it, or change the two lines below.
+    DATA = <repo>/dataset, or <repo>/../data if <repo>/dataset does not exist. The datasets, either in the
+           Time-Series-Library layout
+               ETT-small/ETTh1.csv ETTh2.csv ETTm1.csv ETTm2.csv   weather/weather.csv   electricity/electricity.csv
+               traffic/traffic.csv   exchange_rate/exchange_rate.csv   PEMS/PEMS04.npz PEMS08.npz PEMS08_edges.csv
+           or with all files directly in the directory.
+    WORK = <repo>/work: job lists, logs, checkpoints and result records of the experiment queues.
+    MAMBA_SRC, CAUSAL_CONV1D_SRC = <repo>/../mamba, <repo>/../causal-conv1d (models/SMamba.py looks there too).
+
+dataset/ and work/ are ignored by git. If the data or an existing work directory is somewhere else, make
+`dataset` or `work` a symbolic link to it, or change the lines below.
 
 For shell scripts:  python scripts/paths.py data | work | root <file> | file <file> | jobs <list name or file>
 """
@@ -20,8 +26,10 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-DATA = REPO / 'dataset'
+DATA = REPO / 'dataset' if (REPO / 'dataset').exists() or not (REPO.parent / 'data').is_dir() else REPO.parent / 'data'
 WORK = REPO / 'work'
+MAMBA_SRC = REPO.parent / 'mamba'
+CAUSAL_CONV1D_SRC = REPO.parent / 'causal-conv1d'
 
 SUBDIR = {'ETTh1.csv': 'ETT-small', 'ETTh2.csv': 'ETT-small', 'ETTm1.csv': 'ETT-small', 'ETTm2.csv': 'ETT-small',
           'weather.csv': 'weather', 'electricity.csv': 'electricity', 'traffic.csv': 'traffic',

@@ -7,34 +7,77 @@ re-implemented for this Time-Series-Library snapshot after the official code (gi
     output   Linear(D -> H) of every variate token; input instance normalisation as in iTransformer (--use_norm)
 
 The Mamba blocks use d_state = --d_state, d_conv = 2 and expand = 1, as fixed in the official model. The block is
-``mamba_ssm.Mamba`` when the mamba-ssm package is installed (CUDA only) and ``layers/MambaPy.py`` otherwise: a
-pure-PyTorch block with the same parameters and outputs but a sequential scan (slower). ``--mamba_impl ssm|torch``
-forces one of them; the choice is printed and stored in the result record.
+``mamba_ssm.Mamba`` (CUDA only) when mamba_ssm can be imported, from the environment or from the source checkouts
+next to the repository (../mamba and ../causal-conv1d, the fixed locations of scripts/paths.py), and
+``layers/MambaPy.py`` otherwise: a pure-PyTorch block with the same parameters and outputs but a sequential scan
+(slower). ``--mamba_impl ssm|torch`` forces one of them; the choice and its reason are printed and the choice is
+stored in the result record. ``python scripts/gpu/check_mamba.py`` checks the installation.
 
 Differences from the official file: the encoder layer there also builds two Mamba blocks and an attention layer
 that never enter the forward pass; they are left out here, so the parameter count is that of the working model.
 Official hyper-parameters per dataset: scripts/long_term_forecast/*_script/SMamba*.sh.
 """
+import sys
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from layers.Embed import DataEmbedding_inverted
 
+# source checkouts next to the repository (same locations as MAMBA_SRC / CAUSAL_CONV1D_SRC in scripts/paths.py)
+SOURCES = [Path(__file__).resolve().parents[1].parent / d for d in ("causal-conv1d", "mamba")]
 
-def mamba_block(impl="auto"):
-    """(class, name) of the Mamba block: mamba_ssm if available (or forced), else the pure-PyTorch block."""
-    if impl in ("auto", "ssm"):
+
+def import_mamba_ssm():
+    """mamba_ssm.Mamba from the environment, else from the source checkouts next to the repository.
+    Raises ImportError with both reasons if neither works."""
+    try:
+        from mamba_ssm import Mamba
+        return Mamba
+    except ImportError as env_error:
+        added = [str(d) for d in SOURCES if d.is_dir() and str(d) not in sys.path]
+        if not added:
+            raise
+        sys.path[:0] = added
+        for name in [m for m in sys.modules if m.split(".")[0] in ("mamba_ssm", "causal_conv1d")]:
+            del sys.modules[name]                                   # partial imports of the first attempt
         try:
             from mamba_ssm import Mamba
-            return Mamba, "mamba_ssm"
-        except ImportError:
+            return Mamba
+        except ImportError as src_error:
+            for d in added:
+                sys.path.remove(d)
+            raise ImportError(f"environment: {env_error}; source checkouts {', '.join(added)}: {src_error}") from None
+
+
+def mamba_block(impl="auto", on_gpu=True):
+    """(class, name, note) of the Mamba block: mamba_ssm if it can be imported (or forced), else the PyTorch block.
+    mamba_ssm runs on CUDA only, so "auto" takes the PyTorch block for a run on the CPU."""
+    if impl == "auto" and not on_gpu:
+        from layers.MambaPy import Mamba
+        return Mamba, "torch", "this run is on the CPU; mamba_ssm needs CUDA"
+    if impl in ("auto", "ssm"):
+        try:
+            Mamba = import_mamba_ssm()
+            origin = sys.modules[Mamba.__module__.split(".")[0]].__file__
+            try:
+                import causal_conv1d  # noqa: F401
+                conv = "with causal_conv1d (fused path)"
+            except ImportError:
+                conv = "without causal_conv1d (unfused path)"
+            return Mamba, "mamba_ssm", f"{Path(origin).parent}, {conv}"
+        except ImportError as e:
             if impl == "ssm":
                 raise
-    elif impl != "torch":
+            note = f"mamba_ssm not usable ({e}); see scripts/gpu/check_mamba.py"
+    elif impl == "torch":
+        note = "forced by --mamba_impl torch"
+    else:
         raise ValueError(f"--mamba_impl must be auto, ssm or torch, got {impl}")
     from layers.MambaPy import Mamba
-    return Mamba, "torch"
+    return Mamba, "torch", note
 
 
 class BiMambaLayer(nn.Module):
@@ -66,8 +109,9 @@ class Model(nn.Module):
             raise NotImplementedError("S-Mamba supports forecasting only")
         self.seq_len, self.pred_len = configs.seq_len, configs.pred_len
         self.use_norm = getattr(configs, "use_norm", 1)
-        Mamba, self.mamba_impl = mamba_block(getattr(configs, "mamba_impl", "auto"))
-        print(f"[S-Mamba] Mamba block: {self.mamba_impl}")
+        on_gpu = bool(getattr(configs, "use_gpu", True)) and torch.cuda.is_available()
+        Mamba, self.mamba_impl, note = mamba_block(getattr(configs, "mamba_impl", "auto"), on_gpu)
+        print(f"[S-Mamba] Mamba block: {self.mamba_impl} ({note})")
         D = configs.d_model
         self.enc_embedding = DataEmbedding_inverted(configs.seq_len, D, configs.embed, configs.freq, configs.dropout)
         self.layers = nn.ModuleList([

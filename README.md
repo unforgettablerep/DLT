@@ -23,9 +23,11 @@ python scripts/gpu/check_gpu.py           # must end with "all checks passed"
 bash scripts/train_dltdyn.sh
 ```
 
-There is nothing to configure: every script reads the datasets from `dataset/` and writes job lists, logs,
-checkpoints and result records to `work/` ([`scripts/paths.py`](scripts/paths.py)). Both directories are ignored
-by git; if the data or an earlier work directory is elsewhere, make `dataset` or `work` a symbolic link to it.
+There is nothing to configure: every script reads the datasets from `dataset/` (or from `../data` next to the
+repository when `dataset/` does not exist) and writes job lists, logs, checkpoints and result records to `work/`
+([`scripts/paths.py`](scripts/paths.py)). Both are ignored by git; if the data or an earlier work directory is
+elsewhere, make `dataset` or `work` a symbolic link to it. S-Mamba finds `mamba_ssm` in the environment or in the
+source checkouts `../mamba` and `../causal-conv1d`; `python scripts/gpu/check_mamba.py` checks that.
 
 The script ends with one line, for example (CPU, PyTorch 2.5.1, this exact command):
 

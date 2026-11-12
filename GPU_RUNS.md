@@ -83,11 +83,20 @@ Evaluation of the results so far: [`results/gpu/README.md`](results/gpu/README.m
 
 ## Fixed locations
 
-Every script reads the datasets from `dataset/` and writes job lists, logs, checkpoints and result records to
-`work/`, both in the repository root ([`scripts/paths.py`](scripts/paths.py)); no path argument and no environment
-variable is needed. Both directories are ignored by git.
+Every location is fixed in [`scripts/paths.py`](scripts/paths.py); no path argument and no environment variable is
+needed. On the GPU machine the repository sits next to the data and the Mamba sources, and nothing has to be set up:
 
-- `dataset/`: the Time-Series-Library layout (`dataset/ETT-small/ETTh1.csv`, `dataset/weather/weather.csv`,
+```
+~/DLT              this repository; work/ inside it holds job lists, logs, checkpoints and result records
+~/data             the datasets (used because DLT/dataset does not exist)
+~/mamba            state-spaces/mamba source checkout  } used by S-Mamba when mamba_ssm is not installed
+~/causal-conv1d    Dao-AILab/causal-conv1d checkout     } in the environment itself
+```
+
+In general: the data is `dataset/` inside the repository, or `../data` next to it when `dataset/` does not exist;
+the work directory is `work/` inside the repository. Both are ignored by git.
+
+- Data layout: the Time-Series-Library layout (`dataset/ETT-small/ETTh1.csv`, `dataset/weather/weather.csv`,
   `dataset/electricity/electricity.csv`, `dataset/traffic/traffic.csv`, `dataset/exchange_rate/exchange_rate.csv`,
   `dataset/PEMS/PEMS04.npz`, `PEMS08.npz`, `PEMS08_edges.csv`), or all files directly in `dataset/`.
   `bash scripts/download_data.sh traffic` fetches everything but PEMS04. A missing CSV is downloaded by
@@ -95,10 +104,11 @@ variable is needed. Both directories are ignored by git.
 - `work/`: if results of an earlier run live in another directory, move that directory to `work`
   (`mv <old work directory> work`) or link it (`ln -s <old work directory> work`). Finished runs are recognised
   by job name and seed, wherever the list was generated.
-- If the data is elsewhere, link it the same way (`ln -s <data directory> dataset`) or edit the two lines of
+- If the data is elsewhere, link it the same way (`ln -s <data directory> dataset`) or edit the lines of
   `scripts/paths.py`.
 - Our per-dataset scripts (`scripts/long_term_forecast/DLT_script/*.sh`, `*_script/SMamba*.sh`) take the data from
-  `dataset/` in either layout as well; the other upstream scripts of `scripts/` expect the Time-Series-Library layout.
+  the same place in either layout; the other upstream scripts of `scripts/` expect `./dataset/` in the
+  Time-Series-Library layout.
 
 ## Overview
 
@@ -130,12 +140,13 @@ Job counts are runs that have no result yet, starting from the CPU records of th
 | S-Mamba | bidirectional Mamba over variate tokens | official S-Mamba scripts, as `scripts/long_term_forecast/*_script/SMamba*.sh` |
 
 S-Mamba is not part of Time-Series-Library; `models/SMamba.py` re-implements it after the official code. It uses
-`mamba_ssm` when that package is installed and a pure-PyTorch block otherwise (same model, sequential scan).
+`mamba_ssm` (installed, or from `~/mamba` and `~/causal-conv1d`) and a pure-PyTorch block otherwise (same model,
+sequential scan); `python scripts/gpu/check_mamba.py` checks which one a GPU run will use.
 Trained on the CPU with the official settings it reproduces the published numbers: the average over the four
 horizons is within +0.9 % (ETTh1), +0.3 % (ETTh2) and −0.6 % (Exchange) of the paper's MSE, Weather-96 within
 +1.1 %; single horizons lie between −1.1 % and +4.2 % (13 runs in `results/p1/results_baselines.jsonl`).
 With the PyTorch block one step per variate token is taken in Python, which is slow on Electricity and Traffic:
-install `mamba-ssm` before tier 3 (set-up below). LagTS (our re-implementation, at most 21 variables) is no
+make sure `check_mamba.py` ends with "S-Mamba will use mamba_ssm" before tier 3 (set-up below). LagTS (our re-implementation, at most 21 variables) is no
 longer in the default set; `python scripts/exps.py baselines --models LagTS` adds it.
 
 **Cost of tier 3.** TimesNet is the expensive model: 150 M parameters on Electricity and 302 M on Traffic with its
@@ -161,10 +172,7 @@ pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
 pip install --no-deps einops==0.8.1 local-attention==1.11.2 reformer-pytorch==1.4.4 hyper-connections \
     axial-positional-embedding product-key-memory==0.1.10                  # imports of the Transformer baselines
-# S-Mamba: the compiled Mamba block (optional but needed for speed on Electricity / Traffic). Prebuilt wheels for
-# torch 2.5 + CUDA 12 are on the mamba releases page; pick the file of your Python version, for Python 3.11:
-pip install https://github.com/state-spaces/mamba/releases/download/v2.2.6.post3/mamba_ssm-2.2.6.post3+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
-
+python scripts/gpu/check_mamba.py               # can S-Mamba use mamba_ssm (~/mamba, ~/causal-conv1d)? says what to do if not
 python scripts/gpu/check_gpu.py                 # stand-alone DLT-dyn; must end with "all checks passed"
 python scripts/gpu/check_gpu.py --all           # the ten representative configurations, incl. plug-in and S-Mamba
 python scripts/p2/efficiency.py --device gpu    # -> results/p2/efficiency_gpu.jsonl
@@ -176,9 +184,25 @@ python scripts/p2/efficiency.py --device gpu    # -> results/p2/efficiency_gpu.j
 - in float32 as in training (PyTorch enables TF32 for cuDNN convolutions): reported only.
 
 It also checks that neighbour selection on the GPU picks the same sources as on the CPU (ties, for example a
-dead sensor, may be broken differently and are accepted when the scores agree) and, when `mamba-ssm` is installed,
-that S-Mamba with the `mamba_ssm` block equals S-Mamba with the pure-PyTorch block. `--ablation` adds the other
-kernel variants of the P0 study and LagTS.
+dead sensor, may be broken differently and are accepted when the scores agree) and, when `mamba_ssm` can be
+imported, that S-Mamba with the `mamba_ssm` block equals S-Mamba with the pure-PyTorch block. `--ablation` adds the
+other kernel variants of the P0 study and LagTS.
+
+**S-Mamba and the Mamba sources.** `models/SMamba.py` imports `mamba_ssm` from the environment, else from the
+checkouts `../mamba` and `../causal-conv1d`; without it (or on the CPU) it uses the pure-PyTorch block, which is
+the same model but takes one Python step per variate token (slow on Electricity and Traffic). Every run prints the
+block it uses (`[S-Mamba] Mamba block: ...`) and stores it in its record (`mamba_impl`).
+`python scripts/gpu/check_mamba.py` shows
+- PyTorch, its CUDA version and the nvcc on the PATH,
+- the version of the two checkouts and whether their CUDA extensions are compiled,
+- where `mamba_ssm` and `causal_conv1d` are imported from, or the exact import error,
+- on the GPU: one `mamba_ssm` block (fused and unfused path) against the PyTorch block with the same parameters,
+  and the speed of both,
+
+and ends with the verdict. If the extensions are not built, it prints the commands to install the two checkouts
+into the environment (`pip install --no-build-isolation ~/causal-conv1d`, then `~/mamba`); their `setup.py` first
+downloads a prebuilt wheel for this PyTorch / CUDA / Python and compiles only if none fits. Compiling needs an nvcc
+of CUDA 12.x: PyTorch 2.5.1+cu124 refuses the nvcc of the host's CUDA 13.1 for its extensions.
 
 ## 1–4. Experiments
 
