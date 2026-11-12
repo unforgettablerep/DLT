@@ -188,21 +188,35 @@ dead sensor, may be broken differently and are accepted when the scores agree) a
 imported, that S-Mamba with the `mamba_ssm` block equals S-Mamba with the pure-PyTorch block. `--ablation` adds the
 other kernel variants of the P0 study and LagTS.
 
-**S-Mamba and the Mamba sources.** `models/SMamba.py` imports `mamba_ssm` from the environment, else from the
-checkouts `../mamba` and `../causal-conv1d`; without it (or on the CPU) it uses the pure-PyTorch block, which is
-the same model but takes one Python step per variate token (slow on Electricity and Traffic). Every run prints the
+**S-Mamba and the Mamba sources.** `models/SMamba.py` imports the Mamba block of `mamba_ssm`
+(`mamba_ssm.modules.mamba_simple`) from the environment, else from the checkouts `../mamba` and `../causal-conv1d`;
+without it (or on the CPU) it uses the pure-PyTorch block, which is the same model but takes one Python step per
+variate token (slow on Electricity and Traffic). The block is imported without `mamba_ssm/__init__.py`, which loads
+the language-model classes and with them `transformers`: S-Mamba does not need `transformers`. Every run prints the
 block it uses (`[S-Mamba] Mamba block: ...`) and stores it in its record (`mamba_impl`).
 `python scripts/gpu/check_mamba.py` shows
-- PyTorch, its CUDA version and the nvcc on the PATH,
-- the version of the two checkouts and whether their CUDA extensions are compiled,
-- where `mamba_ssm` and `causal_conv1d` are imported from, or the exact import error,
+- PyTorch, the CUDA version and C++ ABI it was built with, and the nvcc on the PATH,
+- the version of the two checkouts,
+- whether the compiled extensions (`selective_scan_cuda`, required; `causal_conv1d_cuda`, optional: fused path)
+  and the Mamba block import, and from where, or the exact error,
 - on the GPU: one `mamba_ssm` block (fused and unfused path) against the PyTorch block with the same parameters,
   and the speed of both,
 
-and ends with the verdict. If the extensions are not built, it prints the commands to install the two checkouts
-into the environment (`pip install --no-build-isolation ~/causal-conv1d`, then `~/mamba`); their `setup.py` first
-downloads a prebuilt wheel for this PyTorch / CUDA / Python and compiles only if none fits. Compiling needs an nvcc
-of CUDA 12.x: PyTorch 2.5.1+cu124 refuses the nvcc of the host's CUDA 13.1 for its extensions.
+and ends with the verdict. If `selective_scan_cuda` is missing, it prints the prebuilt wheels to install with
+`--no-deps` (no compiler needed, and pip does not pull in `transformers`). For torch 2.5 + CUDA 12 these are the
+pair mamba_ssm 2.2.4 / causal_conv1d 1.5.0.post8, released together, with wheels for Python 3.10–3.12, e.g.
+
+```bash
+pip install --force-reinstall --no-deps https://github.com/state-spaces/mamba/releases/download/v2.2.4/mamba_ssm-2.2.4+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
+pip install --force-reinstall --no-deps https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.5.0.post8/causal_conv1d-1.5.0.post8+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
+```
+
+(the script prints the names for the Python and ABI of the machine it runs on; without access to github.com,
+download the files elsewhere and `pip install` them). The CUDA version of the host matters only for building from
+the checkouts: PyTorch 2.5.1+cu124 refuses the nvcc of CUDA 13 for its extensions, so the build needs a CUDA 12.4
+toolkit in the conda environment (`conda install -c nvidia/label/cuda-12.4.1 cuda-toolkit`, then
+`CUDA_HOME=$CONDA_PREFIX MAMBA_FORCE_BUILD=TRUE pip install --no-build-isolation --no-deps ~/mamba`; the script
+prints the full commands). The prebuilt wheels run on the host's newer driver.
 
 ## 1–4. Experiments
 

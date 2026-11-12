@@ -17,6 +17,9 @@ Differences from the official file: the encoder layer there also builds two Mamb
 that never enter the forward pass; they are left out here, so the parameter count is that of the working model.
 Official hyper-parameters per dataset: scripts/long_term_forecast/*_script/SMamba*.sh.
 """
+import importlib
+import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -30,26 +33,54 @@ from layers.Embed import DataEmbedding_inverted
 SOURCES = [Path(__file__).resolve().parents[1].parent / d for d in ("causal-conv1d", "mamba")]
 
 
+def _forget(*packages):
+    for name in [m for m in sys.modules if m.split(".")[0] in packages]:
+        del sys.modules[name]
+
+
+def _block_class():
+    """mamba_ssm.modules.mamba_simple.Mamba, imported without running mamba_ssm/__init__.py. That file also imports
+    the language-model classes and, through them, `transformers`; the Mamba block itself needs only the compiled
+    selective-scan extension (and causal_conv1d for the fused path)."""
+    if "mamba_ssm" not in sys.modules:
+        spec = importlib.util.find_spec("mamba_ssm")
+        if spec is None or spec.submodule_search_locations is None:
+            raise ModuleNotFoundError("No module named 'mamba_ssm'", name="mamba_ssm")
+        sys.modules["mamba_ssm"] = importlib.util.module_from_spec(spec)     # package object, __init__ not run
+    try:
+        cls = importlib.import_module("mamba_ssm.modules.mamba_simple").Mamba
+        if not hasattr(sys.modules["mamba_ssm"], "Mamba"):
+            sys.modules["mamba_ssm"].Mamba = cls                    # `from mamba_ssm import Mamba` keeps working
+        return cls
+    except (ImportError, OSError) as e:
+        _forget("mamba_ssm")
+        raise ImportError(str(e)) from None
+
+
 def import_mamba_ssm():
-    """mamba_ssm.Mamba from the environment, else from the source checkouts next to the repository.
+    """The Mamba block of mamba_ssm from the environment, else from the source checkouts next to the repository.
     Raises ImportError with both reasons if neither works."""
     try:
-        from mamba_ssm import Mamba
-        return Mamba
+        return _block_class()
     except ImportError as env_error:
         added = [str(d) for d in SOURCES if d.is_dir() and str(d) not in sys.path]
         if not added:
             raise
         sys.path[:0] = added
-        for name in [m for m in sys.modules if m.split(".")[0] in ("mamba_ssm", "causal_conv1d")]:
-            del sys.modules[name]                                   # partial imports of the first attempt
+        _forget("mamba_ssm", "causal_conv1d")                       # partial imports of the first attempt
         try:
-            from mamba_ssm import Mamba
-            return Mamba
+            return _block_class()
         except ImportError as src_error:
             for d in added:
                 sys.path.remove(d)
             raise ImportError(f"environment: {env_error}; source checkouts {', '.join(added)}: {src_error}") from None
+
+
+def mamba_ssm_version():
+    """version string of the imported mamba_ssm (read from its __init__.py, which is not executed)"""
+    init = getattr(sys.modules.get("mamba_ssm"), "__file__", None)
+    m = re.search(r'__version__\s*=\s*["\']([^"\']+)', Path(init).read_text()) if init else None
+    return m.group(1) if m else "unknown"
 
 
 def mamba_block(impl="auto", on_gpu=True):
@@ -61,13 +92,13 @@ def mamba_block(impl="auto", on_gpu=True):
     if impl in ("auto", "ssm"):
         try:
             Mamba = import_mamba_ssm()
-            origin = sys.modules[Mamba.__module__.split(".")[0]].__file__
+            origin = sys.modules["mamba_ssm"].__file__
             try:
                 import causal_conv1d  # noqa: F401
                 conv = "with causal_conv1d (fused path)"
             except ImportError:
                 conv = "without causal_conv1d (unfused path)"
-            return Mamba, "mamba_ssm", f"{Path(origin).parent}, {conv}"
+            return Mamba, "mamba_ssm", f"mamba_ssm {mamba_ssm_version()} from {Path(origin).parent}, {conv}"
         except ImportError as e:
             if impl == "ssm":
                 raise
