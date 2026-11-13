@@ -22,7 +22,7 @@
 # Solar     Solar/solar_AL.txt (180 MB, a 9 MB download)                GitHub laiguokun/multivariate-time-series-data
 #                                                                       (the LSTNet data), gzip
 #
-# A file that is already there is kept. PEMS04 and PEMS08 of ASTGNN are byte-identical to the copies used for
+# A file that is already there, in this layout or directly in the data directory, is kept. PEMS04 and PEMS08 of ASTGNN are byte-identical to the copies used for
 # P0-P2. Without network access, copy the files to the same places by hand (e.g. from the dataset archive of
 # iTransformer or Time-Series-Library) and run python scripts/check_data.py.
 set -uo pipefail
@@ -43,10 +43,11 @@ TSL=$HF/datasets/thuml/Time-Series-Library/resolve/main
 echo "data directory: $D"
 
 FAILED=()
-get() {   # get <path under the data directory> <url> [<url> ...]: the first URL that works
+get() {   # get <path under the data directory> <url> [<url> ...]: the first URL that works; a file that is there
+          # (in the Time-Series-Library layout or directly in the data directory) is kept
   local rel=$1; shift
   local dest="$D/$rel"
-  if [ -s "$dest" ]; then echo "have  $rel"; return 0; fi
+  if [ -s "$dest" ] || [ -s "$D/$(basename "$rel")" ]; then echo "have  $rel"; return 0; fi
   mkdir -p "$(dirname "$dest")"
   for url in "$@"; do
     if curl -fL --retry 2 --connect-timeout 20 -sS -o "$dest.part" "$url"; then
@@ -80,7 +81,7 @@ for g in "${SEL[@]}"; do
       # shellcheck disable=SC2046
       get PEMS/PEMS03_ids.txt $(github guoshnBJTU/ASTGNN main data/PEMS03/PEMS03.txt) ;;
     Solar)
-      if [ -s "$D/Solar/solar_AL.txt" ]; then echo "have  Solar/solar_AL.txt"
+      if [ -s "$D/Solar/solar_AL.txt" ] || [ -s "$D/solar_AL.txt" ]; then echo "have  Solar/solar_AL.txt"
       # shellcheck disable=SC2046
       elif get Solar/solar_AL.txt.gz $(github laiguokun/multivariate-time-series-data master solar-energy/solar_AL.txt.gz); then
         gunzip -f "$D/Solar/solar_AL.txt.gz" && echo "      unpacked Solar/solar_AL.txt"
