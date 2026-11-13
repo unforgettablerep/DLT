@@ -8,7 +8,7 @@ file). For every distinct configuration of the list (model, backbone, dataset an
 shortest and the longest horizon of each, with all at every horizon) the script parses the run.py arguments of
 the job, builds the model as run.py does, prepares a DLT branch on the training split, and sends one batch of the
 training split forward and backward with batch size --batch (quick on the CPU too). --match keeps the jobs whose
---des contains TEXT. Nothing is written to work/ or results/. One line per configuration, then the number of
+--des matches the regular expression TEXT (e.g. 'ETTh1_' or '_(PatchTST|iTransformer)_'). Nothing is written to work/ or results/. One line per configuration, then the number of
 failures; exit code 1 if there is one.
 """
 import argparse, collections, contextlib, gc, io, os, re, shlex, sys, tempfile, time, traceback
@@ -46,7 +46,7 @@ def main():
             continue
         argv = job_argv(line)
         args = parser.parse_args(argv)
-        if a.match not in args.des:
+        if not re.search(a.match, args.des):
             continue
         H = args.pred_len
         key = (args.model, args.plug_base if args.model == 'DLTPlug' else '', args.data_path,
