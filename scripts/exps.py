@@ -29,10 +29,11 @@ Suites
   plugin_probe P1  diagnosis of the plug-in on Traffic-96: + DLT-dyn with the backbone's learning rate, with a
                    static gate, and with both (PatchTST, iTransformer; use --seeds 2021 for six runs)
   plugin_all   P1  every representative backbone (BASELINES) alone and + DLT-dyn (DLTPlug, branch lr 3e-3) on the
-                   long-term benchmark (horizons 96/192/336/720) and on PEMS04/08 (horizons 12/24/48/96, protocol of
-                   iTransformer and S-Mamba: MSE loss, metrics on the normalised scale, their official per-horizon
-                   settings). Backbones keep the settings of the plug-in study (PatchTST: its paper's). GPU.
-                   The table: python scripts/p1/plugin_table.py
+                   long-term benchmark and Solar (horizons 96/192/336/720) and on PEMS03/04/07/08 (horizons
+                   12/24/48/96, protocol of iTransformer and S-Mamba: MSE loss, metrics on the normalised scale).
+                   Settings: the official ones (TSLib scripts; for Solar and PEMS those of the iTransformer, S-Mamba
+                   and TimeMixer repositories, REPO_OFFICIAL), else the documented fallbacks (FALLBACK_FROM);
+                   PatchTST: its paper's. GPU. The table: python scripts/p1/plugin_table.py
 
 --models / --datasets restrict the baselines, ci_long and plugin_all suites, e.g. the CPU-feasible subset
     python scripts/exps.py baselines --models DLinear iTransformer TimeMixer --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange
@@ -53,8 +54,9 @@ TSLIB = REPO
 BASELINES = ('Informer', 'TimesNet', 'DLinear', 'PatchTST', 'iTransformer', 'TimeMixer', 'TimeXer', 'SMamba')
 HORIZONS = (96, 192, 336, 720)
 LONG_SETS = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', 'Traffic')
-PEMS_SETS = ('PEMS04', 'PEMS08')
+PEMS_SETS = ('PEMS03', 'PEMS04', 'PEMS07', 'PEMS08')
 PEMS_HORIZONS = (12, 24, 48, 96)                               # iTransformer / S-Mamba protocol, input 96
+PLUGIN_ALL_SETS = LONG_SETS + ('Solar',) + PEMS_SETS           # the datasets of plugin_all
 
 # name: (--data, file, variables, --freq, train windows (for cost estimates))
 DATASETS = {
@@ -66,7 +68,10 @@ DATASETS = {
     'Exchange': ('custom', 'exchange_rate.csv', 8, 'd', 5120),
     'ECL':      ('custom', 'electricity.csv', 321, 'h', 18317),
     'Traffic':  ('custom', 'traffic.csv', 862, 'h', 12185),
+    'Solar':    ('Solar', 'solar_AL.txt', 137, 't', 36601),
+    'PEMS03':   ('PEMS', 'PEMS03.npz', 358, 't', 15617),
     'PEMS04':   ('PEMS', 'PEMS04.npz', 307, 't', 10088),
+    'PEMS07':   ('PEMS', 'PEMS07.npz', 883, 't', 16827),
     'PEMS08':   ('PEMS', 'PEMS08.npz', 170, 't', 10606),
 }
 # the proposed model and its training set-up (identical to the controlled study, P0)
@@ -128,26 +133,55 @@ FALLBACK = {
 }
 # no official configuration for this dataset: the configuration of another dataset at the same horizon.
 # Informer has one generic setting in every TSLib script; TimeXer was not tuned on Exchange (small-data setting of ETTh1).
+# Solar and PEMS (many variables) take the Electricity configuration where a model has none of its own.
 FALLBACK_FROM = {'Informer': {d: 'ETTh1' for d in ('ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'Traffic',
-                                                    'PEMS04', 'PEMS08')},
-                 'TimeXer': {'Exchange': 'ETTh1', 'PEMS04': 'ECL', 'PEMS08': 'ECL'},
-                 'TimesNet': {'PEMS04': 'ECL', 'PEMS08': 'ECL'}}
+                                                    'Solar', 'PEMS03', 'PEMS04', 'PEMS07', 'PEMS08')},
+                 'TimeXer': {'Exchange': 'ETTh1', **{d: 'ECL' for d in ('Solar', 'PEMS03', 'PEMS04', 'PEMS07', 'PEMS08')}},
+                 'TimesNet': {d: 'ECL' for d in ('Solar', 'PEMS03', 'PEMS04', 'PEMS07', 'PEMS08')}}
 MODEL_EXTRA = {'TimeMixer': '--down_sampling_method avg'}
 
-# Official settings for PEMS04/08 at the horizons 12/24/48/96 (scripts/multivariate_forecasting/PEMS/*_0[48].sh of
-# the iTransformer and S-Mamba repositories; unset values are the defaults there and here: lr 1e-4, batch 32).
-# Used by plugin_all. The older PEMS-12 suites (pems12 protocol) keep FALLBACK above, which for iTransformer
-# differs: PEMS04 without --use_norm 0, PEMS08 with lr 1e-3 / batch 16 (the settings of its horizons 48 and 96).
-_IT08 = ('--e_layers 2 --d_model 512 --d_ff 512 --use_norm 1',
-         '--e_layers 4 --d_model 512 --d_ff 512 --batch_size 16 --learning_rate 0.001 --use_norm 0')
-_SM08 = '--e_layers 4 --d_model 256 --d_ff 256 --batch_size 16 --learning_rate 0.001 --use_norm 1'
-PEMS_OFFICIAL = {
-    'iTransformer': {'PEMS04': dict.fromkeys(PEMS_HORIZONS, '--e_layers 4 --d_model 1024 --d_ff 1024 --learning_rate 0.0005 --use_norm 0'),
-                     'PEMS08': {12: _IT08[0], 24: _IT08[0], 48: _IT08[1], 96: _IT08[1]}},
-    'SMamba': {'PEMS04': dict.fromkeys(PEMS_HORIZONS, '--e_layers 4 --d_model 1024 --d_ff 1024 --learning_rate 0.0003 --use_norm 0'),
-               'PEMS08': {12: '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.001 --use_norm 1',
-                          24: '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.0007 --use_norm 1',
-                          48: _SM08, 96: _SM08}},
+# Official settings of the models' own repositories for the datasets that TSLib has no script for, per horizon:
+# scripts/multivariate_forecasting/{PEMS/*_0x.sh, SolarEnergy/*.sh} of iTransformer and S-Mamba, and of TimeMixer
+# scripts/long_term_forecast/Solar_script/TimeMixer_unify.sh and scripts/short_term_forecast/PEMS/TimeMixer.sh (its
+# only PEMS setting, horizon 12, used here for every horizon). Unset values are the defaults there and here
+# (lr 1e-4, batch 32, 10 epochs, patience 3, use_norm 1, d_state 32). Used by plugin_all. The older PEMS-12 suites
+# (pems12 protocol) keep FALLBACK above, which for iTransformer differs: PEMS04 without --use_norm 0, PEMS08 with
+# lr 1e-3 / batch 16 (the settings of its horizons 48 and 96).
+def _per_h(short, long):                                       # one setting for 12 / 24, another for 48 / 96
+    return {12: short, 24: short, 48: long, 96: long}
+
+
+_TM_PEMS = ('--e_layers 5 --d_model 128 --d_ff 256 --batch_size 32 --learning_rate 0.003 --train_epochs 10 '
+            '--patience 10 --use_norm 0 --down_sampling_layers 1 --down_sampling_window 2 --channel_independence 0')
+REPO_OFFICIAL = {
+    'iTransformer': {
+        'PEMS03': dict.fromkeys(PEMS_HORIZONS, '--e_layers 4 --d_model 512 --d_ff 512 --learning_rate 0.001'),
+        'PEMS04': dict.fromkeys(PEMS_HORIZONS, '--e_layers 4 --d_model 1024 --d_ff 1024 --learning_rate 0.0005 --use_norm 0'),
+        'PEMS07': _per_h('--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.001 --use_norm 0',
+                         '--e_layers 4 --d_model 512 --d_ff 512 --batch_size 16 --learning_rate 0.001 --use_norm 0'),
+        'PEMS08': _per_h('--e_layers 2 --d_model 512 --d_ff 512 --use_norm 1',
+                         '--e_layers 4 --d_model 512 --d_ff 512 --batch_size 16 --learning_rate 0.001 --use_norm 0'),
+        'Solar': dict.fromkeys(HORIZONS, '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.0005')},
+    'SMamba': {
+        'PEMS03': {12: '--e_layers 4 --d_model 512 --d_ff 512 --learning_rate 0.001 --train_epochs 5',
+                   24: '--e_layers 4 --d_model 512 --d_ff 512 --learning_rate 0.001',
+                   48: '--e_layers 5 --d_model 512 --d_ff 512 --learning_rate 0.0001',
+                   96: '--e_layers 4 --d_model 512 --d_ff 512 --learning_rate 0.0015'},
+        'PEMS04': dict.fromkeys(PEMS_HORIZONS, '--e_layers 4 --d_model 1024 --d_ff 1024 --learning_rate 0.0003 --use_norm 0'),
+        'PEMS07': {12: '--e_layers 2 --d_model 512 --d_ff 512 --batch_size 16 --learning_rate 0.0007 --use_norm 0',
+                   24: '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.0007 --use_norm 0',
+                   48: '--e_layers 4 --d_model 512 --d_ff 512 --learning_rate 0.0005 --use_norm 0',
+                   96: '--e_layers 4 --d_model 512 --d_ff 512 --batch_size 16 --learning_rate 0.0005 --use_norm 0'},
+        'PEMS08': {12: '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.001 --use_norm 1',
+                   24: '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.0007 --use_norm 1',
+                   **dict.fromkeys((48, 96), '--e_layers 4 --d_model 256 --d_ff 256 --batch_size 16 '
+                                             '--learning_rate 0.001 --use_norm 1')},
+        'Solar': dict.fromkeys(HORIZONS, '--e_layers 2 --d_model 512 --d_ff 512')},
+    'TimeMixer': {
+        **{d: dict.fromkeys(PEMS_HORIZONS, _TM_PEMS) for d in PEMS_SETS},
+        'Solar': dict.fromkeys(HORIZONS, '--e_layers 3 --d_model 512 --d_ff 2048 --batch_size 32 --learning_rate 0.001 '
+                                         '--train_epochs 10 --patience 3 --use_norm 0 --down_sampling_layers 2 '
+                                         '--down_sampling_window 2 --channel_independence 0')},
 }
 # relative cost of a backbone (only orders the job lists, longest first)
 REL_COST = {'Informer': 1.0, 'TimesNet': 6.0, 'DLinear': 0.3, 'PatchTST': 3.0, 'iTransformer': 1.5, 'TimeMixer': 2.0,
@@ -176,9 +210,10 @@ def recipe_tag(extra):
 
 
 def plugin_all_args(model, ds, H):
-    """Backbone settings of plugin_all: those of the plug-in study, on PEMS the official per-horizon ones."""
-    if H in PEMS_OFFICIAL.get(model, {}).get(ds, {}):
-        return (PEMS_OFFICIAL[model][ds][H] + ' ' + MODEL_EXTRA.get(model, '')).strip(), f'{model} repository'
+    """Backbone settings of plugin_all: those of the plug-in study, on Solar and PEMS the official ones of the
+    models' repositories (REPO_OFFICIAL) where they exist."""
+    if H in REPO_OFFICIAL.get(model, {}).get(ds, {}):
+        return (REPO_OFFICIAL[model][ds][H] + ' ' + MODEL_EXTRA.get(model, '')).strip(), f'{model} repository'
     return plugin_backbone_args(model, ds, H)
 
 
@@ -225,8 +260,9 @@ class Gen:
         print(f'{self.suite}: {len(ordered)} jobs -> {os.path.relpath(path, paths.REPO)}; rough CPU estimate {hours:.1f} core-hours')
         for f in sorted(self.files):
             if not paths.exists(f):
-                print(f'  note: {os.path.relpath(paths.path_of(f), paths.REPO)} is missing: ' + (
-                    'these jobs will fail' if f.endswith('.npz') else 'Time-Series-Library will download it from Hugging Face'))
+                print(f'  note: {paths.path_of(f)} is missing: ' + (
+                    'Time-Series-Library will download it from Hugging Face' if f.endswith('.csv') else
+                    'these jobs will fail; bash scripts/download_data.sh fetches it'))
 
 
 def cost(ds, rel=1.0):
@@ -283,7 +319,7 @@ def main():
         # PEMS too (iTransformer / S-Mamba protocol; only Informer reads it). --dlt_lr comes first so that --dlt can
         # override it.
         arm = 'dlt' + (f'_{recipe_tag(a.dlt)}' if a.dlt else '')
-        for ds, base, seed in itertools.product(a.datasets or LONG_SETS + PEMS_SETS, a.models or BASELINES, S):
+        for ds, base, seed in itertools.product(a.datasets or PLUGIN_ALL_SETS, a.models or BASELINES, S):
             for H in PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS:
                 bargs, _ = plugin_all_args(base, ds, H)
                 rel = REL_COST.get(base, 2.0)

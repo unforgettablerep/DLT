@@ -25,7 +25,7 @@ import exps  # noqa: E402
 SUITE = 'plugin_all'
 NAME = {'SMamba': 'S-Mamba'}
 DS_OF_FILE = {v[1]: k for k, v in exps.DATASETS.items()}
-DATASETS = list(exps.LONG_SETS) + list(exps.PEMS_SETS)
+DATASETS = list(exps.PLUGIN_ALL_SETS)
 
 
 def load(seeds, files=None):

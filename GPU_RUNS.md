@@ -241,15 +241,22 @@ and ends with the verdict and, if needed, the commands for the machine it runs o
 
 ## Plug-in study: every backbone alone and + DLT-dyn (suite `plugin_all`)
 
-Each of the eight representative backbones alone and with the DLT-dyn branch, on all ten datasets: the long-term
-sets at horizons 96/192/336/720, PEMS04 and PEMS08 at 12/24/48/96. That is 8 × 10 × 4 × 2 = 640 runs per seed.
+Each of the eight representative backbones alone and with the DLT-dyn branch, on thirteen datasets: the eight
+long-term sets and Solar at horizons 96/192/336/720, PEMS03/04/07/08 at 12/24/48/96. That is 8 × 13 × 4 × 2 = 832
+runs per seed.
 - Both arms run through `DLTPlug`. "Alone" (`--dlt_variant ci`) builds only the backbone and is identical to
   running the backbone directly; "+ DLT" adds the branch with its default recipe (DLT-dyn, k 8, L 48, R 4, branch
   learning rate 3e-3).
-- Backbone settings: those of the plug-in study, i.e. the official TSLib scripts, and for PatchTST its paper's.
-- PEMS follows iTransformer and S-Mamba: input 96, MSE loss, MSE / MAE on the normalised scale, and their official
-  settings for every horizon (`PEMS_OFFICIAL` in `scripts/exps.py`). The other suites use a different PEMS-12
-  protocol (L1 loss, metrics on the original scale); the table of this study reads only its own records.
+- Backbone settings: the official ones.
+  - Long-term sets: the TSLib scripts. PatchTST: its paper's settings, as in the earlier plug-in study.
+  - Solar and PEMS: the repositories of iTransformer, S-Mamba and TimeMixer, per horizon (`REPO_OFFICIAL` in
+    `scripts/exps.py`; TimeMixer has one PEMS setting, horizon 12, used for every horizon).
+  - Models without settings for Solar or PEMS (Informer, TimesNet, TimeXer, DLinear) take the documented
+    fallbacks: TimesNet and TimeXer the Electricity configuration, Informer its generic one, DLinear the defaults.
+- PEMS follows iTransformer and S-Mamba: input 96, MSE loss, MSE / MAE on the normalised scale. The other suites
+  use a different PEMS-12 protocol (L1 loss, metrics on the original scale); the table of this study reads only its
+  own records.
+- Data: `bash scripts/download_data.sh` fetches Solar and PEMS03/07 too.
 - A different branch recipe gets its own job names: `--dlt "--dlt_gate static"` writes `..._dlt_gate-static` jobs,
   and `plugin_table.py --arm dlt_gate-static` compares them. The default runs are neither skipped nor mixed.
 
@@ -257,14 +264,14 @@ One seed, in three stages, small data first so that the first comparisons arrive
 
 ```bash
 cd ~/DLT && conda activate dlt-cu130
-python scripts/exps.py plugin_all --device gpu --seeds 2021      # the whole list (640 jobs)
+python scripts/exps.py plugin_all --device gpu --seeds 2021      # the whole list (832 jobs)
 python scripts/smoke_jobs.py plugin_all       # pre-flight: one training step per configuration, peak GPU memory
 nohup bash -c '
 python scripts/exps.py plugin_all --device gpu --seeds 2021 --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange Weather &&
 bash scripts/gpu/run_gpu_queue.sh plugin_all 0 0 0
-python scripts/exps.py plugin_all --device gpu --seeds 2021 --datasets PEMS04 PEMS08 &&
+python scripts/exps.py plugin_all --device gpu --seeds 2021 --datasets Solar PEMS03 PEMS04 PEMS08 &&
 bash scripts/gpu/run_gpu_queue.sh plugin_all 0 0
-python scripts/exps.py plugin_all --device gpu --seeds 2021 --datasets ECL Traffic &&
+python scripts/exps.py plugin_all --device gpu --seeds 2021 --datasets ECL Traffic PEMS07 &&
 bash scripts/gpu/run_gpu_queue.sh plugin_all
 ' > work/plugin_all.out 2>&1 &
 
@@ -275,8 +282,8 @@ python scripts/p1/plugin_table.py              # the comparison so far (markdown
 - The pre-flight trains every configuration for one step with its own batch size on the GPU and prints the peak
   GPU memory, so a configuration that does not fit fails here and not after hours. Jobs that run at the same time
   on the card need the sum of their peaks.
-- The stages run one after the other. Three jobs at a time suit the small datasets, one at a time Electricity and
-  Traffic (TimesNet there: 150 M / 302 M parameters).
+- The stages run one after the other. Three jobs at a time suit the small datasets, one at a time Electricity,
+  Traffic and PEMS07 (862 and 883 variables; TimesNet on Electricity / Traffic: 150 M / 302 M parameters).
 - A failed job leaves its log in `work/logs/plugin_all/<job>_s2021.log`. Running the same stage again runs only
   the jobs without a result.
 - More seeds later: the same commands with `--seeds 2022 2023`; the table averages the seeds.

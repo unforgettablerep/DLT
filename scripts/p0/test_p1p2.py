@@ -172,10 +172,20 @@ with torch.no_grad():
     err = (it1(xq * 3.0 + 5.0, mq, None, None) - (y1 * 3.0 + 5.0)).abs().max().item()
 ok(f'iTransformer --use_norm 1 (default): output follows scale and shift of the input (max err {err:.1e})', err < 1e-4)
 ok('iTransformer --use_norm 0: no instance normalisation (same weights, different output)', (y1 - y0).abs().max() > 1e-3)
-pa = {(m, ds, H): exps.plugin_all_args(m, ds, H)[0] for m in ('iTransformer', 'SMamba') for ds in exps.PEMS_SETS
-      for H in exps.PEMS_HORIZONS}
+pa = {(m, ds, H): exps.plugin_all_args(m, ds, H)[0] for m in exps.BASELINES for ds in exps.PLUGIN_ALL_SETS
+      for H in (exps.PEMS_HORIZONS if ds in exps.PEMS_SETS else exps.HORIZONS)}
 ok('plugin_all: official PEMS settings per horizon (iTransformer PEMS08-48: 4 layers, use_norm 0; S-Mamba PEMS08-24: lr 7e-4)',
    '--e_layers 4' in pa[('iTransformer', 'PEMS08', 48)] and '--use_norm 0' in pa[('iTransformer', 'PEMS08', 48)]
    and '--use_norm 1' in pa[('iTransformer', 'PEMS08', 12)] and '--learning_rate 0.0007' in pa[('SMamba', 'PEMS08', 24)]
    and all('--use_norm 0' in pa[(m, 'PEMS04', H)] for m in ('iTransformer', 'SMamba') for H in exps.PEMS_HORIZONS))
+ok('plugin_all: official PEMS03/07 and Solar settings (S-Mamba PEMS03-12: 5 epochs, PEMS03-48: 5 layers lr 1e-4; '
+   'iTransformer PEMS07-96: batch 16, Solar: lr 5e-4; TimeMixer Solar: d_ff 2048, PEMS: patience 10)',
+   '--train_epochs 5' in pa[('SMamba', 'PEMS03', 12)] and '--e_layers 5' in pa[('SMamba', 'PEMS03', 48)]
+   and '--learning_rate 0.0001' in pa[('SMamba', 'PEMS03', 48)] and '--batch_size 16' in pa[('iTransformer', 'PEMS07', 96)]
+   and '--use_norm 0' in pa[('SMamba', 'PEMS07', 24)] and '--learning_rate 0.0005' in pa[('iTransformer', 'Solar', 336)]
+   and '--d_ff 2048' in pa[('TimeMixer', 'Solar', 720)] and '--patience 10' in pa[('TimeMixer', 'PEMS07', 48)])
+fb = [(m, ds) for m in ('Informer', 'TimesNet', 'TimeXer') for ds in ('Solar', 'PEMS03', 'PEMS07')
+      if pa[(m, ds, 96)] != exps.plugin_all_args(m, 'ECL' if m != 'Informer' else 'ETTh1', 96)[0]]
+ok('plugin_all: without official settings, Solar / PEMS03 / PEMS07 take the documented fallback (ECL; Informer: ETTh1)',
+   not fb)
 print('ALL PASS' if ok_all else 'SOME CHECKS FAILED')
