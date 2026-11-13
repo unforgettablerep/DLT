@@ -27,6 +27,8 @@ LABEL = {'alone': 'alone', 'dlt': '+ DLT-dyn (branch lr 3e-3)', 'dlt_samelr': '+
 runs = {}
 for d in sys.argv[1:] or [paths.REPO / 'results' / 'p1', paths.WORK]:
     for f in sorted(glob.glob(os.path.join(d, 'results_plugin*.jsonl')) + glob.glob(os.path.join(d, 'results_allnb.jsonl'))):
+        if os.path.basename(f) == 'results_plugin_all.jsonl':     # its own protocol and table: plugin_table.py
+            continue
         for line in open(f):
             if line.strip():
                 r = json.loads(line)

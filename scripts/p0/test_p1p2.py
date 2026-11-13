@@ -7,6 +7,8 @@
 * S-Mamba: the pure-PyTorch Mamba block == the independent block of models/MambaSimple.py (same parameters), is
   causal and initialised like mamba_ssm; the model is bidirectional over the variates and drops the mark tokens
 * every representative baseline has a configuration for every long-term dataset and horizon
+* iTransformer: --use_norm 1 (default) is instance normalisation, --use_norm 0 turns it off; the plug-in study with
+  all backbones (plugin_all) uses the official per-horizon PEMS settings of iTransformer and S-Mamba
 """
 import sys, types
 from pathlib import Path
@@ -157,4 +159,23 @@ import exps
 missing = [(m, ds, H) for m in exps.BASELINES for ds in exps.LONG_SETS for H in exps.HORIZONS
            if exps.backbone_args(m, ds, H)[1] == 'fallback' and m != 'DLinear' and not exps.FALLBACK.get(m, {}).get(ds)]
 ok(f'official or documented configuration for every baseline, dataset and horizon ({len(exps.BASELINES)} models)', not missing)
+
+# ---- iTransformer --use_norm and the settings of plugin_all
+from models import iTransformer
+ci = cfg(enc_in=6, d_model=16, d_ff=16, e_layers=1, n_heads=2, output_attention=False)
+torch.manual_seed(0); it1 = iTransformer.Model(ci).eval()
+ci.use_norm = 0
+torch.manual_seed(0); it0 = iTransformer.Model(ci).eval()
+xq, mq = torch.randn(2, 96, 6), torch.randn(2, 96, 4)
+with torch.no_grad():
+    y1, y0 = it1(xq, mq, None, None), it0(xq, mq, None, None)
+    err = (it1(xq * 3.0 + 5.0, mq, None, None) - (y1 * 3.0 + 5.0)).abs().max().item()
+ok(f'iTransformer --use_norm 1 (default): output follows scale and shift of the input (max err {err:.1e})', err < 1e-4)
+ok('iTransformer --use_norm 0: no instance normalisation (same weights, different output)', (y1 - y0).abs().max() > 1e-3)
+pa = {(m, ds, H): exps.plugin_all_args(m, ds, H)[0] for m in ('iTransformer', 'SMamba') for ds in exps.PEMS_SETS
+      for H in exps.PEMS_HORIZONS}
+ok('plugin_all: official PEMS settings per horizon (iTransformer PEMS08-48: 4 layers, use_norm 0; S-Mamba PEMS08-24: lr 7e-4)',
+   '--e_layers 4' in pa[('iTransformer', 'PEMS08', 48)] and '--use_norm 0' in pa[('iTransformer', 'PEMS08', 48)]
+   and '--use_norm 1' in pa[('iTransformer', 'PEMS08', 12)] and '--learning_rate 0.0007' in pa[('SMamba', 'PEMS08', 24)]
+   and all('--use_norm 0' in pa[(m, 'PEMS04', H)] for m in ('iTransformer', 'SMamba') for H in exps.PEMS_HORIZONS))
 print('ALL PASS' if ok_all else 'SOME CHECKS FAILED')

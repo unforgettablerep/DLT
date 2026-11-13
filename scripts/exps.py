@@ -28,9 +28,16 @@ Suites
                    Electricity (DLT-dyn there only with --device gpu), iTransformer + DLT-dyn on PEMS08-12
   plugin_probe P1  diagnosis of the plug-in on Traffic-96: + DLT-dyn with the backbone's learning rate, with a
                    static gate, and with both (PatchTST, iTransformer; use --seeds 2021 for six runs)
+  plugin_all   P1  every representative backbone (BASELINES) alone and + DLT-dyn (DLTPlug, branch lr 3e-3) on the
+                   long-term benchmark (horizons 96/192/336/720) and on PEMS04/08 (horizons 12/24/48/96, protocol of
+                   iTransformer and S-Mamba: MSE loss, metrics on the normalised scale, their official per-horizon
+                   settings). Backbones keep the settings of the plug-in study (PatchTST: its paper's). GPU.
+                   The table: python scripts/p1/plugin_table.py
 
---models / --datasets restrict the baselines (and ci_long) suites, e.g. the CPU-feasible subset
+--models / --datasets restrict the baselines, ci_long and plugin_all suites, e.g. the CPU-feasible subset
     python scripts/exps.py baselines --models DLinear iTransformer TimeMixer --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange
+--dlt "<args>" adds to or overrides the DLT-dyn arguments, e.g. --dlt "--dlt_gate static" or --dlt "--dlt_lr 0"
+(plugin_all: the branch then trains with the backbone's learning rate).
 """
 import argparse, os, re, json, itertools, sys
 from pathlib import Path
@@ -46,6 +53,8 @@ TSLIB = REPO
 BASELINES = ('Informer', 'TimesNet', 'DLinear', 'PatchTST', 'iTransformer', 'TimeMixer', 'TimeXer', 'SMamba')
 HORIZONS = (96, 192, 336, 720)
 LONG_SETS = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', 'Traffic')
+PEMS_SETS = ('PEMS04', 'PEMS08')
+PEMS_HORIZONS = (12, 24, 48, 96)                               # iTransformer / S-Mamba protocol, input 96
 
 # name: (--data, file, variables, --freq, train windows (for cost estimates))
 DATASETS = {
@@ -125,6 +134,25 @@ FALLBACK_FROM = {'Informer': {d: 'ETTh1' for d in ('ETTh2', 'ETTm1', 'ETTm2', 'E
                  'TimesNet': {'PEMS04': 'ECL', 'PEMS08': 'ECL'}}
 MODEL_EXTRA = {'TimeMixer': '--down_sampling_method avg'}
 
+# Official settings for PEMS04/08 at the horizons 12/24/48/96 (scripts/multivariate_forecasting/PEMS/*_0[48].sh of
+# the iTransformer and S-Mamba repositories; unset values are the defaults there and here: lr 1e-4, batch 32).
+# Used by plugin_all. The older PEMS-12 suites (pems12 protocol) keep FALLBACK above, which for iTransformer
+# differs: PEMS04 without --use_norm 0, PEMS08 with lr 1e-3 / batch 16 (the settings of its horizons 48 and 96).
+_IT08 = ('--e_layers 2 --d_model 512 --d_ff 512 --use_norm 1',
+         '--e_layers 4 --d_model 512 --d_ff 512 --batch_size 16 --learning_rate 0.001 --use_norm 0')
+_SM08 = '--e_layers 4 --d_model 256 --d_ff 256 --batch_size 16 --learning_rate 0.001 --use_norm 1'
+PEMS_OFFICIAL = {
+    'iTransformer': {'PEMS04': dict.fromkeys(PEMS_HORIZONS, '--e_layers 4 --d_model 1024 --d_ff 1024 --learning_rate 0.0005 --use_norm 0'),
+                     'PEMS08': {12: _IT08[0], 24: _IT08[0], 48: _IT08[1], 96: _IT08[1]}},
+    'SMamba': {'PEMS04': dict.fromkeys(PEMS_HORIZONS, '--e_layers 4 --d_model 1024 --d_ff 1024 --learning_rate 0.0003 --use_norm 0'),
+               'PEMS08': {12: '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.001 --use_norm 1',
+                          24: '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.0007 --use_norm 1',
+                          48: _SM08, 96: _SM08}},
+}
+# relative cost of a backbone (only orders the job lists, longest first)
+REL_COST = {'Informer': 1.0, 'TimesNet': 6.0, 'DLinear': 0.3, 'PatchTST': 3.0, 'iTransformer': 1.5, 'TimeMixer': 2.0,
+            'TimeXer': 3.0, 'SMamba': 1.5}
+
 
 # PatchTST in the plug-in study: the configurations of the PatchTST paper (TSLib's scripts use d_model 512 /
 # d_ff 2048, which is ~8x more expensive and not what the paper reports); the training budget stays TSLib's
@@ -139,6 +167,19 @@ def plugin_backbone_args(model, ds, H):
         size = 'small' if ds.startswith('ETT') or ds == 'Exchange' else 'large'
         args, src = f'{PATCHTST_PAPER[size]} {keep}'.strip(), 'PatchTST paper'
     return args, src
+
+
+def recipe_tag(extra):
+    """short name of extra --dlt arguments: a changed recipe gets its own job names (dlt_<tag>), so that runs of the
+    default recipe are neither skipped for nor mixed with it"""
+    return re.sub(r'[^A-Za-z0-9.]+', '-', re.sub(r'--(dlt_)?', '', extra)).strip('-')
+
+
+def plugin_all_args(model, ds, H):
+    """Backbone settings of plugin_all: those of the plug-in study, on PEMS the official per-horizon ones."""
+    if H in PEMS_OFFICIAL.get(model, {}).get(ds, {}):
+        return (PEMS_OFFICIAL[model][ds][H] + ' ' + MODEL_EXTRA.get(model, '')).strip(), f'{model} repository'
+    return plugin_backbone_args(model, ds, H)
 
 
 def backbone_args(model, ds, H):
@@ -158,10 +199,10 @@ class Gen:
         self.work = str(paths.WORK)
         os.makedirs(f'{self.work}/logs/{suite}', exist_ok=True)
 
-    def add(self, name, model, ds, H, seed, args, cost):
+    def add(self, name, model, ds, H, seed, args, cost, label=None):
         dflag, dfile, C, freq, _ = DATASETS[ds]
         dev = '--no_use_gpu --num_workers 0' if self.a.device == 'cpu' else '--num_workers 4'
-        label = '0' if ds.startswith('PEMS') else '48'
+        label = str(label) if label is not None else ('0' if ds.startswith('PEMS') else '48')
         cmd = (f'python -u run.py --task_name long_term_forecast --is_training 1 --model {model} '
                f'--model_id {self.suite}_{ds}_{H} --root_path {paths.root_of(dfile)} --data {dflag} '
                f'--data_path {dfile} --freq {freq} --features M --seq_len 96 --label_len {label} --pred_len {H} '
@@ -200,9 +241,15 @@ def main():
     p.add_argument('--device', default='cpu', choices=['cpu', 'gpu'])
     p.add_argument('--seeds', type=int, nargs='+', default=[2021, 2022, 2023])
     p.add_argument('--dlt', default='', help='extra --dlt_* arguments of the proposed model (e.g. a gate)')
-    p.add_argument('--models', nargs='+', help='baselines: only these models')
-    p.add_argument('--datasets', nargs='+', help='baselines / ci_long: only these datasets')
+    p.add_argument('--models', nargs='+', help='baselines / plugin_all / plugin_probe: only these models')
+    p.add_argument('--datasets', nargs='+', help='baselines / ci_long / plugin_all / plugin_probe / allnb: only these datasets')
     a = p.parse_args()
+    unknown = sorted(set(a.datasets or ()) - set(DATASETS))
+    if unknown:
+        raise SystemExit(f'unknown dataset(s) {unknown}; choose from {sorted(DATASETS)}')
+    unknown = sorted(m for m in a.models or () if not (REPO / 'models' / f'{m}.py').exists())
+    if unknown:
+        raise SystemExit(f'unknown model(s) {unknown}: no file models/<name>.py')
     g = Gen(a, a.suite)
     dlt = f'{DLT_DEFAULT} {a.dlt}'.strip()
     S = a.seeds
@@ -230,6 +277,20 @@ def main():
                   f'--plug_base {base} --dlt_variant ci {bargs} {proto}', cost(ds, rel))
             g.add(f'{ds}_{H}_{base}_dlt', 'DLTPlug', ds, H, seed,
                   f'--plug_base {base} {dlt} --dlt_lr 0.003 {bargs} {proto}', cost(ds, rel + 1))
+    elif a.suite == 'plugin_all':
+        # each backbone alone and + DLT-dyn on every dataset and horizon. Both arms go through DLTPlug ("alone":
+        # --dlt_variant ci, which builds the backbone only and is identical to running it directly). label_len 48 on
+        # PEMS too (iTransformer / S-Mamba protocol; only Informer reads it). --dlt_lr comes first so that --dlt can
+        # override it.
+        arm = 'dlt' + (f'_{recipe_tag(a.dlt)}' if a.dlt else '')
+        for ds, base, seed in itertools.product(a.datasets or LONG_SETS + PEMS_SETS, a.models or BASELINES, S):
+            for H in PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS:
+                bargs, _ = plugin_all_args(base, ds, H)
+                rel = REL_COST.get(base, 2.0)
+                g.add(f'{ds}_{H}_{base}_alone', 'DLTPlug', ds, H, seed,
+                      f'--plug_base {base} --dlt_variant ci {bargs}', cost(ds, rel), label=48)
+                g.add(f'{ds}_{H}_{base}_{arm}', 'DLTPlug', ds, H, seed,
+                      f'--plug_base {base} --dlt_lr 0.003 {dlt} {bargs}', cost(ds, rel + 1), label=48)
     elif a.suite == 'plugin_probe':
         # Why does the DLT-dyn branch hurt PatchTST / iTransformer on Traffic (GPU tier 1c)? Three variants of the
         # "+ DLT-dyn" arm at horizon 96, to be compared with the finished alone / default arms of plugin_large:

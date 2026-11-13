@@ -21,6 +21,7 @@ images of upstream; see the upstream repository). `requirements.txt` of upstream
 | `models/SMamba.py`, `layers/MambaPy.py` | **new** – the S-Mamba baseline (Wang et al., Neurocomputing 2025), re-implemented after the official code: bidirectional Mamba over variate tokens; `mamba_ssm.Mamba` if it imports (from the environment, else from the source checkouts `../mamba` and `../causal-conv1d`; the block is imported without `mamba_ssm/__init__.py`, so `transformers` is not needed; a mamba_ssm without its CUDA kernel `selective_scan_cuda`, as a source install of mamba_ssm >= 2.3 without `MAMBA_KEEP_CUDA_BUILD=TRUE`, counts as not importable) and the run is on a GPU, else a pure-PyTorch block with the same parameters, initialisation and outputs (`--mamba_impl auto|ssm|torch`, `--d_state`; `scripts/gpu/check_mamba.py` checks the installation). The unused modules of the official encoder layer are left out |
 | `scripts/long_term_forecast/*_script/SMamba*.sh` | **new** – the hyper-parameters of the official S-Mamba scripts for Electricity, Traffic, Weather, Exchange and ETTh1/h2/m1/m2 in the format of this library |
 | `run.py` | `--d_state`, `--mamba_impl` (S-Mamba) |
+| `models/iTransformer.py` | honours `--use_norm` (default 1: unchanged); the official PEMS settings of iTransformer use `--use_norm 0` |
 | `scripts/paths.py` | **new** – the fixed locations used by every script: data (`dataset/`, or `../data` next to the repository), work (`work/`), Mamba sources (`../mamba`, `../causal-conv1d`) |
 | `exp/exp_basic.py` | fall back to CPU when CUDA / MPS is requested but not available (instead of crashing); keep a `CUDA_VISIBLE_DEVICES` mask set by the caller instead of overwriting it with `--gpu` (one job per GPU in `scripts/gpu/run_gpu_queue.sh`) |
 | `utils/timefeatures.py` | pandas ≥ 3 compatibility: map TSLib `--freq` codes (`t`, `h`, `s`, `d`, `b`, `w`, `m`, `q`, `a`) to the new pandas aliases (`min`, `h`, `s`, `D`, `B`, `W`, `ME`, `QE`, `YE`); falls back to the original string on older pandas |
@@ -72,4 +73,6 @@ DLTPlug, LagTS loss against explicit loops).
 
 ## Reproducing P1 / P2
 See `scripts/exps.py` (job lists per suite, `--device cpu|gpu`), `scripts/run_queue.sh`, `scripts/p1/hpsearch.py`,
-`scripts/p2/efficiency.py`, `scripts/p2/kernels.py` and the aggregation scripts in `scripts/p1`, `scripts/p2`.
+`scripts/p2/efficiency.py`, `scripts/p2/kernels.py` and the aggregation scripts in `scripts/p1`, `scripts/p2`
+(`scripts/p1/plugin_table.py` for the plug-in study with all backbones). `scripts/smoke_jobs.py <list>` builds every
+configuration of a job list and trains it for one step before a long queue starts.
