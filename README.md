@@ -5,12 +5,12 @@
 
 ## Quick start: one GPU, one dataset, stand-alone DLT-dyn
 
-Reference environment: one RTX 4090, host CUDA 13.1, PyTorch 2.5.1+cu124. The cu124 wheel ships its own CUDA 12.4
-runtime, so the host only needs a recent NVIDIA driver. Run everything from the repository root.
+Reference environment: one RTX 4090, host CUDA 13.0, PyTorch 2.10.0+cu130 (since 2026-11-13; before: PyTorch
+2.5.1+cu124). Run everything from the repository root.
 
 ```bash
-# 1. environment
-pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+# 1. environment (Python 3.10-3.13; the Mamba packages of S-Mamba: GPU_RUNS.md, section 0)
+pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu130
 pip install -r requirements.txt
 
 # 2. data: fixed directory ./dataset (Time-Series-Library layout, e.g. dataset/weather/weather.csv)
@@ -138,7 +138,7 @@ iTransformer on Traffic: 12.4 GB at batch 32 on the CPU).
 * **Equivalence with `code/proto.py`:** with identical parameters and neighbours, all 8 prototype variants (and both
   computation paths) give the same outputs (max |Δ| ≤ 1.1e-6) and gradients (≤ 1.2e-7).
 * **Device-agnostic:** every variant runs forward + backward on PyTorch's `meta` device, i.e. no tensor is
-  pinned to the CPU inside the model. On a physical GPU (RTX 4090, PyTorch 2.5.1+cu124): see the status note in
+  pinned to the CPU inside the model. On a physical GPU (RTX 4090; first check with PyTorch 2.5.1+cu124): see the status note in
   [`GPU_RUNS.md`](GPU_RUNS.md).
 * **End-to-end in TSLib (CPU):** all variants train and test; without CUDA the run falls back to the CPU;
   test-only mode (`--is_training 0`) reloads the checkpoint (incl. neighbours) and reproduces the metric.

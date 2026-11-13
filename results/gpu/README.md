@@ -1,7 +1,7 @@
 # GPU tier 1, partial results: evaluation (2026-11-11)
 
-**Source.** 136 result lines of `result_long_term_forecast.txt` from the RTX 4090 run (code version before the
-`tslib/` folder was merged into the root), parsed into [`tier1_partial.jsonl`](tier1_partial.jsonl). These lines
+**Source.** 136 result lines of `result_long_term_forecast.txt` from the RTX 4090 run (PyTorch 2.5.1+cu124, code
+version before the `tslib/` folder was merged into the root), parsed into [`tier1_partial.jsonl`](tier1_partial.jsonl). These lines
 hold test MSE and MAE only. Epochs, best epoch and validation loss are in the `results_*.jsonl` files of the work
 directory of that run; they are needed for the diagnosis below.
 

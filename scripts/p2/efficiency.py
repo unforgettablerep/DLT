@@ -93,7 +93,7 @@ def one(spec):
     return {'dataset': spec['dataset'], 'C': C, 'model': spec['name'], 'device': spec['device'],
             'threads': spec['threads'], 'batch': B, 'H': H, 'params': int(sum(p.numel() for p in model.parameters())),
             'train_ms': round(train_ms, 1), 'infer_ms': round(infer_ms, 1), 'mem_MB': round(mem, 1),
-            'gpu': torch.cuda.get_device_name() if dev.type == 'cuda' else None,
+            'gpu': torch.cuda.get_device_name() if dev.type == 'cuda' else None, 'torch': torch.__version__,
             **({'mamba_impl': model.mamba_impl} if model_name == 'SMamba' else {})}
 
 

@@ -8,10 +8,12 @@ re-implemented for this Time-Series-Library snapshot after the official code (gi
 
 The Mamba blocks use d_state = --d_state, d_conv = 2 and expand = 1, as fixed in the official model. The block is
 ``mamba_ssm.Mamba`` (CUDA only) when mamba_ssm can be imported, from the environment or from the source checkouts
-next to the repository (../mamba and ../causal-conv1d, the fixed locations of scripts/paths.py), and
-``layers/MambaPy.py`` otherwise: a pure-PyTorch block with the same parameters and outputs but a sequential scan
-(slower). ``--mamba_impl ssm|torch`` forces one of them; the choice and its reason are printed and the choice is
-stored in the result record. ``python scripts/gpu/check_mamba.py`` checks the installation.
+next to the repository (../mamba and ../causal-conv1d, the fixed locations of scripts/paths.py) and has its CUDA
+kernel (selective_scan_cuda), and ``layers/MambaPy.py`` otherwise: a pure-PyTorch block with the same parameters and
+outputs but a sequential scan (slower). The block is imported without mamba_ssm/__init__.py, so `transformers` and
+the other dependencies of the language models and of Mamba-2/3 are not needed. ``--mamba_impl ssm|torch`` forces
+one of them; the choice and its reason are printed and the choice is stored in the result record.
+``python scripts/gpu/check_mamba.py`` checks the installation.
 
 Differences from the official file: the encoder layer there also builds two Mamba blocks and an attention layer
 that never enter the forward pass; they are left out here, so the parameter count is that of the working model.
@@ -49,6 +51,11 @@ def _block_class():
         sys.modules["mamba_ssm"] = importlib.util.module_from_spec(spec)     # package object, __init__ not run
     try:
         cls = importlib.import_module("mamba_ssm.modules.mamba_simple").Mamba
+        # From mamba_ssm 2.3 on, a source install builds the selective-scan kernel only with MAMBA_KEEP_CUDA_BUILD=TRUE;
+        # without it the block still imports and fails at its first forward pass. Treat that as "not importable".
+        if getattr(importlib.import_module("mamba_ssm.ops.selective_scan_interface"), "selective_scan_cuda", None) is None:
+            raise ImportError("mamba_ssm is installed without its CUDA kernel selective_scan_cuda (since mamba_ssm 2.3 "
+                              "a source install builds it only with MAMBA_KEEP_CUDA_BUILD=TRUE; the release wheels have it)")
         if not hasattr(sys.modules["mamba_ssm"], "Mamba"):
             sys.modules["mamba_ssm"].Mamba = cls                    # `from mamba_ssm import Mamba` keeps working
         return cls

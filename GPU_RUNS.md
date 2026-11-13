@@ -1,7 +1,15 @@
 # Experiments that still need a GPU
 
-**Target machine:** one RTX 4090 (24 GB), host CUDA 13.1, PyTorch 2.5.1+cu124. The cu124 wheel ships its own
-CUDA 12.4 runtime, so the host only needs a recent NVIDIA driver. All commands run from the repository root.
+**Target machine:** one RTX 4090 (24 GB), host CUDA 13.0, PyTorch 2.10.0+cu130 in its own conda environment
+(set-up in section 0). All commands run from the repository root.
+
+**Environment change (2026-11-13).** The first GPU check and the tier-1 results so far
+([`results/gpu`](results/gpu/README.md)) were run with PyTorch 2.5.1+cu124. That build refuses the host's CUDA 13.0
+compiler for `mamba_ssm`, so the reference environment is now PyTorch 2.10.0+cu130 with the CUDA 13 wheels of
+`mamba_ssm`. Result records written from now on carry `torch` and `device`; older records have neither.
+- Run the checks of section 0 again in the new environment.
+- For GPU tables from one environment only, run tier 1 again in it too: keep the old work directory
+  (`mv work work_cu124`) and write the job lists anew (`bash scripts/gpu/make_gpu_jobs.sh`).
 
 Everything that is feasible on the 4-core CPU development machine has been run there:
 - P0 kernel and gate study: [`results/p0`](results/p0).
@@ -168,11 +176,19 @@ Run tier 0 first: its per-batch times calibrate the time needed for the other ti
 ## 0. Set-up and checks
 
 ```bash
-pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+# a new conda environment for the host's CUDA 13.0 (the driver must support CUDA 13.0: see nvidia-smi)
+conda create -y -n dlt-cu130 python=3.12
+conda activate dlt-cu130
+pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu130
 pip install -r requirements.txt
 pip install --no-deps einops==0.8.1 local-attention==1.11.2 reformer-pytorch==1.4.4 hyper-connections \
     axial-positional-embedding product-key-memory==0.1.10                  # imports of the Transformer baselines
-python scripts/gpu/check_mamba.py               # can S-Mamba use mamba_ssm (~/mamba, ~/causal-conv1d)? says what to do if not
+# S-Mamba: mamba_ssm and causal_conv1d prebuilt for CUDA 13 + torch 2.10 + Python 3.12; --no-deps: S-Mamba needs
+# neither transformers nor the other dependencies of mamba_ssm
+pip install --no-deps https://github.com/state-spaces/mamba/releases/download/v2.3.2.post1/mamba_ssm-2.3.2.post1+cu13torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+pip install --no-deps https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.7.0/causal_conv1d-1.7.0+cu13torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+
+python scripts/gpu/check_mamba.py               # must end with "S-Mamba will use mamba_ssm ... Nothing to do."
 python scripts/gpu/check_gpu.py                 # stand-alone DLT-dyn; must end with "all checks passed"
 python scripts/gpu/check_gpu.py --all           # the ten representative configurations, incl. plug-in and S-Mamba
 python scripts/p2/efficiency.py --device gpu    # -> results/p2/efficiency_gpu.jsonl
@@ -191,32 +207,34 @@ other kernel variants of the P0 study and LagTS.
 **S-Mamba and the Mamba sources.** `models/SMamba.py` imports the Mamba block of `mamba_ssm`
 (`mamba_ssm.modules.mamba_simple`) from the environment, else from the checkouts `../mamba` and `../causal-conv1d`;
 without it (or on the CPU) it uses the pure-PyTorch block, which is the same model but takes one Python step per
-variate token (slow on Electricity and Traffic). The block is imported without `mamba_ssm/__init__.py`, which loads
-the language-model classes and with them `transformers`: S-Mamba does not need `transformers`. Every run prints the
-block it uses (`[S-Mamba] Mamba block: ...`) and stores it in its record (`mamba_impl`).
+variate token (slow on Electricity and Traffic). Every run prints the block it uses (`[S-Mamba] Mamba block: ...`)
+and stores it in its record (`mamba_impl`).
+- The block is imported without `mamba_ssm/__init__.py`. That file loads the language models and Mamba-2/3, and
+  with them `transformers` and further packages, none of which S-Mamba needs: hence `--no-deps` above.
+- The block does need the compiled selective-scan kernel `selective_scan_cuda`. The release wheels contain it.
+  A source install of mamba_ssm 2.3 or later builds it only with `MAMBA_KEEP_CUDA_BUILD=TRUE`; without it,
+  mamba_ssm imports but fails at the first step. S-Mamba counts such an install as not importable.
+
 `python scripts/gpu/check_mamba.py` shows
-- PyTorch, the CUDA version and C++ ABI it was built with, and the nvcc on the PATH,
+- PyTorch, the CUDA version and C++ ABI it was built with, the NVIDIA driver and the nvcc on the PATH,
 - the version of the two checkouts,
-- whether the compiled extensions (`selective_scan_cuda`, required; `causal_conv1d_cuda`, optional: fused path)
-  and the Mamba block import, and from where, or the exact error,
+- whether `selective_scan_cuda` (required), `causal_conv1d_cuda` (optional: fused path) and the Mamba block
+  import, and from where, or the exact error,
 - on the GPU: one `mamba_ssm` block (fused and unfused path) against the PyTorch block with the same parameters,
   and the speed of both,
 
-and ends with the verdict. If `selective_scan_cuda` is missing, it prints the prebuilt wheels to install with
-`--no-deps` (no compiler needed, and pip does not pull in `transformers`). For torch 2.5 + CUDA 12 these are the
-pair mamba_ssm 2.2.4 / causal_conv1d 1.5.0.post8, released together, with wheels for Python 3.10–3.12, e.g.
-
-```bash
-pip install --force-reinstall --no-deps https://github.com/state-spaces/mamba/releases/download/v2.2.4/mamba_ssm-2.2.4+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
-pip install --force-reinstall --no-deps https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.5.0.post8/causal_conv1d-1.5.0.post8+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
-```
-
-(the script prints the names for the Python and ABI of the machine it runs on; without access to github.com,
-download the files elsewhere and `pip install` them). The CUDA version of the host matters only for building from
-the checkouts: PyTorch 2.5.1+cu124 refuses the nvcc of CUDA 13 for its extensions, so the build needs a CUDA 12.4
-toolkit in the conda environment (`conda install -c nvidia/label/cuda-12.4.1 cuda-toolkit`, then
-`CUDA_HOME=$CONDA_PREFIX MAMBA_FORCE_BUILD=TRUE pip install --no-build-isolation --no-deps ~/mamba`; the script
-prints the full commands). The prebuilt wheels run on the host's newer driver.
+and ends with the verdict and, if needed, the commands for the machine it runs on:
+- the prebuilt wheels, installed with `--no-deps`. For CUDA 13 with torch 2.9 or 2.10 this is the pair
+  mamba_ssm 2.3.2.post1 / causal_conv1d 1.7.0 (Python 3.10–3.13); for CUDA 12 with torch 2.5, the pair 2.2.4 /
+  1.5.0.post8. Without access to github.com, download the files elsewhere and `pip install` them.
+- or the build from the checkouts with the host's nvcc. PyTorch accepts only an nvcc of the CUDA major version it
+  was built for: CUDA 13.0 works with torch +cu130, not with the earlier +cu124.
+  ```bash
+  pip install ninja packaging
+  CAUSAL_CONV1D_FORCE_BUILD=TRUE MAX_JOBS=4 pip install --no-build-isolation --no-deps ~/causal-conv1d
+  MAMBA_FORCE_BUILD=TRUE MAMBA_KEEP_CUDA_BUILD=TRUE MAX_JOBS=4 pip install --no-build-isolation --no-deps ~/mamba
+  ```
+  This compiles for every GPU architecture and takes long; the wheels are the quicker way.
 
 ## 1–4. Experiments
 

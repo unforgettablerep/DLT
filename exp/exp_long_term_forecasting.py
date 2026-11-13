@@ -383,7 +383,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                    'mape_clip5': float(mape_clip5), 'mape_masked': float(mape_mask),
                    'inverse': bool(a.inverse), 'loss': getattr(a, 'loss', 'MSE'),
                    'vali_inverse': bool(getattr(a, 'vali_inverse', False)),
-                   'n_params': int(sum(p.numel() for p in self.model.parameters()))}
+                   'n_params': int(sum(p.numel() for p in self.model.parameters())),
+                   'torch': torch.__version__,
+                   'device': torch.cuda.get_device_name(self.device) if self.device.type == 'cuda' else self.device.type}
             if a.model in ('DLT', 'DLTPlug'):
                 rec.update({'variant': a.dlt_variant, 'gate': a.dlt_gate, 'k': a.dlt_k, 'L': a.dlt_L,
                             'R': a.dlt_R, 'topk': a.dlt_topk, 'impl': a.dlt_impl,

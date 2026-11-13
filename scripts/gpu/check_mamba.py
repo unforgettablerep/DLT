@@ -2,10 +2,13 @@
 
     python scripts/gpu/check_mamba.py
 
+Reference GPU environment (GPU_RUNS.md): host CUDA 13.0, PyTorch 2.10.0+cu130, and mamba_ssm 2.3.2.post1 and
+causal_conv1d 1.7.0 from their prebuilt wheels for CUDA 13 + torch 2.10.
+
 S-Mamba (models/SMamba.py) imports mamba_ssm from the environment, else from the source checkouts next to the
 repository (scripts/paths.py: ../mamba and ../causal-conv1d), else it falls back to the pure-PyTorch Mamba block
 of layers/MambaPy.py (same model, much slower). This script shows
-  1. Python, PyTorch, the CUDA version PyTorch was built for, the C++ ABI and the nvcc on the PATH,
+  1. Python, PyTorch, the CUDA version and C++ ABI PyTorch was built with, the NVIDIA driver and the nvcc on the PATH,
   2. the version of the two source checkouts,
   3. whether the compiled extensions (selective_scan_cuda, causal_conv1d_cuda) and the Mamba block of mamba_ssm
      import, and from where (or the exact error); `transformers` is not needed (S-Mamba imports the block
@@ -13,7 +16,7 @@ of layers/MambaPy.py (same model, much slower). This script shows
   4. on a GPU: one Mamba block of mamba_ssm (fused and unfused path) against the PyTorch block with the same
      parameters (outputs and gradients, float32, TF32 off), and the time of both at the size of S-Mamba on
      Electricity (batch 16, 325 tokens, d_model 512, d_state 16),
-and ends with what S-Mamba will use and, if mamba_ssm is not usable, what to do.
+and ends with what S-Mamba will use and, if mamba_ssm is not usable, what to install.
 """
 import copy, importlib, os, platform, re, shutil, subprocess, sys, time
 from pathlib import Path
@@ -28,6 +31,7 @@ from models import SMamba  # noqa: E402
 from layers.MambaPy import Mamba as TorchMamba  # noqa: E402
 
 issues = []
+REF_TORCH, REF_INDEX = '2.10.0', 'https://download.pytorch.org/whl/cu130'     # reference environment (GPU_RUNS.md)
 
 
 def version_of(init_py):
@@ -41,6 +45,11 @@ print(f'python {platform.python_version()}, torch {torch.__version__}, built for
       f'C++11 ABI {torch._C._GLIBCXX_USE_CXX11_ABI}')
 cuda = torch.cuda.is_available()
 print(f'GPU: {torch.cuda.get_device_name(0) if cuda else "none (CUDA not available)"}')
+smi = shutil.which('nvidia-smi')
+if smi:
+    out = subprocess.run([smi], capture_output=True, text=True, timeout=60).stdout
+    drv, top = (re.search(rf'{k}:\s*([\d.]+)', out) for k in ('Driver Version', 'CUDA Version'))
+    print(f'NVIDIA driver {drv.group(1) if drv else "?"}, supports CUDA up to {top.group(1) if top else "?"}')
 nvcc = shutil.which('nvcc')
 nvcc_ver = None
 if nvcc:
@@ -52,8 +61,11 @@ if os.environ.get('CUDA_HOME'):
     print(f'CUDA_HOME: {os.environ["CUDA_HOME"]}')
 torch_major = int(torch.version.cuda.split('.')[0]) if torch.version.cuda else None
 if not torch.version.cuda:
-    issues.append('this PyTorch is a CPU-only build: install the CUDA build first, '
-                  'pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124')
+    issues.append(f'this PyTorch is a CPU-only build: install the CUDA build first, '
+                  f'pip install torch=={REF_TORCH} --index-url {REF_INDEX}')
+elif not cuda and smi:
+    issues.append(f'PyTorch is built for CUDA {torch.version.cuda} but sees no GPU: the NVIDIA driver must support '
+                  f'CUDA {torch.version.cuda} (nvidia-smi shows the highest CUDA version it supports)')
 
 # ---- 2. source checkouts
 print('\n== source checkouts next to the repository (scripts/paths.py)')
@@ -87,7 +99,7 @@ for ext, what in (('selective_scan_cuda', 'selective scan of mamba_ssm (required
             if 'undefined symbol' in str(e2):
                 issues.append(f'{ext} was built for another PyTorch / CUDA / C++ ABI: reinstall it for torch {torch.__version__}')
             elif ext == 'selective_scan_cuda':
-                issues.append('the CUDA extension of mamba_ssm is not built or not installed')
+                issues.append('the CUDA kernel of mamba_ssm (selective_scan_cuda) is not built or not installed')
 try:
     Mamba, impl, note = SMamba.mamba_block('ssm')
     print(f'Mamba block: OK ({note})')
@@ -162,12 +174,16 @@ if Mamba is not None and cuda and not issues:
 
 # ---- verdict
 print('\n== verdict')
-TV = '.'.join(torch.__version__.split('+')[0].split('.')[:2])                  # e.g. 2.5
+TV = '.'.join(torch.__version__.split('+')[0].split('.')[:2])                  # e.g. 2.10
 PY = f'cp{sys.version_info.major}{sys.version_info.minor}'
 ABI = str(torch._C._GLIBCXX_USE_CXX11_ABI).upper()
-# a pair released together, with prebuilt wheels for torch 2.5 + CUDA 12 (checked 2026-11 for Python 3.10-3.12 and
-# the C++ ABI of the pip build of torch, cxx11abiFALSE); for another PyTorch the versions of the checkouts are proposed
-PAIR = {'mamba_ssm': '2.2.4', 'causal_conv1d': '1.5.0.post8'} if TV == '2.5' else versions
+# mamba_ssm / causal_conv1d pairs released together, with prebuilt wheels (checked 2026-11):
+#   CUDA 13 + torch 2.9 or 2.10: Python 3.10-3.13, cxx11abiTRUE (the C++ ABI of the pip builds of torch >= 2.7)
+#   CUDA 12 + torch 2.5:         Python 3.10-3.12, cxx11abiFALSE (the C++ ABI of the pip build of torch 2.5)
+WHEELS = {(13, '2.10'): ('2.3.2.post1', '1.7.0'), (13, '2.9'): ('2.3.2.post1', '1.7.0'),
+          (12, '2.5'): ('2.2.4', '1.5.0.post8')}
+known = WHEELS.get((torch_major, TV))
+PAIR = dict(zip(('mamba_ssm', 'causal_conv1d'), known)) if known else versions
 REPOS = {'mamba_ssm': 'state-spaces/mamba', 'causal_conv1d': 'Dao-AILab/causal-conv1d'}
 
 
@@ -191,26 +207,33 @@ else:
         print(f'- {i}')
     if Mamba is not None:
         print('Until this is resolved, run S-Mamba with --mamba_impl torch.')
-    if torch_major and (not ext_ok.get('selective_scan_cuda') or any('causal_conv1d' in i for i in issues)) \
-            and 'mamba_ssm' in PAIR:
-        print('  Install the prebuilt wheels (no compiler needed; download them elsewhere and copy them here if this\n'
-              '  machine cannot reach github.com, then pip install the files):')
-        print(f'    pip install --force-reinstall --no-deps {wheel("mamba_ssm")}')
-        if 'causal_conv1d' in PAIR:
-            print(f'    pip install --force-reinstall --no-deps {wheel("causal_conv1d")}    # optional: fused path')
-        print('  They go into the environment, so the checkouts next to the repository are no longer used. --no-deps\n'
-              '  keeps pip from installing transformers, which mamba_ssm lists but S-Mamba does not need.')
-        if TV != '2.5':
-            print('  If a file does not exist, the release page of that version lists its wheels.')
-        if nvcc_ver and nvcc_ver[0] != torch_major:
-            print(f'  Building from the checkouts instead needs an nvcc of CUDA {torch_major}.x: PyTorch built for CUDA\n'
-                  f'  {torch.version.cuda} refuses the nvcc of CUDA {nvcc_ver[0]}.{nvcc_ver[1]} on the PATH. Install a CUDA '
-                  f'{torch.version.cuda} toolkit into this\n'
-                  f'  environment and build with it (MAMBA_FORCE_BUILD skips the wheel download):\n'
-                  f'    conda install -c nvidia/label/cuda-{torch.version.cuda}.1 cuda-toolkit\n'
+    if torch_major and (not ext_ok.get('selective_scan_cuda') or any('causal_conv1d' in i for i in issues)):
+        if not known:
+            print(f'  No wheel pair is known for torch {TV} + CUDA {torch_major}. The reference environment is PyTorch\n'
+                  f'  {REF_TORCH}+cu130: pip install torch=={REF_TORCH} --index-url {REF_INDEX}')
+        if 'mamba_ssm' in PAIR:
+            print('  Install the prebuilt wheels (no compiler needed; download them elsewhere and copy them here if this\n'
+                  '  machine cannot reach github.com, then pip install the files):')
+            print(f'    pip install --force-reinstall --no-deps {wheel("mamba_ssm")}')
+            if 'causal_conv1d' in PAIR:
+                print(f'    pip install --force-reinstall --no-deps {wheel("causal_conv1d")}    # optional: fused path')
+            print('  They go into the environment, so the checkouts next to the repository are no longer used. --no-deps\n'
+                  '  keeps pip from installing transformers and the other dependencies of mamba_ssm that S-Mamba does\n'
+                  '  not need.' + ('' if known else ' If a file does not exist, the release page of that version lists its wheels.'))
+        if nvcc_ver and nvcc_ver[0] == torch_major:
+            print(f'  Or build both from the checkouts with the nvcc on the PATH (CUDA {nvcc_ver[0]}.{nvcc_ver[1]}; this compiles for\n'
+                  f'  every GPU architecture and takes long):\n'
                   f'    pip install ninja packaging\n'
-                  f'    CUDA_HOME=$CONDA_PREFIX MAMBA_FORCE_BUILD=TRUE MAX_JOBS=8 \\\n'
+                  f'    CAUSAL_CONV1D_FORCE_BUILD=TRUE MAX_JOBS=4 pip install --no-build-isolation --no-deps {paths.CAUSAL_CONV1D_SRC}\n'
+                  f'    MAMBA_FORCE_BUILD=TRUE MAMBA_KEEP_CUDA_BUILD=TRUE MAX_JOBS=4 \\\n'
                   f'        pip install --no-build-isolation --no-deps {paths.MAMBA_SRC}\n'
-                  f'  (if a CUDA header is not found: export CPATH=$CONDA_PREFIX/targets/x86_64-linux/include)')
+                  f'  (since mamba_ssm 2.3 a source install leaves out the selective-scan kernel unless\n'
+                  f'  MAMBA_KEEP_CUDA_BUILD=TRUE; FORCE_BUILD skips the wheel download)')
+        elif nvcc_ver:
+            print(f'  Building from the checkouts needs an nvcc of CUDA {torch_major}.x: PyTorch built for CUDA '
+                  f'{torch.version.cuda} refuses\n  the nvcc of CUDA {nvcc_ver[0]}.{nvcc_ver[1]} on the PATH. Use the PyTorch build '
+                  f'for the CUDA of the host' + (
+                      f':\n    pip install torch=={REF_TORCH} --index-url {REF_INDEX}'
+                      if nvcc_ver[0] == 13 else '.'))
     print('Then run this script again.')
 sys.exit(0 if (Mamba is not None and not issues) else 1)
