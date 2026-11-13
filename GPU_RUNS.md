@@ -107,9 +107,11 @@ the work directory is `work/` inside the repository. Both are ignored by git.
 
 - Data layout: the Time-Series-Library layout (`dataset/ETT-small/ETTh1.csv`, `dataset/weather/weather.csv`,
   `dataset/electricity/electricity.csv`, `dataset/traffic/traffic.csv`, `dataset/exchange_rate/exchange_rate.csv`,
-  `dataset/PEMS/PEMS04.npz`, `PEMS08.npz`, `PEMS08_edges.csv`), or all files directly in `dataset/`.
-  `bash scripts/download_data.sh traffic` fetches everything but PEMS04. A missing CSV is downloaded by
-  Time-Series-Library at run time; a missing PEMS file makes its jobs fail.
+  `dataset/illness/national_illness.csv`, `dataset/PEMS/PEMS03.npz` … `PEMS08.npz` with `PEMS0x_edges.csv`,
+  `dataset/Solar/solar_AL.txt`), or all files directly in `dataset/`. `bash scripts/download_data.sh` fetches all
+  of them (`--mirror` where huggingface.co or GitHub are blocked) and checks their sizes; `python
+  scripts/check_data.py` repeats the check. A missing CSV is downloaded by Time-Series-Library at run time; a
+  missing PEMS or Solar file makes its jobs fail.
 - `work/`: if results of an earlier run live in another directory, move that directory to `work`
   (`mv <old work directory> work`) or link it (`ln -s <old work directory> work`). Finished runs are recognised
   by job name and seed, wherever the list was generated.
@@ -256,7 +258,7 @@ One seed, in three stages, small data first so that the first comparisons arrive
 ```bash
 cd ~/DLT && conda activate dlt-cu130
 python scripts/exps.py plugin_all --device gpu --seeds 2021      # the whole list (640 jobs)
-python scripts/smoke_jobs.py plugin_all       # pre-flight: every configuration builds and trains one step
+python scripts/smoke_jobs.py plugin_all       # pre-flight: one training step per configuration, peak GPU memory
 nohup bash -c '
 python scripts/exps.py plugin_all --device gpu --seeds 2021 --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange Weather &&
 bash scripts/gpu/run_gpu_queue.sh plugin_all 0 0 0
@@ -270,6 +272,9 @@ tail -n 5 work/plugin_all.out                   # progress; "failed on GPU ..." 
 python scripts/p1/plugin_table.py              # the comparison so far (markdown); --metric mae for MAE
 ```
 
+- The pre-flight trains every configuration for one step with its own batch size on the GPU and prints the peak
+  GPU memory, so a configuration that does not fit fails here and not after hours. Jobs that run at the same time
+  on the card need the sum of their peaks.
 - The stages run one after the other. Three jobs at a time suit the small datasets, one at a time Electricity and
   Traffic (TimesNet there: 150 M / 302 M parameters).
 - A failed job leaves its log in `work/logs/plugin_all/<job>_s2021.log`. Running the same stage again runs only

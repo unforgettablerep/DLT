@@ -14,7 +14,8 @@ pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu130
 pip install -r requirements.txt
 
 # 2. data: fixed directory ./dataset (Time-Series-Library layout, e.g. dataset/weather/weather.csv)
-bash scripts/download_data.sh             # or copy / link an existing copy; a missing CSV is also downloaded at run time
+bash scripts/download_data.sh             # all datasets (--mirror where huggingface.co / GitHub are blocked)
+python scripts/check_data.py              # which files are there, with their published sizes
 
 # 3. the GPU computes what the CPU computes (stand-alone DLT-dyn, under a minute)
 python scripts/gpu/check_gpu.py           # must end with "all checks passed"
@@ -52,11 +53,17 @@ mean ± std over seeds 2021–2023:
 ETTh1 is listed on purpose: on weakly coupled data the cross-variable branch does not help (see
 [`results/README.md`](results/README.md)).
 
-Datasets: `scripts/download_data.sh` fetches the Time-Series-Library CSVs and PEMS08 into `dataset/`. The bundle
-is also on [Google Drive](https://drive.google.com/drive/folders/13Cg1KYOlzM5C7K8gK8NfC-F3EYxkM3D2?usp=sharing),
-[Baidu Drive](https://pan.baidu.com/s/1r3KhGd0Q9PJIUZdfEYoymg?pwd=i9iy) and
-[Hugging Face](https://huggingface.co/datasets/thuml/Time-Series-Library). PEMS04 / PEMS08 (`PEMS0x.npz`, flow in
-channel 0) are not part of it; they belong in `dataset/PEMS/` (PEMS04 has to be added by hand).
+Datasets: `bash scripts/download_data.sh [groups] [--mirror]` fetches them into `dataset/` and checks every file
+against its published size (`scripts/check_data.py`):
+- ETT (ETTh1/h2/m1/m2), Exchange, Weather, ECL (electricity), Traffic and ILI: the THUML copy on
+  [Hugging Face](https://huggingface.co/datasets/thuml/Time-Series-Library) (also on
+  [Google Drive](https://drive.google.com/drive/folders/13Cg1KYOlzM5C7K8gK8NfC-F3EYxkM3D2?usp=sharing) and
+  [Baidu Drive](https://pan.baidu.com/s/1r3KhGd0Q9PJIUZdfEYoymg?pwd=i9iy));
+- PEMS03/04/07/08 (`PEMS0x.npz`, flow in channel 0) with their road networks: the repository of the dataset's
+  authors (ASTGNN), else a Hugging Face mirror;
+- Solar-Energy (`Solar/solar_AL.txt`, read with `--data Solar`): the LSTNet data repository.
+
+`--mirror` takes hf-mirror.com and jsDelivr first, for networks where huggingface.co or GitHub are blocked.
 
 ## Idea
 Cross-variable effects in multivariate series are often **lagged and spread over several lags**

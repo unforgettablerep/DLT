@@ -22,6 +22,8 @@ images of upstream; see the upstream repository). `requirements.txt` of upstream
 | `scripts/long_term_forecast/*_script/SMamba*.sh` | **new** – the hyper-parameters of the official S-Mamba scripts for Electricity, Traffic, Weather, Exchange and ETTh1/h2/m1/m2 in the format of this library |
 | `run.py` | `--d_state`, `--mamba_impl` (S-Mamba) |
 | `models/iTransformer.py` | honours `--use_norm` (default 1: unchanged); the official PEMS settings of iTransformer use `--use_norm 0` |
+| `data_provider/data_loader.py`, `data_factory.py` | **new** `Dataset_Solar` (`--data Solar`, `solar_AL.txt`): split 7:1:2 and scaling as in iTransformer / S-Mamba, time marks rebuilt from 2006-01-01 at 10 minutes (as `Dataset_PEMS` does) |
+| `scripts/download_data.sh`, `scripts/check_data.py` | all forecasting datasets (ETT, Exchange, Weather, ECL, Traffic, ILI, PEMS03/04/07/08 with road networks, Solar) from their sources, with fallbacks and `--mirror`; check of every file against its published size |
 | `scripts/paths.py` | **new** – the fixed locations used by every script: data (`dataset/`, or `../data` next to the repository), work (`work/`), Mamba sources (`../mamba`, `../causal-conv1d`) |
 | `exp/exp_basic.py` | fall back to CPU when CUDA / MPS is requested but not available (instead of crashing); keep a `CUDA_VISIBLE_DEVICES` mask set by the caller instead of overwriting it with `--gpu` (one job per GPU in `scripts/gpu/run_gpu_queue.sh`) |
 | `utils/timefeatures.py` | pandas ≥ 3 compatibility: map TSLib `--freq` codes (`t`, `h`, `s`, `d`, `b`, `w`, `m`, `q`, `a`) to the new pandas aliases (`min`, `h`, `s`, `D`, `B`, `W`, `ME`, `QE`, `YE`); falls back to the original string on older pandas |

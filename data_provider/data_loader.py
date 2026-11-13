@@ -401,6 +401,74 @@ class Dataset_PEMS(Dataset):
         return self.scaler.inverse_transform(data)
 
 
+class Dataset_Solar(Dataset):
+    """Solar-Energy (LSTNet; solar_AL.txt: 52560 x 137, comma-separated, no header): power of 137 photovoltaic plants
+    in Alabama, 2006, every 10 minutes.
+
+    Split 7:1:2 and StandardScaler on the training split, as the Dataset_Solar of iTransformer / S-Mamba. Time marks
+    are rebuilt from the start of 2006 and the 10-minute interval (that loader gives zeros), like Dataset_PEMS.
+    """
+
+    def __init__(self, args, root_path, flag='train', size=None,
+                 features='M', data_path='solar_AL.txt',
+                 target='OT', scale=True, timeenc=0, freq='t', seasonal_patterns=None):
+        self.args = args
+        if size is None:
+            self.seq_len, self.label_len, self.pred_len = 96, 48, 96
+        else:
+            self.seq_len, self.label_len, self.pred_len = size
+        assert flag in ['train', 'test', 'val']
+        self.set_type = {'train': 0, 'val': 1, 'test': 2}[flag]
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+        self.root_path = root_path
+        self.data_path = data_path
+        self.__read_data__()
+
+    def __read_data__(self):
+        self.scaler = StandardScaler()
+        data = pd.read_csv(os.path.join(self.root_path, self.data_path), header=None).values.astype(np.float64)
+        n = len(data)
+        num_train, num_test = int(n * 0.7), int(n * 0.2)
+        num_vali = n - num_train - num_test
+        border1s = [0, num_train - self.seq_len, n - num_test - self.seq_len]
+        border2s = [num_train, num_train + num_vali, n]
+        border1 = border1s[self.set_type]
+        border2 = border2s[self.set_type]
+        if self.features == 'S':
+            data = data[:, [-1]]
+        if self.scale:
+            self.scaler.fit(data[border1s[0]:border2s[0]])
+            data = self.scaler.transform(data)
+
+        stamps = pd.date_range('2006-01-01', periods=n, freq='10min')[border1:border2]
+        if self.timeenc == 0:
+            data_stamp = np.stack([stamps.month, stamps.day, stamps.weekday, stamps.hour, stamps.minute // 15], axis=1)
+        else:
+            data_stamp = time_features(stamps, freq=self.freq).transpose(1, 0)
+
+        self.data_x = data[border1:border2]
+        self.data_y = data[border1:border2]
+        self.data_stamp = data_stamp
+
+    def __getitem__(self, index):
+        s_begin = index
+        s_end = s_begin + self.seq_len
+        r_begin = s_end - self.label_len
+        r_end = r_begin + self.label_len + self.pred_len
+        return (self.data_x[s_begin:s_end], self.data_y[r_begin:r_end],
+                self.data_stamp[s_begin:s_end], self.data_stamp[r_begin:r_end])
+
+    def __len__(self):
+        return len(self.data_x) - self.seq_len - self.pred_len + 1
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+
+
 class Dataset_M4(Dataset):
     def __init__(self, args, root_path, flag='pred', size=None,
                  features='S', data_path='ETTh1.csv',

@@ -11,8 +11,10 @@ the data and the Mamba sources, as on the GPU machine:
     DATA = <repo>/dataset, or <repo>/../data if <repo>/dataset does not exist. The datasets, either in the
            Time-Series-Library layout
                ETT-small/ETTh1.csv ETTh2.csv ETTm1.csv ETTm2.csv   weather/weather.csv   electricity/electricity.csv
-               traffic/traffic.csv   exchange_rate/exchange_rate.csv   PEMS/PEMS04.npz PEMS08.npz PEMS08_edges.csv
-           or with all files directly in the directory.
+               traffic/traffic.csv   exchange_rate/exchange_rate.csv   illness/national_illness.csv
+               PEMS/PEMS03.npz PEMS04.npz PEMS07.npz PEMS08.npz (+ PEMS0x_edges.csv)   Solar/solar_AL.txt
+           or with all files directly in the directory. scripts/download_data.sh fetches them all,
+           scripts/check_data.py checks them.
     WORK = <repo>/work: job lists, logs, checkpoints and result records of the experiment queues.
     MAMBA_SRC, CAUSAL_CONV1D_SRC = <repo>/../mamba, <repo>/../causal-conv1d (models/SMamba.py looks there too).
 
@@ -33,8 +35,8 @@ CAUSAL_CONV1D_SRC = REPO.parent / 'causal-conv1d'
 
 SUBDIR = {'ETTh1.csv': 'ETT-small', 'ETTh2.csv': 'ETT-small', 'ETTm1.csv': 'ETT-small', 'ETTm2.csv': 'ETT-small',
           'weather.csv': 'weather', 'electricity.csv': 'electricity', 'traffic.csv': 'traffic',
-          'exchange_rate.csv': 'exchange_rate', 'PEMS04.npz': 'PEMS', 'PEMS08.npz': 'PEMS',
-          'PEMS04_edges.csv': 'PEMS', 'PEMS08_edges.csv': 'PEMS'}
+          'exchange_rate.csv': 'exchange_rate', 'national_illness.csv': 'illness', 'solar_AL.txt': 'Solar',
+          **{f'PEMS0{i}{ext}': 'PEMS' for i in (3, 4, 7, 8) for ext in ('.npz', '_edges.csv')}, 'PEMS03_ids.txt': 'PEMS'}
 
 
 def root_of(file):
