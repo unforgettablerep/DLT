@@ -38,7 +38,8 @@ Suites
 --models / --datasets restrict the baselines, ci_long and plugin_all suites, e.g. the CPU-feasible subset
     python scripts/exps.py baselines --models DLinear iTransformer TimeMixer --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange
 --dlt "<args>" adds to or overrides the DLT-dyn arguments, e.g. --dlt "--dlt_gate static" or --dlt "--dlt_lr 0"
-(plugin_all: the branch then trains with the backbone's learning rate).
+(plugin_all: the branch then trains with the backbone's learning rate). --list NAME writes the jobs to
+work/jobs_NAME.txt instead of work/jobs_<suite>.txt, so that a second list can run next to a running queue.
 """
 import argparse, os, re, json, itertools, sys
 from pathlib import Path
@@ -231,6 +232,7 @@ def backbone_args(model, ds, H):
 class Gen:
     def __init__(self, a, suite):
         self.a, self.suite, self.jobs, self.files = a, suite, [], set()
+        self.list = a.list or suite                             # name of the job list (results stay per suite)
         self.work = str(paths.WORK)
         os.makedirs(f'{self.work}/logs/{suite}', exist_ok=True)
 
@@ -254,10 +256,10 @@ class Gen:
         for j in self.jobs:
             by_seed.setdefault(j[1].rsplit('_s', 1)[1], []).append(j)
         ordered = [j for s in sorted(by_seed) for j in sorted(by_seed[s], key=lambda j: -j[0])]
-        path = f'{self.work}/jobs_{self.suite}.txt'
+        path = f'{self.work}/jobs_{self.list}.txt'
         open(path, 'w').write('\n'.join(j[2] for j in ordered) + '\n')
         hours = sum(j[0] for j in ordered) / 3600
-        print(f'{self.suite}: {len(ordered)} jobs -> {os.path.relpath(path, paths.REPO)}; rough CPU estimate {hours:.1f} core-hours')
+        print(f'{self.list}: {len(ordered)} jobs -> {os.path.relpath(path, paths.REPO)}; rough CPU estimate {hours:.1f} core-hours')
         for f in sorted(self.files):
             if not paths.exists(f):
                 print(f'  note: {paths.path_of(f)} is missing: ' + (
@@ -277,6 +279,9 @@ def main():
     p.add_argument('--device', default='cpu', choices=['cpu', 'gpu'])
     p.add_argument('--seeds', type=int, nargs='+', default=[2021, 2022, 2023])
     p.add_argument('--dlt', default='', help='extra --dlt_* arguments of the proposed model (e.g. a gate)')
+    p.add_argument('--list', help='name of the job list (work/jobs_<list>.txt; default: the suite), e.g. to run a '
+                                  'second list of the same suite next to a running queue; results still go to '
+                                  'work/results_<suite>.jsonl')
     p.add_argument('--models', nargs='+', help='baselines / plugin_all / plugin_probe: only these models')
     p.add_argument('--datasets', nargs='+', help='baselines / ci_long / plugin_all / plugin_probe / allnb: only these datasets')
     a = p.parse_args()

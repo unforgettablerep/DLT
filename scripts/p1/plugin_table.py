@@ -13,7 +13,9 @@ Sections (markdown):
   2. every dataset and horizon: backbone alone / + DLT (change),
   3. per backbone: settings with both arms, how often the branch helps, mean and median change of MSE and MAE,
      epochs run and best epoch of both arms (an arm that stops much earlier than the backbone alone points to the
-     training recipe rather than to the branch).
+     training recipe rather than to the branch),
+  4. per dataset: median change of the test metric and of the best validation loss, how often the validation loss
+     improves while the test metric gets worse (a validation / test mismatch), best epoch of both arms.
 """
 import argparse, collections, json, statistics, sys
 from pathlib import Path
@@ -134,6 +136,21 @@ def main():
         out.append(f'| {NAME.get(b, b)} | {len(ps)} | {sum(d < 0 for d in dm)} of {len(ps)} | '
                    f'{fmt(sum(dm) / len(dm))} / {fmt(statistics.median(dm))} | {fmt(sum(da) / len(da))} | '
                    f'{ep[0]:.1f} / {ep[1]:.1f} | {ep[2]:.1f} / {ep[3]:.1f} |')
+    # 4. per dataset: training behaviour
+    out += ['', '## 4. Per dataset: test vs validation, early stopping', '',
+            '| dataset | settings | branch helps | median change test | median change validation | '
+            'validation better, test worse | best epoch alone / + DLT |', '|---|---:|---:|---:|---:|---:|---:|']
+    for ds in DATASETS:
+        ps = [v for key, v in pair.items() if key[0] == ds]
+        if not ps:
+            continue
+        dt = [mean(x[1], k) / mean(x[0], k) - 1 for x in ps]
+        dv = [mean(x[1], 'best_vali') / mean(x[0], 'best_vali') - 1 for x in ps
+              if mean(x[0], 'best_vali') and mean(x[1], 'best_vali')]
+        mix = sum(v < 0 < t for v, t in zip(dv, dt))
+        ba, bd = (sum(mean(x[i], 'best_epoch') or 0 for x in ps) / len(ps) for i in (0, 1))
+        out.append(f'| {ds} | {len(ps)} | {sum(d < 0 for d in dt)} of {len(ps)} | {fmt(statistics.median(dt))} | '
+                   f'{fmt(statistics.median(dv)) if dv else "–"} | {mix} of {len(dv)} | {ba:.1f} / {bd:.1f} |')
     text = '\n'.join(out) + '\n'
     print(text)
     if a.out:

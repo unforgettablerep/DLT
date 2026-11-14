@@ -1,8 +1,107 @@
-# Plug-in study: backbone alone vs + DLT-dyn (arm `dlt`)
+# Plug-in study (suite plugin_all), stage 1 and PEMS04/08: evaluation (2026-11-14)
+
+**Source.** [`plugin_all_stage1.jsonl`](plugin_all_stage1.jsonl): 515 records from the RTX 4090 (PyTorch
+2.10.0+cu130), seed 2021, no failed run:
+- all 384 runs of stage 1: ETTh1, ETTh2, ETTm1, ETTm2, Exchange and Weather, horizons 96 to 720;
+- all 128 runs on PEMS04/08, horizons 12 to 96, with the protocol of iTransformer and S-Mamba;
+- the first 3 Electricity runs, which are not evaluated here.
+
+Every setting has both arms: 8 backbones alone and with the DLT-dyn branch (default recipe: k 8, L 48, R 4, branch
+learning rate 3e-3). The tables below are from
+`python scripts/p1/plugin_table.py --files results/gpu/plugin_all_stage1.jsonl`; add `--metric mae` for MAE.
+One seed: changes below about 2 % are within the seed spread of the earlier three-seed CPU runs.
+
+## The set-up is sound
+- **Backbones alone reproduce the published numbers** (input 96, MSE, `scripts/p1/reported.json`):
+
+  | backbone | mean gap | within 5 % | largest gap |
+  |---|---:|---:|---|
+  | S-Mamba | +0.3 % | 24 of 24 | ETTh1-720 +1.8 % |
+  | iTransformer | +0.6 % | 24 of 24 | Exchange-192 +3.7 % |
+  | DLinear | +0.6 % | 21 of 24 | Exchange-720 −10.7 % |
+  | TimesNet | +1.2 % | 17 of 24 | ETTm1-336 +8.4 % |
+  | TimeMixer | +1.8 % | 20 of 24 | Exchange-96 +11.5 % |
+  | PatchTST | +5.3 % | 14 of 24 | ETTm1-192 +19.8 % |
+
+  PatchTST uses its paper's small setting on ETT with the TSLib training budget. Informer and TimeXer have no
+  numbers in `reported.json`.
+- **GPU agrees with CPU.** The six settings also run on the CPU in P1 (three seeds) show the same changes:
+
+  | setting | DLinear | PatchTST | iTransformer |
+  |---|---:|---:|---:|
+  | Weather-96, CPU / GPU | −17.3 % / −16.9 % | −9.1 % / −10.9 % | −6.7 % / −7.3 % |
+  | ETTh1-96, CPU / GPU | +2.2 % / +0.7 % | −2.6 % / −4.0 % | +2.9 % / +1.7 % |
+
+## What is as expected, and what is not
+Change of the test MSE by the branch, mean over settings (share of settings where the branch helps):
+
+| backbones | Weather, PEMS04, PEMS08 | ETTh1/h2/m1/m2, Exchange |
+|---|---:|---:|
+| channel-independent: DLinear, PatchTST | −31.8 % (24 of 24) | +4.3 % (16 of 40) |
+| variable-mixing: TimesNet, iTransformer, TimeMixer, TimeXer, S-Mamba | −5.8 % (44 of 60) | +8.0 % (15 of 100) |
+| Informer | −11.0 % (10 of 12) | −3.9 % (12 of 20) |
+
+**As expected.**
+- Where the variables lead and lag each other (meteorology, neighbouring road sensors), the branch helps.
+- The gain is largest for the backbones that see each variable alone: DLinear −46 % and −48 % on PEMS04/08,
+  PatchTST −47 % and −37 %.
+
+**Not as hoped.**
+- On ETTh2 (median +9.5 %) and Exchange (median +14.0 %, up to +45 % for S-Mamba) the branch hurts almost every
+  backbone. On ETTh1 it costs about 2 %; ETTm1 and ETTm2 are neutral.
+- TimeMixer and TimeXer gain nowhere: the branch helps in 6 and 4 of 32 settings.
+- Informer's gains do not speak for the branch. Informer alone is far behind the other backbones (ETTh1 MSE
+  0.95 to 1.17, ETTh2 3.0 to 6.3), so any added linear component helps it.
+
+## Why
+1. **The datasets.** The stand-alone study (P1, CPU, three seeds) had already measured where cross-variable lags
+   help. There, DLT-dyn was compared with the same model without the cross branch (CI linear), average MSE over
+   the four horizons. The plug-in study ranks the six datasets identically (Spearman 1.0):
+
+   | dataset | stand-alone: DLT-dyn vs CI linear | plug-in: median change |
+   |---|---:|---:|
+   | Exchange | +52.4 % | +14.0 % |
+   | ETTh2 | +12.5 % | +9.5 % |
+   | ETTh1 | +4.2 % | +2.0 % |
+   | ETTm2 | +0.3 % | +0.7 % |
+   | ETTm1 | −2.7 % | +0.6 % |
+   | Weather | −8.5 % | −3.6 % |
+
+   ETT and Exchange have 7 and 8 variables, so k = 8 means every other variable is a neighbour and nothing is
+   selected. Their lead-lag relations are weak or change over time. Even the tuned stand-alone model stayed
+   behind CI linear on both (P1: Exchange 0.482 vs 0.353, ETTh2 0.395 vs 0.377).
+2. **The training recipe makes it worse.** The branch adds its full correction from the first step and learns 30
+   times faster than most backbones (3e-3 against 1e-4). On the datasets where it hurts, the + DLT arm reaches its
+   best validation loss after one or two epochs: ETTh1 1.6 instead of 4.4, ETTh2 2.4 instead of 4.5, Exchange 1.8
+   instead of 3.4. Early stopping then keeps a backbone that has trained for one or two epochs, for example
+   PatchTST on Exchange (best epoch 6.8 alone, 1.0 with the branch, +27 %).
+
+   This is not a validation/test mismatch. The validation loss of the + DLT arm is worse too (ETTh2 +8.0 %,
+   Exchange +12.9 %); only 2 of 32 settings on each of ETTh1 and ETTh2 improve on validation but not on test.
+   Exchange has 9 of 32, so it also has a shift between periods. On Weather and PEMS the best epoch does not move
+   (4.3 / 4.3; 8.7 / 9.2; 6.5 / 8.2).
+
+   The recipe does not explain everything: iTransformer on ETTh2 stops at the same epoch (3.2) and still loses
+   11 %. Across all ETT/Exchange settings the shift of the best epoch and the loss correlate only weakly
+   (Spearman −0.11).
+3. **Backbones that already mix variables gain less.** TimeXer attends across variables, and TimeMixer mixes
+   them on PEMS (`--channel_independence 0`), so the branch adds little information but still adds variance.
+
+## Next
+- **Recipe probe on the datasets where the branch hurts**, with Weather as the positive control: a static gate
+  (the branch starts at 4.7 % strength), `--dlt "--dlt_gate static"`, as a separate arm. If it removes the harm
+  and keeps the gains, it becomes the default recipe. All + DLT arms would then be re-run with it.
+- **TimeMixer on PEMS04/08** ran with patience 3, before its complete official PEMS setting (patience 10) was
+  added; re-run these 16 jobs.
+- **Remaining datasets:** Solar, PEMS03, PEMS07, Electricity and Traffic.
+
+---
+
+## Tables: backbone alone vs + DLT-dyn (arm `dlt`)
 
 Suite `plugin_all`, seed(s) 2021; 256 settings with both arms. Metric: MSE (PEMS: normalised scale). Change = (+ DLT) / alone - 1; **bold**: the branch helps.
 
-## 1. Change of MSE, averaged over the horizons
+### 1. Change of MSE, averaged over the horizons
 
 | dataset | Informer | TimesNet | DLinear | PatchTST | iTransformer | TimeMixer | TimeXer | S-Mamba |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -16,7 +115,7 @@ Suite `plugin_all`, seed(s) 2021; 256 settings with both arms. Metric: MSE (PEMS
 | PEMS08 | **-22.1 %** | **-16.2 %** | **-48.1 %** | **-36.7 %** | **-31.3 %** | **-1.9 %** | +0.9 % | **-7.8 %** |
 | mean | -9.1 % | -1.3 % | -11.3 % | -5.8 % | -0.2 % | +5.5 % | +7.5 % | +6.7 % |
 
-## 2. MSE of the backbone alone / + DLT-dyn (change)
+### 2. MSE of the backbone alone / + DLT-dyn (change)
 
 | dataset | H | Informer | TimesNet | DLinear | PatchTST | iTransformer | TimeMixer | TimeXer | S-Mamba |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -56,7 +155,7 @@ Suite `plugin_all`, seed(s) 2021; 256 settings with both arms. Metric: MSE (PEMS
 | PEMS08 | 48 | **0.459 / 0.328 (-28.4 %)** | **0.213 / 0.177 (-17.1 %)** | **0.446 / 0.215 (-51.8 %)** | **0.413 / 0.270 (-34.8 %)** | **0.263 / 0.219 (-16.7 %)** | **0.138 / 0.137 (-0.5 %)** | 0.176 / 0.179 (+1.8 %) | **0.161 / 0.145 (-9.9 %)** |
 | PEMS08 | 96 | **0.461 / 0.400 (-13.1 %)** | **0.337 / 0.316 (-6.4 %)** | **0.692 / 0.370 (-46.5 %)** | **0.872 / 0.532 (-38.9 %)** | **0.493 / 0.249 (-49.4 %)** | **0.210 / 0.200 (-4.5 %)** | 0.302 / 0.313 (+3.6 %) | **0.277 / 0.249 (-9.9 %)** |
 
-## 3. Per backbone
+### 3. Per backbone
 
 | backbone | settings | branch helps (MSE) | mean / median change MSE | mean change MAE | epochs alone / + DLT | best epoch alone / + DLT |
 |---|---:|---:|---:|---:|---:|---:|
@@ -68,3 +167,17 @@ Suite `plugin_all`, seed(s) 2021; 256 settings with both arms. Metric: MSE (PEMS
 | TimeMixer | 32 | 6 of 32 | +4.6 % / +1.6 % | +2.0 % | 8.3 / 8.2 | 4.5 / 4.2 |
 | TimeXer | 32 | 4 of 32 | +6.2 % / +2.3 % | +1.7 % | 7.1 / 7.1 | 4.7 / 4.8 |
 | S-Mamba | 32 | 14 of 32 | +5.5 % / +0.4 % | +2.5 % | 8.1 / 6.7 | 6.3 / 4.5 |
+
+### 4. Per dataset: test vs validation, early stopping
+
+| dataset | settings | branch helps | median change test | median change validation | validation better, test worse | best epoch alone / + DLT |
+|---|---:|---:|---:|---:|---:|---:|
+| ETTh1 | 32 | 10 of 32 | +2.0 % | +1.8 % | 2 of 32 | 4.4 / 1.6 |
+| ETTh2 | 32 | 6 of 32 | +9.5 % | +8.0 % | 2 of 32 | 4.5 / 2.4 |
+| ETTm1 | 32 | 14 of 32 | +0.6 % | -1.0 % | 11 of 32 | 4.7 / 4.7 |
+| ETTm2 | 32 | 11 of 32 | +0.7 % | +0.8 % | 7 of 32 | 3.3 / 2.2 |
+| Exchange | 32 | 2 of 32 | +14.0 % | +12.9 % | 9 of 32 | 3.4 / 1.8 |
+| Weather | 32 | 23 of 32 | -3.6 % | -2.7 % | 3 of 32 | 4.3 / 4.3 |
+| PEMS04 | 32 | 26 of 32 | -11.2 % | -12.1 % | 3 of 32 | 8.7 / 9.2 |
+| PEMS08 | 32 | 29 of 32 | -14.9 % | -15.7 % | 1 of 32 | 6.5 / 8.2 |
+

@@ -1,5 +1,8 @@
 # GPU tier 1, partial results: evaluation (2026-11-11)
 
+Newer: the plug-in study with all eight backbones, stage 1 and PEMS04/08 (2026-11-14):
+[`plugin_all_stage1.md`](plugin_all_stage1.md).
+
 **Source.** 136 result lines of `result_long_term_forecast.txt` from the RTX 4090 run (PyTorch 2.5.1+cu124, code
 version before the `tslib/` folder was merged into the root), parsed into [`tier1_partial.jsonl`](tier1_partial.jsonl). These lines
 hold test MSE and MAE only. Epochs, best epoch and validation loss are in the `results_*.jsonl` files of the work

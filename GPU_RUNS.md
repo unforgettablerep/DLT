@@ -71,7 +71,7 @@ Evaluation of the results so far: [`results/gpu/README.md`](results/gpu/README.m
 | 1c plug-in on ECL and Traffic | seeds 2021 and 2022 done. DLinear gains 10–13 %, PatchTST gains 8 % on ECL, iTransformer is unchanged on ECL, and on Traffic the branch costs PatchTST 13.6 % and iTransformer 11.5 %. |
 | 1c plug-in on PEMS04-12 | no result seen; check the logs for failed runs |
 | 0, 2, 3, 4 | not started |
-| plug-in study, all eight backbones (`plugin_all`, 2026-11-13) | not started; commands in the section of that name below |
+| plug-in study, all eight backbones (`plugin_all`) | stage 1 and PEMS04/08 done, Electricity / Traffic running (2026-11-14). Evaluation: [`results/gpu/plugin_all_stage1.md`](results/gpu/plugin_all_stage1.md). The branch helps on Weather and PEMS (channel-independent backbones −32 % on average) and hurts on ETTh2 and Exchange, where it overfits in the first epoch; next: the gate probe below. |
 
 **What to run next.**
 1. Stop the tier 1 queue. The 32 remaining runs repeat finished configurations with seed 2023 and cannot change
@@ -288,8 +288,29 @@ python scripts/p1/plugin_table.py              # the comparison so far (markdown
   the jobs without a result.
 - More seeds later: the same commands with `--seeds 2022 2023`; the table averages the seeds.
 - After a stage: `python scripts/collect_results.py` merges the records into `results/p1/results_plugin_all.jsonl`
-  and writes the table `results/p1/plugin_all.md`. These two files (and `work/plugin_all.out`, the queue log) are
-  what to commit or upload; `results/p1/summary.md` does not contain this study.
+  and writes the tables `results/p1/plugin_all.md` (MSE) and `plugin_all_mae.md`. These files (and
+  `work/plugin_all.out`, the queue log) are what to commit or upload; `results/p1/summary.md` does not contain
+  this study.
+
+**Recipe probe (after stage 1).** On ETTh2 and Exchange the branch overfits within one or two epochs and early
+stopping keeps a barely trained backbone ([evaluation](results/gpu/plugin_all_stage1.md)). A static gate starts
+the branch at 4.7 % strength. The probe runs it on the datasets where the branch hurts and on Weather as the
+positive control, as a separate arm (`dlt_gate-static`). `--list` keeps it apart from the running queue, so it
+can run next to it (small models; one job at a time):
+
+```bash
+python scripts/exps.py plugin_all --device gpu --seeds 2021 --datasets ETTh1 ETTh2 Exchange Weather \
+    --dlt "--dlt_gate static" --list plugin_gate        # 256 lines: 128 gate arms + the 128 alone arms, done already
+nohup bash scripts/gpu/run_gpu_queue.sh plugin_gate 0 > work/plugin_gate.out 2>&1 &
+python scripts/p1/plugin_table.py --arm dlt_gate-static              # gate arm against the backbone alone
+```
+
+TimeMixer on PEMS04/08 ran with patience 3, before its complete official PEMS setting (patience 10). Remove these
+16 records before stage 2 runs again, so that they are re-run:
+
+```bash
+grep -v -E '"des": "PEMS0[48]_[0-9]+_TimeMixer_' work/results_plugin_all.jsonl > work/r.tmp && mv work/r.tmp work/results_plugin_all.jsonl
+```
 
 ## 1–4. Experiments
 

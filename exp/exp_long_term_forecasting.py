@@ -397,9 +397,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 rec['dlt_lr'] = getattr(a, 'dlt_lr', 0.0)
             if a.model == 'LagTS':
                 rec.update({'lagts_lambda': a.lagts_lambda, 'lagts_rel_dim': a.lagts_rel_dim})
-            if a.model == 'SMamba':
-                net = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
-                rec.update({'d_state': a.d_state, 'mamba_impl': net.mamba_impl})
+            net = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+            if a.model == 'SMamba' or (a.model == 'DLTPlug' and a.plug_base == 'SMamba'):   # which Mamba block ran
+                rec.update({'d_state': a.d_state, 'mamba_impl': getattr(getattr(net, 'base', net), 'mamba_impl', None)})
             if a.model != 'DLT':
                 rec.update({'d_model': a.d_model, 'd_ff': a.d_ff, 'e_layers': a.e_layers, 'n_heads': a.n_heads})
                 if a.dlt_gate == 'static':
