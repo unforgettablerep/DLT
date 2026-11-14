@@ -7,7 +7,8 @@ work/results_<suite>.jsonl goes to results/p0 (suite p0), results/p2 (sensitivit
 other suite); work/tuned*.json and work/hp_select*.md go to results/p1. Records are merged, not overwritten: a run
 is identified by its job name (--des) and seed, and a record of the work directory replaces an older one of
 the same run. Then the three aggregators write results/p0/summary.md, results/p1/summary.md and
-results/p2/summary.md.
+results/p2/summary.md, and scripts/p1/plugin_table.py writes results/p1/plugin_all.md (the plug-in study with all
+backbones, suite plugin_all) when its records exist.
 """
 import glob, json, os, shutil, subprocess, sys
 from pathlib import Path
@@ -70,3 +71,7 @@ for src in sorted(glob.glob(str(paths.WORK / 'tuned*.json')) + glob.glob(str(pat
 for script in ('p0/aggregate.py', 'p1/aggregate.py', 'p2/aggregate.py'):
     subprocess.run([sys.executable, str(paths.REPO / 'scripts' / script)], check=True, stdout=subprocess.DEVNULL)
 print('tables: results/p0/summary.md, results/p1/summary.md, results/p2/summary.md')
+if (RES / 'p1' / 'results_plugin_all.jsonl').exists():          # the plug-in study with all backbones: own table
+    subprocess.run([sys.executable, str(paths.REPO / 'scripts' / 'p1' / 'plugin_table.py'),
+                    '--out', str(RES / 'p1' / 'plugin_all.md')], check=True, stdout=subprocess.DEVNULL)
+    print('table: results/p1/plugin_all.md (plug-in study, all backbones)')

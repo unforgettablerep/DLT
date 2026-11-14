@@ -124,6 +124,9 @@ if plug:
         P(f"| {ds} | {H} | {base} | {ms(a, dd)} / {ms([r[k2] for r in g['alone']], dd)} | "
           f"{ms(b, dd)} / {ms([r[k2] for r in g['dlt']], dd)} | {delta} | {p} |")
     P('')
+if os.path.exists(os.path.join(work, 'results_plugin_all.jsonl')):
+    P('The plug-in study with every representative backbone on all thirteen datasets (suite plugin_all, GPU) has '
+      'its own table: [plugin_all.md](plugin_all.md) (scripts/p1/plugin_table.py).\n')
 
 # ---------------------------------------------------------------- all other variables as neighbours
 alln = load('allnb')

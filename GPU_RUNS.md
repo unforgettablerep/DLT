@@ -287,6 +287,9 @@ python scripts/p1/plugin_table.py              # the comparison so far (markdown
 - A failed job leaves its log in `work/logs/plugin_all/<job>_s2021.log`. Running the same stage again runs only
   the jobs without a result.
 - More seeds later: the same commands with `--seeds 2022 2023`; the table averages the seeds.
+- After a stage: `python scripts/collect_results.py` merges the records into `results/p1/results_plugin_all.jsonl`
+  and writes the table `results/p1/plugin_all.md`. These two files (and `work/plugin_all.out`, the queue log) are
+  what to commit or upload; `results/p1/summary.md` does not contain this study.
 
 ## 1–4. Experiments
 
