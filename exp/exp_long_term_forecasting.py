@@ -42,10 +42,11 @@ class StreamMetrics:
     versions up to float32 rounding (~1e-7 relative)."""
 
     def __init__(self):
-        self.n = self.n_masked = 0
+        self.n = self.n_masked = self.nonfinite = 0
         self.s = dict.fromkeys(('ae', 'se', 'ape', 'spe', 'ape_clip5', 'ape_masked'), 0.0)
 
     def update(self, pred, true):
+        self.nonfinite += int(pred.size - np.isfinite(pred).sum())   # NaN / inf forecasts (reported in the record)
         d = pred.astype(np.float64) - true.astype(np.float64)
         t = true.astype(np.float64)
         with np.errstate(divide='ignore', invalid='ignore'):
@@ -359,6 +360,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             mape_clip5, mape_mask = mape_timemixer(preds, trues), mape_masked(preds, trues)
         else:
             mae, mse, rmse, mape, mspe, mape_clip5, mape_mask = stream.result()
+            self.test_nonfinite = stream.nonfinite
+            if stream.nonfinite:
+                print(f'WARNING: {stream.nonfinite} of {stream.n} forecast values are NaN or inf '
+                      f'(python scripts/gpu/diag_nonfinite.py {self.args.des} finds where)')
         print('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
         f = open("result_long_term_forecast.txt", 'a')
         f.write(setting + "  \n")
@@ -405,6 +410,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 if a.dlt_gate == 'static':
                     rec['gate_init'] = a.dlt_gate_init
             rec.update(getattr(self, 'train_info', {}))
+            if getattr(self, 'test_nonfinite', None) is not None:
+                rec['test_nonfinite'] = self.test_nonfinite
             with open(a.result_jsonl, 'a') as fj:
                 fj.write(json.dumps(rec) + '\n')
 

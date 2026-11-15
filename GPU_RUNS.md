@@ -71,7 +71,7 @@ Evaluation of the results so far: [`results/gpu/README.md`](results/gpu/README.m
 | 1c plug-in on ECL and Traffic | seeds 2021 and 2022 done. DLinear gains 10–13 %, PatchTST gains 8 % on ECL, iTransformer is unchanged on ECL, and on Traffic the branch costs PatchTST 13.6 % and iTransformer 11.5 %. |
 | 1c plug-in on PEMS04-12 | no result seen; check the logs for failed runs |
 | 0, 2, 3, 4 | not started |
-| plug-in study, all eight backbones (`plugin_all`) | stage 1 and PEMS04/08 done, Electricity / Traffic running (2026-11-14). Evaluation: [`results/gpu/plugin_all_stage1.md`](results/gpu/plugin_all_stage1.md). The branch helps on Weather and PEMS (channel-independent backbones −32 % on average) and hurts on ETTh2 and Exchange, where it overfits in the first epoch; next: the gate probe below. |
+| plug-in study, all eight backbones (`plugin_all`) | stage 1 and PEMS04/08 done, Electricity / Traffic running (2026-11-15). Evaluation: [`results/gpu/plugin_all_stage1.md`](results/gpu/plugin_all_stage1.md), [`results/gpu/plugin_all_gate.md`](results/gpu/plugin_all_gate.md). The branch helps on Weather and PEMS (channel-independent backbones −32 % on average) and hurts on ETTh2 and Exchange. The static gate does not change that; keeping the branch only where it lowers the validation loss does (settings worse by > 2 %: 96 → 20 of 260). TimesNet on Traffic: test MSE NaN in both arms, under diagnosis (`scripts/gpu/diag_nonfinite.py`). |
 
 **What to run next.**
 1. Stop the tier 1 queue. The 32 remaining runs repeat finished configurations with seed 2023 and cannot change
@@ -304,6 +304,21 @@ python scripts/exps.py plugin_all --device gpu --seeds 2021 --datasets ETTh1 ETT
 nohup bash scripts/gpu/run_gpu_queue.sh plugin_gate 0 > work/plugin_gate.out 2>&1 &
 python scripts/p1/plugin_table.py --arm dlt_gate-static              # gate arm against the backbone alone
 ```
+
+**Learning-rate probe (after the gate probe).** The gate did not help
+([evaluation](results/gpu/plugin_all_gate.md)). This probe lets the branch train at the backbone's learning
+rate instead of 3e-3, as arm `dlt_lr-0`:
+
+```bash
+python scripts/exps.py plugin_all --device gpu --seeds 2021 --datasets ETTh2 Exchange Weather \
+    --dlt "--dlt_lr 0" --list plugin_lr                # 96 new jobs; the alone arms are done
+nohup bash scripts/gpu/run_gpu_queue.sh plugin_lr 0 > work/plugin_lr.out 2>&1 &
+python scripts/p1/plugin_table.py --arm dlt_lr-0
+```
+
+**NaN forecasts.** TimesNet on Traffic gave a NaN test MSE in both arms. On the GPU machine:
+`python scripts/gpu/diag_nonfinite.py Traffic_96_TimesNet_alone` (it needs the job in `work/jobs_plugin_all.txt`,
+i.e. the list of stage 3, and the checkpoint in `work/ckpt`; `--list` names another list).
 
 TimeMixer on PEMS04/08 ran with patience 3, before its complete official PEMS setting (patience 10). Remove these
 16 records before stage 2 runs again, so that they are re-run:

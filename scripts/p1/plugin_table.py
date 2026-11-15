@@ -15,7 +15,10 @@ Sections (markdown):
      epochs run and best epoch of both arms (an arm that stops much earlier than the backbone alone points to the
      training recipe rather than to the branch),
   4. per dataset: median change of the test metric and of the best validation loss, how often the validation loss
-     improves while the test metric gets worse (a validation / test mismatch), best epoch of both arms.
+     improves while the test metric gets worse (a validation / test mismatch), best epoch of both arms,
+  5. the validation rule: the branch is kept only where it lowers the best validation loss of the backbone alone
+     (a decision made on validation data only); mean change and settings made worse by more than 2 %, with and
+     without the rule. Settings whose test metric is NaN are left out of every section and counted at the top.
 """
 import argparse, collections, json, statistics, sys
 from pathlib import Path
@@ -71,14 +74,21 @@ def main():
     bases = [b for b in exps.BASELINES if any(key[2] == b for key in cells)] + \
         sorted({key[2] for key in cells} - set(exps.BASELINES))
     horizons = lambda ds: exps.PEMS_HORIZONS if ds in exps.PEMS_SETS else exps.HORIZONS
-    pair = {}                                                            # (ds, H, base) -> (alone, + DLT) records
+    pair, nan = {}, []                                                   # (ds, H, base) -> (alone, + DLT) records
     for (ds, H, base, arm), rs in cells.items():
         if arm == 'alone' and (ds, H, base, a.arm) in cells:
-            pair[(ds, H, base)] = (rs, cells[(ds, H, base, a.arm)])
+            both = (rs, cells[(ds, H, base, a.arm)])
+            if all(m == m for x in both for m in [mean(x, k)]):            # NaN != NaN
+                pair[(ds, H, base)] = both
+            else:
+                nan.append(f'{ds}-{H} {NAME.get(base, base)}')
     seeds = sorted({r.get('seed') for rs in cells.values() for r in rs})
     out = [f'# Plug-in study: backbone alone vs + DLT-dyn (arm `{a.arm}`)', '',
            f'Suite `{SUITE}`, seed(s) {", ".join(map(str, seeds)) or "-"}; {len(pair)} settings with both arms. '
            f'Metric: {k.upper()} (PEMS: normalised scale). Change = (+ DLT) / alone - 1; **bold**: the branch helps.']
+    if nan:
+        out.append(f'Left out, test {k.upper()} is NaN in at least one arm: {", ".join(sorted(nan))} '
+                   f'(python scripts/gpu/diag_nonfinite.py <job> finds where).')
     if arms and arms != [a.arm]:
         out.append(f'"+ DLT" arms found: {", ".join(arms)} (choose one with --arm).')
     fmt = lambda d: f'{100 * d:+.1f} %'
@@ -151,6 +161,20 @@ def main():
         ba, bd = (sum(mean(x[i], 'best_epoch') or 0 for x in ps) / len(ps) for i in (0, 1))
         out.append(f'| {ds} | {len(ps)} | {sum(d < 0 for d in dt)} of {len(ps)} | {fmt(statistics.median(dt))} | '
                    f'{fmt(statistics.median(dv)) if dv else "–"} | {mix} of {len(dv)} | {ba:.1f} / {bd:.1f} |')
+    # 5. the validation rule
+    out += ['', '## 5. Validation rule: the branch is kept only where it lowers the validation loss', '',
+            '| dataset | settings | branch kept | always + DLT: mean change, worse by > 2 % | with the rule: mean change, '
+            'worse by > 2 % |', '|---|---:|---:|---:|---:|']
+    for ds in DATASETS + ['all']:
+        ps = [v for key, v in pair.items() if key[0] == ds or ds == 'all']
+        ps = [x for x in ps if mean(x[0], 'best_vali') and mean(x[1], 'best_vali')]
+        if not ps:
+            continue
+        d = [mean(x[1], k) / mean(x[0], k) - 1 for x in ps]
+        keep = [mean(x[1], 'best_vali') < mean(x[0], 'best_vali') for x in ps]
+        r = [dd if kk else 0.0 for dd, kk in zip(d, keep)]
+        out.append(f'| {ds} | {len(ps)} | {sum(keep)} | {fmt(sum(d) / len(d))}, {sum(x > 0.02 for x in d)} | '
+                   f'{fmt(sum(r) / len(r))}, {sum(x > 0.02 for x in r)} |')
     text = '\n'.join(out) + '\n'
     print(text)
     if a.out:
