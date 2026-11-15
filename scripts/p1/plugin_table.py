@@ -18,7 +18,13 @@ Sections (markdown):
      improves while the test metric gets worse (a validation / test mismatch), best epoch of both arms,
   5. the validation rule: the branch is kept only where it lowers the best validation loss of the backbone alone
      (a decision made on validation data only); mean change and settings made worse by more than 2 %, with and
-     without the rule. Settings whose test metric is NaN are left out of every section and counted at the top.
+     without the rule. Settings whose test metric is NaN are left out of every section and counted at the top,
+  6. the backbone alone against its published numbers (scripts/p1/reported.json: long-term sets and Solar, and
+     PEMS with the protocol of iTransformer), and + DLT against the published backbone alone. A backbone more
+     than 10 % behind its published numbers is marked: its comparison is not valid until its learning rate has
+     been checked (scripts/exps.py --backbone_lr / --select_lr).
+Where a learning-rate check was run (arms alone@lr<x>), the backbone alone and + DLT are taken at the learning
+rate whose backbone-alone run has the lowest validation loss; the header lists these settings.
 """
 import argparse, collections, json, statistics, sys
 from pathlib import Path
@@ -70,18 +76,32 @@ def main():
     a = p.parse_args()
     cells = load(a.seeds, a.files)
     k = a.metric
-    arms = sorted({key[3] for key in cells} - {'alone'})
+    arms = sorted({key[3].split('@')[0] for key in cells} - {'alone'})
     bases = [b for b in exps.BASELINES if any(key[2] == b for key in cells)] + \
         sorted({key[2] for key in cells} - set(exps.BASELINES))
     horizons = lambda ds: exps.PEMS_HORIZONS if ds in exps.PEMS_SETS else exps.HORIZONS
-    pair, nan = {}, []                                                   # (ds, H, base) -> (alone, + DLT) records
+    variants = collections.defaultdict(dict)                             # (ds, H, base) -> {lr suffix: alone}
     for (ds, H, base, arm), rs in cells.items():
-        if arm == 'alone' and (ds, H, base, a.arm) in cells:
-            both = (rs, cells[(ds, H, base, a.arm)])
-            if all(m == m for x in both for m in [mean(x, k)]):            # NaN != NaN
-                pair[(ds, H, base)] = both
-            else:
-                nan.append(f'{ds}-{H} {NAME.get(base, base)}')
+        if arm == 'alone' or arm.startswith('alone@lr'):
+            variants[(ds, H, base)][arm[len('alone'):]] = rs
+    vali = lambda rs: mean(rs, 'best_vali') if mean(rs, 'best_vali') is not None else float('inf')
+    pair, nan, pending, chosen, alone_sel = {}, [], [], {}, {}           # pair: (ds, H, base) -> (alone, + DLT)
+    for key, v in variants.items():
+        sfx = min(v, key=lambda x: vali(v[x]))                           # learning rate chosen on validation
+        alone_sel[key] = v[sfx]
+        if sfx:
+            chosen[key] = sfx
+        partner = cells.get(key + (a.arm + sfx,))
+        label = f'{key[0]}-{key[1]} {NAME.get(key[2], key[2])}'
+        if partner is None:
+            if sfx and (key + (a.arm,)) in cells:
+                pending.append(f'{label} ({sfx[1:]})')
+            continue
+        both = (v[sfx], partner)
+        if all(m == m for x in both for m in [mean(x, k)]):                # NaN != NaN
+            pair[key] = both
+        else:
+            nan.append(label)
     seeds = sorted({r.get('seed') for rs in cells.values() for r in rs})
     out = [f'# Plug-in study: backbone alone vs + DLT-dyn (arm `{a.arm}`)', '',
            f'Suite `{SUITE}`, seed(s) {", ".join(map(str, seeds)) or "-"}; {len(pair)} settings with both arms. '
@@ -89,6 +109,12 @@ def main():
     if nan:
         out.append(f'Left out, test {k.upper()} is NaN in at least one arm: {", ".join(sorted(nan))} '
                    f'(python scripts/gpu/diag_nonfinite.py <job> finds where).')
+    if chosen:
+        out.append(f'Learning rate chosen on the validation loss of the backbone alone: '
+                   f'{", ".join(f"{d}-{h} {NAME.get(b, b)} {s[1:]}" for (d, h, b), s in sorted(chosen.items()))}.')
+    if pending:
+        out.append(f'+ DLT at the chosen learning rate still missing (left out): {", ".join(sorted(pending))} '
+                   f'(python scripts/exps.py plugin_all --select_lr ...).')
     if arms and arms != [a.arm]:
         out.append(f'"+ DLT" arms found: {", ".join(arms)} (choose one with --arm).')
     fmt = lambda d: f'{100 * d:+.1f} %'
@@ -175,6 +201,38 @@ def main():
         r = [dd if kk else 0.0 for dd, kk in zip(d, keep)]
         out.append(f'| {ds} | {len(ps)} | {sum(keep)} | {fmt(sum(d) / len(d))}, {sum(x > 0.02 for x in d)} | '
                    f'{fmt(sum(r) / len(r))}, {sum(x > 0.02 for x in r)} |')
+    # 6. against the published numbers
+    R = json.load(open(Path(__file__).with_name('reported.json')))
+    col = 0 if k == 'mse' else 1
+
+    def published(ds, H, base):
+        v = (R['pems_96'] if ds in exps.PEMS_SETS else R['long_term']).get(base, {}).get(ds, {}).get(str(H))
+        return v[col] if v else None
+    rows_a, rows_d, flagged = [], [], []
+    for ds in DATASETS:
+        ca, cd = [], []
+        for b in bases:
+            ga = [mean(alone_sel[(ds, H, b)], k) / published(ds, H, b) - 1 for H in horizons(ds)
+                  if (ds, H, b) in alone_sel and published(ds, H, b)
+                  and mean(alone_sel[(ds, H, b)], k) == mean(alone_sel[(ds, H, b)], k)]
+            gd = [mean(pair[(ds, H, b)][1], k) / published(ds, H, b) - 1 for H in horizons(ds)
+                  if (ds, H, b) in pair and published(ds, H, b)]
+            bad = bool(ga) and max(ga) > 0.10
+            if bad:
+                flagged.append(f'{ds} {NAME.get(b, b)}')
+            ca.append('' if not ga else (f'**{fmt(sum(ga) / len(ga))} (worst {fmt(max(ga))})**' if bad else fmt(sum(ga) / len(ga))))
+            cd.append('' if not gd else fmt(sum(gd) / len(gd)) + (' (not valid)' if bad else ''))
+        if any(ca):
+            rows_a.append(f'| {ds} | ' + ' | '.join(ca) + ' |')
+        if any(cd):
+            rows_d.append(f'| {ds} | ' + ' | '.join(cd) + ' |')
+    if rows_a:
+        out += ['', f'## 6. Against the published numbers ({k.upper()}, mean over the horizons)', '',
+                'Backbone alone against its published result (**bold**: more than 10 % behind at some horizon):', '',
+                hdr, sep] + rows_a
+        out += ['', '+ DLT against the published backbone alone:', '', hdr, sep] + rows_d
+        if flagged:
+            out += ['', f'Learning-rate check needed (more than 10 % behind the published result): {", ".join(flagged)}.']
     text = '\n'.join(out) + '\n'
     print(text)
     if a.out:

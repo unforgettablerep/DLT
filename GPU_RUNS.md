@@ -316,6 +316,26 @@ nohup bash scripts/gpu/run_gpu_queue.sh plugin_lr 0 > work/plugin_lr.out 2>&1 &
 python scripts/p1/plugin_table.py --arm dlt_lr-0
 ```
 
+**Backbones behind their published numbers: learning-rate check.** A plug-in gain over a backbone that trained
+badly says little. Section 6 of `plugin_table.py` compares every backbone alone with its published numbers
+(`scripts/p1/reported.json`: long-term sets and Solar, and PEMS with the iTransformer protocol). It marks a
+backbone that is more than 10 % behind at some horizon; its comparison is not valid until its learning rate has
+been checked. The learning rate is chosen on the validation loss of the backbone alone, among the setting's own and
+5e-4 / 1e-3 / 1e-4, and both arms then use it:
+
+```bash
+python scripts/p1/plugin_table.py | sed -n '/## 6/,$p'              # which backbones are marked
+python scripts/exps.py plugin_all --device gpu --seeds 2021 --datasets PEMS04 PEMS08 --models PatchTST iTransformer \
+    --backbone_lr 0.0001 0.0005 0.001 --list plugin_lrcheck          # the backbone alone at the other learning rates
+bash scripts/gpu/run_gpu_queue.sh plugin_lrcheck 0 0
+python scripts/exps.py plugin_all --device gpu --seeds 2021 --select_lr --list plugin_lrsel
+bash scripts/gpu/run_gpu_queue.sh plugin_lrsel 0 0                  # + DLT where another learning rate won
+python scripts/p1/plugin_table.py                                   # pairs at the chosen learning rates
+```
+
+The table states for which settings another learning rate was chosen. A paper reports this rule as it is: where
+a backbone ran more than 10 % behind its published result, its learning rate was chosen on the validation set.
+
 **NaN forecasts.** TimesNet on Traffic gave a NaN test MSE in both arms. On the GPU machine:
 `python scripts/gpu/diag_nonfinite.py Traffic_96_TimesNet_alone` (it needs the job in `work/jobs_plugin_all.txt`,
 i.e. the list of stage 3, and the checkpoint in `work/ckpt`; `--list` names another list).

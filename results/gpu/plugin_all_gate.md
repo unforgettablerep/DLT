@@ -96,7 +96,10 @@ Compared with the iTransformer paper (Table 9: input 96, MSE), backbone alone at
   and 0.695 with them, and 0.526 after epoch 2 without them (training continues). plugin_all now passes
   `--no_time_marks` on PEMS and Solar; the PEMS04/08 runs are to be repeated with it.
 - **PatchTST needs a PEMS setting of its own**, for example chosen on the validation loss, before its PEMS numbers
-  can be compared.
+  can be compared. This is now done by a learning-rate check (GPU_RUNS.md). `plugin_table.py` section 6 marks every
+  backbone more than 10 % behind its published numbers. On the records so far that is PatchTST on ETTm1, Exchange,
+  PEMS04 and PEMS08, iTransformer on PEMS04 and PEMS08, S-Mamba on PEMS08 (horizon 96) and TimeMixer on Exchange
+  (horizon 96).
 
 ## Next
 1. `diag_nonfinite.py` on one Traffic TimesNet run, before the remaining Traffic runs are evaluated.

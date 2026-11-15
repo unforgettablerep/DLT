@@ -38,6 +38,9 @@ Suites
 
 --models / --datasets restrict the baselines, ci_long and plugin_all suites, e.g. the CPU-feasible subset
     python scripts/exps.py baselines --models DLinear iTransformer TimeMixer --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange
+Learning-rate check (plugin_all), for backbones that run far behind their published numbers (plugin_table.py,
+section 6): --backbone_lr 0.0005 0.001 runs the backbone alone at these learning rates; --select_lr then runs both
+arms at the learning rate with the lowest validation loss of the backbone alone, where it is not the setting's own.
 --dlt "<args>" adds to or overrides the DLT-dyn arguments, e.g. --dlt "--dlt_gate static" or --dlt "--dlt_lr 0"
 (plugin_all: the branch then trains with the backbone's learning rate). --list NAME writes the jobs to
 work/jobs_NAME.txt instead of work/jobs_<suite>.txt, so that a second list can run next to a running queue.
@@ -208,6 +211,49 @@ def plugin_backbone_args(model, ds, H):
     return args, src
 
 
+# Learning-rate check of a backbone alone: where a backbone runs far behind its published numbers, its learning rate
+# is chosen on the validation loss of the backbone alone from its own setting and these values; both arms then use it.
+LR_GRID = (1e-4, 5e-4, 1e-3)
+
+
+def lr_suffix(lr):
+    return f'@lr{lr:g}'
+
+
+def setting_lr(bargs):
+    m = re.search(r'--learning_rate (\S+)', bargs)
+    return float(m.group(1)) if m else 1e-4                    # run.py default
+
+
+def plugin_records():
+    """records of plugin_all from results/p1 and the work directory (a run in both: the work directory's)"""
+    runs = {}
+    for f in (REPO / 'results' / 'p1' / 'results_plugin_all.jsonl', paths.WORK / 'results_plugin_all.jsonl'):
+        if f.exists():
+            for line in open(f):
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                runs[(r['des'], r.get('seed'))] = r
+    return list(runs.values())
+
+
+def selected_lrs(records):
+    """(dataset, H, backbone) -> learning-rate suffix ('' = the setting's own) whose backbone-alone run has the lowest
+    best validation loss (mean over seeds), for the settings with learning-rate check runs (arm alone@lr<x>)"""
+    ds_of = {v[1]: k for k, v in DATASETS.items()}
+    vals = {}
+    for r in records:
+        if r.get('model') != 'DLTPlug' or r.get('best_vali') is None or r['data_path'] not in ds_of:
+            continue
+        ds, H, base = ds_of[r['data_path']], r['pred_len'], r['plug_base']
+        stem = f'{ds}_{H}_{base}_alone'
+        if r['des'] == stem or r['des'].startswith(stem + '@lr'):
+            vals.setdefault((ds, H, base), {}).setdefault(r['des'][len(stem):], []).append(r['best_vali'])
+    return {key: min(v, key=lambda sfx: sum(v[sfx]) / len(v[sfx])) for key, v in vals.items() if len(v) > 1}
+
+
 def recipe_tag(extra):
     """short name of extra --dlt arguments: a changed recipe gets its own job names (dlt_<tag>), so that runs of the
     default recipe are neither skipped for nor mixed with it"""
@@ -283,6 +329,11 @@ def main():
     p.add_argument('--device', default='cpu', choices=['cpu', 'gpu'])
     p.add_argument('--seeds', type=int, nargs='+', default=[2021, 2022, 2023])
     p.add_argument('--dlt', default='', help='extra --dlt_* arguments of the proposed model (e.g. a gate)')
+    p.add_argument('--backbone_lr', type=float, nargs='+',
+                   help='plugin_all: learning-rate check, the backbone alone only, at these learning rates (arm alone@lr<x>)')
+    p.add_argument('--select_lr', action='store_true',
+                   help='plugin_all: both arms at the learning rate whose backbone-alone run has the lowest validation '
+                        'loss, for the settings with a learning-rate check (arms alone@lr<x>, dlt@lr<x>)')
     p.add_argument('--list', help='name of the job list (work/jobs_<list>.txt; default: the suite), e.g. to run a '
                                   'second list of the same suite next to a running queue; results still go to '
                                   'work/results_<suite>.jsonl')
@@ -328,15 +379,28 @@ def main():
         # PEMS too (iTransformer / S-Mamba protocol; only Informer reads it). --dlt_lr comes first so that --dlt can
         # override it.
         arm = 'dlt' + (f'_{recipe_tag(a.dlt)}' if a.dlt else '')
+        chosen = selected_lrs(plugin_records()) if a.select_lr else {}
         for ds, base, seed in itertools.product(a.datasets or PLUGIN_ALL_SETS, a.models or BASELINES, S):
             for H in PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS:
                 bargs, _ = plugin_all_args(base, ds, H)
                 if ds in NO_MARKS_SETS:                       # as the iTransformer / S-Mamba code: no time marks
                     bargs = f'--no_time_marks {bargs}'
                 rel = REL_COST.get(base, 2.0)
-                g.add(f'{ds}_{H}_{base}_alone', 'DLTPlug', ds, H, seed,
+                if a.backbone_lr:                             # learning-rate check: the backbone alone only
+                    for lr in a.backbone_lr:
+                        if abs(lr - setting_lr(bargs)) > 1e-12:
+                            g.add(f'{ds}_{H}_{base}_alone{lr_suffix(lr)}', 'DLTPlug', ds, H, seed,
+                                  f'--plug_base {base} --dlt_variant ci {bargs} --learning_rate {lr:g}', cost(ds, rel), label=48)
+                    continue
+                sfx = ''
+                if a.select_lr:                               # both arms at the learning rate chosen on validation
+                    sfx = chosen.get((ds, H, base), '')
+                    if not sfx:
+                        continue                              # the setting's own learning rate: nothing to add
+                    bargs = f'{bargs} --learning_rate {sfx[3:]}'
+                g.add(f'{ds}_{H}_{base}_alone{sfx}', 'DLTPlug', ds, H, seed,
                       f'--plug_base {base} --dlt_variant ci {bargs}', cost(ds, rel), label=48)
-                g.add(f'{ds}_{H}_{base}_{arm}', 'DLTPlug', ds, H, seed,
+                g.add(f'{ds}_{H}_{base}_{arm}{sfx}', 'DLTPlug', ds, H, seed,
                       f'--plug_base {base} --dlt_lr 0.003 {dlt} {bargs}', cost(ds, rel + 1), label=48)
     elif a.suite == 'plugin_probe':
         # Why does the DLT-dyn branch hurt PatchTST / iTransformer on Traffic (GPU tier 1c)? Three variants of the
