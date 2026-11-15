@@ -320,11 +320,17 @@ python scripts/p1/plugin_table.py --arm dlt_lr-0
 `python scripts/gpu/diag_nonfinite.py Traffic_96_TimesNet_alone` (it needs the job in `work/jobs_plugin_all.txt`,
 i.e. the list of stage 3, and the checkpoint in `work/ckpt`; `--list` names another list).
 
-TimeMixer on PEMS04/08 ran with patience 3, before its complete official PEMS setting (patience 10). Remove these
-16 records before stage 2 runs again, so that they are re-run:
+**PEMS and Solar without time marks (2026-11-15).** The iTransformer and S-Mamba code, where the official PEMS
+and Solar settings come from, gives the model no time marks on these datasets (`x_mark = None`). The first
+PEMS04/08 runs of this study had five time-mark features, and several backbones fell far behind their
+published numbers at the long horizons (iTransformer PEMS08-96 0.493 against 0.221). plugin_all now passes
+`--no_time_marks` on PEMS and Solar. TimeMixer on PEMS04/08 also ran with patience 3 instead of its official 10.
+Remove all PEMS04/08 records before stage 2 runs again, so that they are re-run with the official protocol:
 
 ```bash
-grep -v -E '"des": "PEMS0[48]_[0-9]+_TimeMixer_' work/results_plugin_all.jsonl > work/r.tmp && mv work/r.tmp work/results_plugin_all.jsonl
+for f in work/results_plugin_all.jsonl results/p1/results_plugin_all.jsonl; do
+  [ -f $f ] && grep -v -E '"des": "PEMS0[48]_' $f > $f.tmp && mv $f.tmp $f
+done
 ```
 
 ## 1–4. Experiments

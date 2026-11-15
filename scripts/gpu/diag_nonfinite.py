@@ -28,6 +28,8 @@ from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast  # noqa: E402
 
 def forward(model, batch, args, dev):
     bx, by, bxm, bym = (t.float().to(dev) for t in batch)
+    if getattr(args, 'no_time_marks', False):
+        bxm = bym = None
     dec = torch.cat([by[:, :args.label_len, :], torch.zeros_like(by[:, -args.pred_len:, :])], dim=1)
     y = model(bx, bxm, dec, bym)
     return (y[0] if isinstance(y, tuple) else y)[:, -args.pred_len:, :]

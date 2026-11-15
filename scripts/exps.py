@@ -30,7 +30,8 @@ Suites
                    static gate, and with both (PatchTST, iTransformer; use --seeds 2021 for six runs)
   plugin_all   P1  every representative backbone (BASELINES) alone and + DLT-dyn (DLTPlug, branch lr 3e-3) on the
                    long-term benchmark and Solar (horizons 96/192/336/720) and on PEMS03/04/07/08 (horizons
-                   12/24/48/96, protocol of iTransformer and S-Mamba: MSE loss, metrics on the normalised scale).
+                   12/24/48/96, protocol of iTransformer and S-Mamba: MSE loss, metrics on the normalised scale,
+                   no time marks on PEMS and Solar).
                    Settings: the official ones (TSLib scripts; for Solar and PEMS those of the iTransformer, S-Mamba
                    and TimeMixer repositories, REPO_OFFICIAL), else the documented fallbacks (FALLBACK_FROM);
                    PatchTST: its paper's. GPU. The table: python scripts/p1/plugin_table.py
@@ -58,6 +59,9 @@ LONG_SETS = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', '
 PEMS_SETS = ('PEMS03', 'PEMS04', 'PEMS07', 'PEMS08')
 PEMS_HORIZONS = (12, 24, 48, 96)                               # iTransformer / S-Mamba protocol, input 96
 PLUGIN_ALL_SETS = LONG_SETS + ('Solar',) + PEMS_SETS           # the datasets of plugin_all
+# The iTransformer and S-Mamba code gives no time marks to the model on PEMS and Solar (x_mark = None); their
+# per-horizon settings (REPO_OFFICIAL) were tuned that way, and plugin_all follows it for every backbone.
+NO_MARKS_SETS = ('Solar',) + PEMS_SETS
 
 # name: (--data, file, variables, --freq, train windows (for cost estimates))
 DATASETS = {
@@ -327,6 +331,8 @@ def main():
         for ds, base, seed in itertools.product(a.datasets or PLUGIN_ALL_SETS, a.models or BASELINES, S):
             for H in PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS:
                 bargs, _ = plugin_all_args(base, ds, H)
+                if ds in NO_MARKS_SETS:                       # as the iTransformer / S-Mamba code: no time marks
+                    bargs = f'--no_time_marks {bargs}'
                 rel = REL_COST.get(base, 2.0)
                 g.add(f'{ds}_{H}_{base}_alone', 'DLTPlug', ds, H, seed,
                       f'--plug_base {base} --dlt_variant ci {bargs}', cost(ds, rel), label=48)

@@ -93,6 +93,8 @@ def main():
                 if hasattr(net, 'prepare'):
                     net.prepare(data)
                 bx, by, bxm, bym = (t.float().to(exp.device) for t in next(iter(loader)))
+                if args.no_time_marks:                         # as the run does (PEMS / Solar protocol)
+                    bxm = bym = None
                 dec = torch.cat([by[:, :args.label_len, :], torch.zeros_like(by[:, -args.pred_len:, :])], dim=1)
                 y = exp.model(bx, bxm, dec, bym)
                 y = y[0] if isinstance(y, tuple) else y

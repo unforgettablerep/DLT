@@ -116,6 +116,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
+                if getattr(self.args, 'no_time_marks', False):     # iTransformer / S-Mamba protocol on PEMS, Solar
+                    batch_x_mark = batch_y_mark = None
 
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
@@ -190,6 +192,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_y = batch_y.float().to(self.device)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
+                if getattr(self.args, 'no_time_marks', False):     # iTransformer / S-Mamba protocol on PEMS, Solar
+                    batch_x_mark = batch_y_mark = None
 
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
@@ -282,6 +286,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
+                if getattr(self.args, 'no_time_marks', False):     # iTransformer / S-Mamba protocol on PEMS, Solar
+                    batch_x_mark = batch_y_mark = None
 
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
@@ -389,7 +395,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                    'inverse': bool(a.inverse), 'loss': getattr(a, 'loss', 'MSE'),
                    'vali_inverse': bool(getattr(a, 'vali_inverse', False)),
                    'n_params': int(sum(p.numel() for p in self.model.parameters())),
-                   'torch': torch.__version__,
+                   'torch': torch.__version__, 'time_marks': not getattr(a, 'no_time_marks', False),
                    'device': torch.cuda.get_device_name(self.device) if self.device.type == 'cuda' else self.device.type}
             if a.model in ('DLT', 'DLTPlug'):
                 rec.update({'variant': a.dlt_variant, 'gate': a.dlt_gate, 'k': a.dlt_k, 'L': a.dlt_L,
