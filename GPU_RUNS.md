@@ -359,6 +359,21 @@ for f in work/results_plugin_all.jsonl results/p1/results_plugin_all.jsonl; do
 done
 ```
 
+**Which backbones and datasets gain, and why.** `plugin_gain.py` pairs the arms as `plugin_table.py` does and keeps
+only the comparisons whose backbone alone is within 10 % of its published numbers (or has none); runs made with
+settings or a protocol that plugin_all no longer generates are marked "old". Per backbone and per dataset it gives
+the median change, how often the branch helps and the change with the validation rule; then what the size of the
+gain goes with (how far the backbone alone is behind the best one, the best + DLT result against the best backbone
+alone, the horizon, and the data). The data part comes from `leadlag_diag.py`, a linear diagnostic on the CPU
+(about 6 minutes for the 13 datasets on 4 cores): what per-variable weights, the windows of the 8 DLT neighbours, and the
+neighbours beyond the own past add to a shared channel-independent ridge forecaster, on the training and on the
+test split ([evaluation](results/gpu/plugin_all_gain.md)):
+
+```bash
+python scripts/p1/leadlag_diag.py --out results/gpu/leadlag_diag.json        # once; needs the data, no GPU
+python scripts/p1/plugin_gain.py --diag results/gpu/leadlag_diag.json        # after every stage, like plugin_table.py
+```
+
 ## 1–4. Experiments
 
 ```bash

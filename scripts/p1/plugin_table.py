@@ -66,6 +66,67 @@ def mean(rs, k):
     return sum(v) / len(v) if v else None
 
 
+def pair_arms(cells, arm, k):
+    """pair: (ds, H, base) -> (records alone, records + DLT), the backbone alone at the learning rate with the lowest
+    validation loss (arms alone@lr<x>) and + DLT at the same rate; settings whose metric k is NaN in an arm go to nan
+    (labels), + DLT runs still missing at a chosen rate to pending; chosen: (ds, H, base) -> lr suffix (when not the
+    default); alone_sel: (ds, H, base) -> records of the backbone alone at the chosen rate"""
+    variants = collections.defaultdict(dict)                             # (ds, H, base) -> {lr suffix: alone}
+    for (ds, H, base, a), rs in cells.items():
+        if a == 'alone' or a.startswith('alone@lr'):
+            variants[(ds, H, base)][a[len('alone'):]] = rs
+    vali = lambda rs: mean(rs, 'best_vali') if mean(rs, 'best_vali') is not None else float('inf')
+    pair, nan, pending, chosen, alone_sel = {}, [], [], {}, {}
+    for key, v in variants.items():
+        sfx = min(v, key=lambda x: vali(v[x]))                           # learning rate chosen on validation
+        alone_sel[key] = v[sfx]
+        if sfx:
+            chosen[key] = sfx
+        partner = cells.get(key + (arm + sfx,))
+        label = f'{key[0]}-{key[1]} {NAME.get(key[2], key[2])}'
+        if partner is None:
+            if sfx and (key + (arm,)) in cells:
+                pending.append(f'{label} ({sfx[1:]})')
+            continue
+        both = (v[sfx], partner)
+        if all(m == m for x in both for m in [mean(x, k)]):                # NaN != NaN
+            pair[key] = both
+        else:
+            nan.append(label)
+    return pair, nan, pending, chosen, alone_sel
+
+
+REPORTED = json.load(open(Path(__file__).with_name('reported.json')))
+
+
+def published(ds, H, base, k='mse'):
+    """published result of the backbone alone (H = 'Avg': the mean over the horizons), or None"""
+    v = (REPORTED['pems_96'] if ds in exps.PEMS_SETS else REPORTED['long_term']).get(base, {}).get(ds, {}).get(str(H))
+    return v[0 if k == 'mse' else 1] if v else None
+
+
+def horizons(ds):
+    return exps.PEMS_HORIZONS if ds in exps.PEMS_SETS else exps.HORIZONS
+
+
+def baseline_gaps(ds, b, alone_sel, pair, k='mse'):
+    """(ga, gd): backbone alone and + DLT against the published backbone alone, relative, per horizon with a published
+    number; where only the published average is known, one value for the average over the horizons"""
+    ga = [mean(alone_sel[(ds, H, b)], k) / published(ds, H, b, k) - 1 for H in horizons(ds)
+          if (ds, H, b) in alone_sel and published(ds, H, b, k)
+          and mean(alone_sel[(ds, H, b)], k) == mean(alone_sel[(ds, H, b)], k)]
+    gd = [mean(pair[(ds, H, b)][1], k) / published(ds, H, b, k) - 1 for H in horizons(ds)
+          if (ds, H, b) in pair and published(ds, H, b, k)]
+    hs = horizons(ds)
+    if not ga and published(ds, 'Avg', b, k) and all((ds, H, b) in alone_sel for H in hs):
+        ours = [mean(alone_sel[(ds, H, b)], k) for H in hs]              # only the published average is known
+        if all(o == o for o in ours):
+            ga = [sum(ours) / len(ours) / published(ds, 'Avg', b, k) - 1]
+        if all((ds, H, b) in pair for H in hs):
+            gd = [sum(mean(pair[(ds, H, b)][1], k) for H in hs) / len(hs) / published(ds, 'Avg', b, k) - 1]
+    return ga, gd
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--metric', default='mse', choices=['mse', 'mae'])
@@ -79,29 +140,7 @@ def main():
     arms = sorted({key[3].split('@')[0] for key in cells} - {'alone'})
     bases = [b for b in exps.BASELINES if any(key[2] == b for key in cells)] + \
         sorted({key[2] for key in cells} - set(exps.BASELINES))
-    horizons = lambda ds: exps.PEMS_HORIZONS if ds in exps.PEMS_SETS else exps.HORIZONS
-    variants = collections.defaultdict(dict)                             # (ds, H, base) -> {lr suffix: alone}
-    for (ds, H, base, arm), rs in cells.items():
-        if arm == 'alone' or arm.startswith('alone@lr'):
-            variants[(ds, H, base)][arm[len('alone'):]] = rs
-    vali = lambda rs: mean(rs, 'best_vali') if mean(rs, 'best_vali') is not None else float('inf')
-    pair, nan, pending, chosen, alone_sel = {}, [], [], {}, {}           # pair: (ds, H, base) -> (alone, + DLT)
-    for key, v in variants.items():
-        sfx = min(v, key=lambda x: vali(v[x]))                           # learning rate chosen on validation
-        alone_sel[key] = v[sfx]
-        if sfx:
-            chosen[key] = sfx
-        partner = cells.get(key + (a.arm + sfx,))
-        label = f'{key[0]}-{key[1]} {NAME.get(key[2], key[2])}'
-        if partner is None:
-            if sfx and (key + (a.arm,)) in cells:
-                pending.append(f'{label} ({sfx[1:]})')
-            continue
-        both = (v[sfx], partner)
-        if all(m == m for x in both for m in [mean(x, k)]):                # NaN != NaN
-            pair[key] = both
-        else:
-            nan.append(label)
+    pair, nan, pending, chosen, alone_sel = pair_arms(cells, a.arm, k)
     seeds = sorted({r.get('seed') for rs in cells.values() for r in rs})
     out = [f'# Plug-in study: backbone alone vs + DLT-dyn (arm `{a.arm}`)', '',
            f'Suite `{SUITE}`, seed(s) {", ".join(map(str, seeds)) or "-"}; {len(pair)} settings with both arms. '
@@ -202,28 +241,11 @@ def main():
         out.append(f'| {ds} | {len(ps)} | {sum(keep)} | {fmt(sum(d) / len(d))}, {sum(x > 0.02 for x in d)} | '
                    f'{fmt(sum(r) / len(r))}, {sum(x > 0.02 for x in r)} |')
     # 6. against the published numbers
-    R = json.load(open(Path(__file__).with_name('reported.json')))
-    col = 0 if k == 'mse' else 1
-
-    def published(ds, H, base):                                          # H = 'Avg': the mean over the horizons
-        v = (R['pems_96'] if ds in exps.PEMS_SETS else R['long_term']).get(base, {}).get(ds, {}).get(str(H))
-        return v[col] if v else None
     rows_a, rows_d, flagged = [], [], []
     for ds in DATASETS:
         ca, cd = [], []
         for b in bases:
-            ga = [mean(alone_sel[(ds, H, b)], k) / published(ds, H, b) - 1 for H in horizons(ds)
-                  if (ds, H, b) in alone_sel and published(ds, H, b)
-                  and mean(alone_sel[(ds, H, b)], k) == mean(alone_sel[(ds, H, b)], k)]
-            gd = [mean(pair[(ds, H, b)][1], k) / published(ds, H, b) - 1 for H in horizons(ds)
-                  if (ds, H, b) in pair and published(ds, H, b)]
-            hs = [H for H in horizons(ds)]
-            if not ga and published(ds, 'Avg', b) and all((ds, H, b) in alone_sel for H in hs):
-                ours = [mean(alone_sel[(ds, H, b)], k) for H in hs]          # only the published average is known
-                if all(o == o for o in ours):
-                    ga = [sum(ours) / len(ours) / published(ds, 'Avg', b) - 1]
-                if all((ds, H, b) in pair for H in hs):
-                    gd = [sum(mean(pair[(ds, H, b)][1], k) for H in hs) / len(hs) / published(ds, 'Avg', b) - 1]
+            ga, gd = baseline_gaps(ds, b, alone_sel, pair, k)
             bad = bool(ga) and max(ga) > 0.10
             if bad:
                 flagged.append(f'{ds} {NAME.get(b, b)}')
