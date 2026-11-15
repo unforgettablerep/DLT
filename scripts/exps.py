@@ -32,9 +32,11 @@ Suites
                    long-term benchmark and Solar (horizons 96/192/336/720) and on PEMS03/04/07/08 (horizons
                    12/24/48/96, protocol of iTransformer and S-Mamba: MSE loss, metrics on the normalised scale,
                    no time marks on PEMS and Solar).
-                   Settings: the official ones (TSLib scripts; for Solar and PEMS those of the iTransformer, S-Mamba
-                   and TimeMixer repositories, REPO_OFFICIAL), else the documented fallbacks (FALLBACK_FROM);
-                   PatchTST: its paper's. GPU. The table: python scripts/p1/plugin_table.py
+                   Settings: the official ones, so that every backbone alone reproduces its published numbers (TSLib
+                   scripts; for Solar and PEMS those of the iTransformer, S-Mamba and TimeMixer repositories,
+                   REPO_OFFICIAL), else the documented fallbacks (FALLBACK_FROM). PEMS and Solar as in the
+                   iTransformer / S-Mamba code: no time marks, test batch 1, and on PEMS their split.
+                   GPU. The table (section 6 checks the published numbers): python scripts/p1/plugin_table.py
 
 --models / --datasets restrict the baselines, ci_long and plugin_all suites, e.g. the CPU-feasible subset
     python scripts/exps.py baselines --models DLinear iTransformer TimeMixer --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange
@@ -261,11 +263,18 @@ def recipe_tag(extra):
 
 
 def plugin_all_args(model, ds, H):
-    """Backbone settings of plugin_all: those of the plug-in study, on Solar and PEMS the official ones of the
-    models' repositories (REPO_OFFICIAL) where they exist."""
+    """Backbone settings of plugin_all, so that the backbone alone reproduces its published numbers:
+    - Solar and PEMS: the official per-horizon settings of the model's repository (REPO_OFFICIAL) where they exist;
+    - otherwise the official TSLib scripts (backbone_args), which produced the published input-96 numbers; for
+      PatchTST too (the older plug-in suites use its paper's settings instead, PATCHTST_PAPER);
+    - Solar and PEMS without settings of their own: the documented fallbacks (FALLBACK_FROM: the Electricity
+      configuration; Informer its generic one); PatchTST likewise the Electricity configuration."""
     if H in REPO_OFFICIAL.get(model, {}).get(ds, {}):
         return (REPO_OFFICIAL[model][ds][H] + ' ' + MODEL_EXTRA.get(model, '')).strip(), f'{model} repository'
-    return plugin_backbone_args(model, ds, H)
+    if model == 'PatchTST' and ds in NO_MARKS_SETS:
+        args, src = official_args(model, DATASETS['ECL'][1], H if H in HORIZONS else 96)
+        return args, f'{src} (ECL configuration)'
+    return backbone_args(model, ds, H)
 
 
 def backbone_args(model, ds, H):
@@ -383,8 +392,10 @@ def main():
         for ds, base, seed in itertools.product(a.datasets or PLUGIN_ALL_SETS, a.models or BASELINES, S):
             for H in PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS:
                 bargs, _ = plugin_all_args(base, ds, H)
-                if ds in NO_MARKS_SETS:                       # as the iTransformer / S-Mamba code: no time marks
-                    bargs = f'--no_time_marks {bargs}'
+                if ds in NO_MARKS_SETS:                       # as the iTransformer / S-Mamba code: no time marks,
+                    bargs = f'--no_time_marks --test_batch_size 1 {bargs}'     # test with batch 1, and on PEMS
+                    if ds in PEMS_SETS:                       # the split of their PEMS loader
+                        bargs = f'--pems_split itransformer {bargs}'
                 rel = REL_COST.get(base, 2.0)
                 if a.backbone_lr:                             # learning-rate check: the backbone alone only
                     for lr in a.backbone_lr:

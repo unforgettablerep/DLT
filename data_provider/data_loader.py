@@ -333,7 +333,9 @@ class Dataset_Custom(Dataset):
 class Dataset_PEMS(Dataset):
     """PEMS03/04/07/08 traffic flow stored as .npz with key 'data' of shape (T, N[, F]); feature 0 = flow.
 
-    Split 6:2:2 (same as iTransformer); StandardScaler fitted on the training split.
+    Split 6:2:2 (same as iTransformer); StandardScaler fitted on the training split. The validation and test
+    windows take their look-back from the preceding split (TSLib style), or, with --pems_split itransformer, start
+    inside their own split as in the iTransformer / S-Mamba loaders.
     Time marks are rebuilt from the known start date and the 5-minute sampling interval,
     so models that use time features also work.
     """
@@ -366,6 +368,8 @@ class Dataset_PEMS(Dataset):
         data = pd.DataFrame(data.astype(np.float64)).ffill().bfill().values
         n = len(data)
         border1s = [0, int(0.6 * n) - self.seq_len, int(0.8 * n) - self.seq_len]
+        if getattr(self.args, 'pems_split', 'tslib') == 'itransformer':
+            border1s = [0, int(0.6 * n), int(0.8 * n)]
         border2s = [int(0.6 * n), int(0.8 * n), n]
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]

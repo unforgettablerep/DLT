@@ -3,7 +3,8 @@
   "long_term": "MillGNN (Wu et al., CIKM 2025, arXiv:2509.03852) Table 2: input 96, MSE / MAE; MillGNN tuned with NNI (20 trials); other rows as cited or re-run (*) by MillGNN. MoVE: ICLR 2026 submission, Table 4 (input 96, seed 2024; no Exchange). LagTS: Liu et al., ICASSP 2025, Table I (input 96; evaluated on ETTh1, ETTh2, Exchange and Weather only; lambda tuned in {0.05, 0.1, 0.15, 0.2}). S-Mamba and TimesNet: Wang et al., \"Is Mamba Effective for Time Series Forecasting?\", Neurocomputing 2025 (arXiv:2403.11144), Tables 2-4 (input 96); its iTransformer, PatchTST and DLinear columns agree with the numbers above.",
   "pems": "MillGNN Table 3 (TimeMixer protocol: input 96, horizon 12, MAE / MAPE in % / RMSE on the original scale).",
   "pems_96": "PEMS03/04/07/08, input 96, horizons 12/24/48/96, MSE / MAE on the normalised scale (protocol of iTransformer): iTransformer, PatchTST, DLinear and TimesNet from the iTransformer paper (ICLR 2024), Table 9; S-Mamba from Wang et al. (Neurocomputing 2025), Table 2.",
-  "solar": "Solar-Energy (long_term / Solar), input 96: S-Mamba, iTransformer, PatchTST, DLinear and TimesNet from Wang et al. (S-Mamba, Neurocomputing 2025), Table 4."
+  "solar": "Solar-Energy (long_term / Solar), input 96: S-Mamba, iTransformer, PatchTST, DLinear and TimesNet from Wang et al. (S-Mamba, Neurocomputing 2025), Table 4.",
+  "informer_timexer": "long_term / Informer, input 96: TimesNet (Wu et al., ICLR 2023) Table 13 for ETTh1, ETTh2 (horizon 96 only), ETTm1, ETTm2; Autoformer (Wu et al., NeurIPS 2021) Table 1 for Electricity, Exchange, Traffic, Weather. long_term / TimeXer, look-back 96: TimeXer (Wang et al., NeurIPS 2024), full multivariate results for ETTh1, ETTh2, Weather, Electricity; Table 3 averages (key Avg) for ETTm1, ETTm2, Traffic."
  },
  "long_term": {
   "MillGNN": {
@@ -1941,6 +1942,248 @@
     "720": [
      0.338,
      0.337
+    ]
+   }
+  },
+  "Informer": {
+   "ETTh1": {
+    "96": [
+     0.865,
+     0.713
+    ],
+    "192": [
+     1.008,
+     0.792
+    ],
+    "336": [
+     1.107,
+     0.809
+    ],
+    "720": [
+     1.181,
+     0.865
+    ]
+   },
+   "ETTh2": {
+    "96": [
+     3.755,
+     1.525
+    ]
+   },
+   "ETTm1": {
+    "96": [
+     0.672,
+     0.571
+    ],
+    "192": [
+     0.795,
+     0.669
+    ],
+    "336": [
+     1.212,
+     0.871
+    ],
+    "720": [
+     1.166,
+     0.823
+    ]
+   },
+   "ETTm2": {
+    "96": [
+     0.365,
+     0.453
+    ],
+    "192": [
+     0.533,
+     0.563
+    ],
+    "336": [
+     1.363,
+     0.887
+    ],
+    "720": [
+     3.379,
+     1.338
+    ]
+   },
+   "ECL": {
+    "96": [
+     0.274,
+     0.368
+    ],
+    "192": [
+     0.296,
+     0.386
+    ],
+    "336": [
+     0.3,
+     0.394
+    ],
+    "720": [
+     0.373,
+     0.439
+    ]
+   },
+   "Exchange": {
+    "96": [
+     0.847,
+     0.752
+    ],
+    "192": [
+     1.204,
+     0.895
+    ],
+    "336": [
+     1.672,
+     1.036
+    ],
+    "720": [
+     2.478,
+     1.31
+    ]
+   },
+   "Traffic": {
+    "96": [
+     0.719,
+     0.391
+    ],
+    "192": [
+     0.696,
+     0.379
+    ],
+    "336": [
+     0.777,
+     0.42
+    ],
+    "720": [
+     0.864,
+     0.472
+    ]
+   },
+   "Weather": {
+    "96": [
+     0.3,
+     0.384
+    ],
+    "192": [
+     0.598,
+     0.544
+    ],
+    "336": [
+     0.578,
+     0.523
+    ],
+    "720": [
+     1.059,
+     0.741
+    ]
+   }
+  },
+  "TimeXer": {
+   "ETTh1": {
+    "96": [
+     0.382,
+     0.403
+    ],
+    "192": [
+     0.429,
+     0.435
+    ],
+    "336": [
+     0.468,
+     0.448
+    ],
+    "720": [
+     0.469,
+     0.461
+    ],
+    "Avg": [
+     0.437,
+     0.437
+    ]
+   },
+   "ETTh2": {
+    "96": [
+     0.286,
+     0.338
+    ],
+    "192": [
+     0.363,
+     0.389
+    ],
+    "336": [
+     0.414,
+     0.423
+    ],
+    "720": [
+     0.408,
+     0.432
+    ],
+    "Avg": [
+     0.367,
+     0.396
+    ]
+   },
+   "Weather": {
+    "96": [
+     0.157,
+     0.205
+    ],
+    "192": [
+     0.204,
+     0.247
+    ],
+    "336": [
+     0.261,
+     0.29
+    ],
+    "720": [
+     0.34,
+     0.341
+    ],
+    "Avg": [
+     0.241,
+     0.271
+    ]
+   },
+   "ECL": {
+    "96": [
+     0.14,
+     0.242
+    ],
+    "192": [
+     0.157,
+     0.256
+    ],
+    "336": [
+     0.176,
+     0.275
+    ],
+    "720": [
+     0.211,
+     0.306
+    ],
+    "Avg": [
+     0.171,
+     0.27
+    ]
+   },
+   "ETTm1": {
+    "Avg": [
+     0.382,
+     0.397
+    ]
+   },
+   "ETTm2": {
+    "Avg": [
+     0.274,
+     0.322
+    ]
+   },
+   "Traffic": {
+    "Avg": [
+     0.466,
+     0.287
     ]
    }
   }

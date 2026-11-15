@@ -247,13 +247,18 @@ runs per seed.
 - Both arms run through `DLTPlug`. "Alone" (`--dlt_variant ci`) builds only the backbone and is identical to
   running the backbone directly; "+ DLT" adds the branch with its default recipe (DLT-dyn, k 8, L 48, R 4, branch
   learning rate 3e-3).
-- Backbone settings: the official ones.
-  - Long-term sets: the TSLib scripts. PatchTST: its paper's settings, as in the earlier plug-in study.
+- Backbone settings: the official ones, so that every backbone alone reproduces its published numbers; section 6
+  of `plugin_table.py` checks this.
+  - Long-term sets: the TSLib scripts, which produced the published input-96 numbers; PatchTST too (until
+    2026-11-15 it used its paper's settings, as in the earlier plug-in study).
   - Solar and PEMS: the repositories of iTransformer, S-Mamba and TimeMixer, per horizon (`REPO_OFFICIAL` in
     `scripts/exps.py`; TimeMixer has one PEMS setting, horizon 12, used for every horizon).
-  - Models without settings for Solar or PEMS (Informer, TimesNet, TimeXer, DLinear) take the documented
-    fallbacks: TimesNet and TimeXer the Electricity configuration, Informer its generic one, DLinear the defaults.
-- PEMS follows iTransformer and S-Mamba: input 96, MSE loss, MSE / MAE on the normalised scale. The other suites
+  - Models without settings for Solar or PEMS (Informer, TimesNet, TimeXer, DLinear, PatchTST) take the
+    documented fallbacks: TimesNet, TimeXer and PatchTST the Electricity configuration, Informer its generic one,
+    DLinear the defaults.
+- PEMS follows iTransformer and S-Mamba: input 96, MSE loss, MSE / MAE on the normalised scale, no time marks,
+  their split (`--pems_split itransformer`: validation and test windows start inside their split) and test batch 1;
+  Solar likewise (no time marks, test batch 1). The other suites
   use a different PEMS-12 protocol (L1 loss, metrics on the original scale); the table of this study reads only its
   own records.
 - Data: `bash scripts/download_data.sh` fetches Solar and PEMS03/07 too.
@@ -344,12 +349,13 @@ i.e. the list of stage 3, and the checkpoint in `work/ckpt`; `--list` names anot
 and Solar settings come from, gives the model no time marks on these datasets (`x_mark = None`). The first
 PEMS04/08 runs of this study had five time-mark features, and several backbones fell far behind their
 published numbers at the long horizons (iTransformer PEMS08-96 0.493 against 0.221). plugin_all now passes
-`--no_time_marks` on PEMS and Solar. TimeMixer on PEMS04/08 also ran with patience 3 instead of its official 10.
-Remove all PEMS04/08 records before stage 2 runs again, so that they are re-run with the official protocol:
+`--no_time_marks` on PEMS and Solar, with the split and the test batch of that code. TimeMixer on PEMS04/08 also
+ran with patience 3 instead of its official 10, and PatchTST everywhere with its paper's settings instead of the
+official TSLib ones. Remove these records (all PEMS runs and all PatchTST runs) before they are run again:
 
 ```bash
 for f in work/results_plugin_all.jsonl results/p1/results_plugin_all.jsonl; do
-  [ -f $f ] && grep -v -E '"des": "PEMS0[48]_' $f > $f.tmp && mv $f.tmp $f
+  [ -f $f ] && grep -v -E '"des": "(PEMS0|[^"]*_PatchTST_)' $f > $f.tmp && mv $f.tmp $f
 done
 ```
 

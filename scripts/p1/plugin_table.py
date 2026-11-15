@@ -205,7 +205,7 @@ def main():
     R = json.load(open(Path(__file__).with_name('reported.json')))
     col = 0 if k == 'mse' else 1
 
-    def published(ds, H, base):
+    def published(ds, H, base):                                          # H = 'Avg': the mean over the horizons
         v = (R['pems_96'] if ds in exps.PEMS_SETS else R['long_term']).get(base, {}).get(ds, {}).get(str(H))
         return v[col] if v else None
     rows_a, rows_d, flagged = [], [], []
@@ -217,6 +217,13 @@ def main():
                   and mean(alone_sel[(ds, H, b)], k) == mean(alone_sel[(ds, H, b)], k)]
             gd = [mean(pair[(ds, H, b)][1], k) / published(ds, H, b) - 1 for H in horizons(ds)
                   if (ds, H, b) in pair and published(ds, H, b)]
+            hs = [H for H in horizons(ds)]
+            if not ga and published(ds, 'Avg', b) and all((ds, H, b) in alone_sel for H in hs):
+                ours = [mean(alone_sel[(ds, H, b)], k) for H in hs]          # only the published average is known
+                if all(o == o for o in ours):
+                    ga = [sum(ours) / len(ours) / published(ds, 'Avg', b) - 1]
+                if all((ds, H, b) in pair for H in hs):
+                    gd = [sum(mean(pair[(ds, H, b)][1], k) for H in hs) / len(hs) / published(ds, 'Avg', b) - 1]
             bad = bool(ga) and max(ga) > 0.10
             if bad:
                 flagged.append(f'{ds} {NAME.get(b, b)}')
@@ -228,7 +235,8 @@ def main():
             rows_d.append(f'| {ds} | ' + ' | '.join(cd) + ' |')
     if rows_a:
         out += ['', f'## 6. Against the published numbers ({k.upper()}, mean over the horizons)', '',
-                'Backbone alone against its published result (**bold**: more than 10 % behind at some horizon):', '',
+                'Backbone alone against its published result (**bold**: more than 10 % behind at some horizon; where only '
+                'the published average is known, the average is compared):', '',
                 hdr, sep] + rows_a
         out += ['', '+ DLT against the published backbone alone:', '', hdr, sep] + rows_d
         if flagged:

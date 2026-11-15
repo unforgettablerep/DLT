@@ -189,6 +189,11 @@ def get_parser():
                              'dense = cheapest when k is close to C - 1)')
     parser.add_argument('--dlt_neighbours', type=str, default='ccf', choices=['ccf', 'random', 'all'],
                         help='DLT: neighbour selection (ccf top-k, k random sources, all other variables)')
+    parser.add_argument('--pems_split', type=str, default='tslib', choices=['tslib', 'itransformer'],
+                        help='PEMS: validation / test windows take their look-back from the preceding split (tslib) or '
+                             'start inside their split (itransformer, as the iTransformer / S-Mamba loaders)')
+    parser.add_argument('--test_batch_size', type=int, default=0,
+                        help='batch size of the test (0 = --batch_size); the iTransformer / S-Mamba code tests with 1')
     parser.add_argument('--no_time_marks', action='store_true',
                         help='give the model no time-mark features (x_mark = None), as the iTransformer and S-Mamba '
                              'code does on PEMS and Solar')

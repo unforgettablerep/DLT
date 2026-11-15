@@ -28,6 +28,8 @@ def data_provider(args, flag):
     shuffle_flag = False if (flag == 'test' or flag == 'TEST') else True
     drop_last = False
     batch_size = args.batch_size
+    if flag in ('test', 'TEST') and getattr(args, 'test_batch_size', 0):
+        batch_size = args.test_batch_size                 # e.g. 1, as the iTransformer / S-Mamba code evaluates
     freq = args.freq
 
     if args.task_name == 'anomaly_detection':
