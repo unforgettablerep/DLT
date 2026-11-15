@@ -67,8 +67,39 @@ lowers the validation loss and raises the test loss. In a paper the rule is a re
   re-runs the batch with TF32 off, with cuDNN off and on the CPU. New records count non-finite forecasts
   (`test_nonfinite`), and the run log warns about them.
 
+## 4. PEMS: some backbones alone fall far behind their published numbers
+Compared with the iTransformer paper (Table 9: input 96, MSE), backbone alone at horizons 12 / 24 / 48 / 96:
+
+| | PEMS04 | PEMS08 |
+|---|---|---|
+| DLinear | −1 / −1 / −1 / −1 % | 0 / 0 / +1 / +3 % |
+| TimesNet | +3 / +5 / +9 / +3 % | +7 / +7 / +8 / +5 % |
+| iTransformer | +4 / +5 / +9 / +16 % | +10 / +15 / **+41 / +123 %** |
+| PatchTST | +34 / +45 / +84 / +173 % | −17 / −6 / +29 / +114 % |
+
+- **The pipeline is right.** DLinear reproduces the published table to 1–3 %, so the data, the split and the
+  metric are not at fault.
+- **Two of these comparisons are not valid.** iTransformer on PEMS08 at horizons 48 and 96 fails to train: its
+  best epoch is 1 at horizon 96, with test MSE 0.493 against 0.221 published. PatchTST has no official PEMS setting
+  and stops after three epochs at horizon 96. The "+ DLT" gains there mostly repair a broken baseline.
+  iTransformer + DLT on PEMS08-96 (0.249) is still 13 % worse than the published iTransformer alone.
+- **The other gains hold** when the published numbers are the reference instead of our runs:
+
+  | + DLT against the published backbone alone | PEMS04 | PEMS08 |
+  |---|---:|---:|
+  | DLinear | −43 to −50 % | −44 to −51 % |
+  | TimesNet | −8 to −15 % | −1 to −27 % |
+  | iTransformer | −2 to −7 % | not valid (see above) |
+- **One cause has been found and fixed.** The iTransformer and S-Mamba code, where the official PEMS and Solar
+  settings come from, gives the model no time marks there (`x_mark = None`); our runs gave five. A CPU control run
+  of iTransformer PEMS08-96 (official setting) reached a validation loss of 0.576 after epoch 1 without time marks
+  and 0.695 with them, and 0.526 after epoch 2 without them (training continues). plugin_all now passes
+  `--no_time_marks` on PEMS and Solar; the PEMS04/08 runs are to be repeated with it.
+- **PatchTST needs a PEMS setting of its own**, for example chosen on the validation loss, before its PEMS numbers
+  can be compared.
+
 ## Next
 1. `diag_nonfinite.py` on one Traffic TimesNet run, before the remaining Traffic runs are evaluated.
 2. Learning-rate probe on ETTh2, Exchange and Weather (96 runs, separate list, next to stage 3).
-3. Remaining datasets as planned: the rest of Electricity and Traffic, Solar, PEMS03, PEMS07, and the TimeMixer
-   PEMS04/08 re-run.
+3. Remaining datasets as planned: the rest of Electricity and Traffic, Solar, PEMS03, PEMS07, and PEMS04/08 again
+   without time marks (all their records removed first; see GPU_RUNS.md).
