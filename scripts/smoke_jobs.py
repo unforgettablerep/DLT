@@ -57,7 +57,8 @@ def main():
                re.sub(rf'_{H}(?=_|$)', '', args.des, count=1))
         groups[key].setdefault(H, argv)
     todo = []
-    for key, by_h in sorted(groups.items()):
+    # dataset-major order: the training split of a dataset is loaded once for all configurations on it
+    for key, by_h in sorted(groups.items(), key=lambda kv: (kv[0][2], kv[0][0], kv[0][1], kv[0][3])):
         hs = sorted(by_h) if a.horizons == 'all' else sorted({min(by_h), max(by_h)})
         todo += [(key, H, by_h[H]) for H in hs]
     gpu = a.device == 'gpu'

@@ -5,7 +5,9 @@
 Reads the records of the baselines suite (scripts/exps.py baselines: each baseline alone with its official settings
 and the protocol of the official loaders, scripts/baselines.py) from results/p1/results_baselines.jsonl and the
 work directory, or --files (e.g. copied from the GPU machine). Records of the backbone alone in the plug-in suites
-(DLTPlug, arm "alone") count as well. Several seeds are averaged.
+(DLTPlug, arm "alone") count as well. Only records of the check's protocol (four time features, dropped last
+batches; the records name freq and drop_last since 2026-11-17) unless --any_protocol. Several seeds are averaged.
+The records of the earlier eight baselines are in results/p1/results_baselines_v1.jsonl.
 
 Reference: scripts/p1/reported.json, block smamba_paper (Tables 2-4 of the S-Mamba paper; for iTransformer, PatchTST,
 RLinear, DLinear and TiDE they equal the iTransformer paper). For every baseline: one row per dataset with
@@ -24,7 +26,7 @@ import baselines  # noqa: E402
 DS_OF_FILE = {f: d for d, f in baselines.FILES.items()}
 
 
-def load(files):
+def load(files, any_protocol=False):
     runs = {}
     default = [d / f'results_{s}.jsonl' for d in (paths.REPO / 'results' / 'p1', paths.WORK)
                for s in ('baselines', 'plugin_all', 'plugin_fusion')]
@@ -42,6 +44,8 @@ def load(files):
                 continue
             if model not in baselines.BASELINES or r.get('data_path') not in DS_OF_FILE:
                 continue
+            if not any_protocol and not (r.get('freq') == 'h' and r.get('drop_last')):
+                continue                                         # an earlier protocol (records before 2026-11-17)
             runs[(r['des'], r.get('seed'), r.get('model'))] = (model, r)
     cells = collections.defaultdict(list)                       # (model, dataset, H) -> records
     for model, r in runs.values():
@@ -54,10 +58,11 @@ def main():
     p.add_argument('--files', nargs='+')
     p.add_argument('--models', nargs='+', default=list(baselines.BASELINES))
     p.add_argument('--tol', type=float, default=5.0)
+    p.add_argument('--any_protocol', action='store_true', help='also records of the earlier protocol')
     p.add_argument('--out')
     a = p.parse_args()
     R = json.load(open(Path(__file__).with_name('reported.json')))['smamba_paper']
-    cells = load(a.files)
+    cells = load(a.files, a.any_protocol)
     tol = a.tol / 100
     fmt = lambda d: f'{100 * d:+.1f} %'
     out = ['# Baseline check against the S-Mamba paper', '',

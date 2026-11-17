@@ -113,16 +113,21 @@ with torch.no_grad():
     pr.dlt.alpha.normal_(0, 0.3)
     yb = pr._backbone(x_enc, mark, None, None)
     c = pr.refine(x_enc, yb)
-    xx = x_enc.permute(0, 2, 1); mu = xx.mean(-1, keepdim=True); sd = xx.std(-1, keepdim=True) + 1e-5
-    sn = torch.cat([(xx - mu) / sd, (yb.permute(0, 2, 1) - mu) / sd], -1)
-    ref = (reference_z(pr.dlt, sn)[..., -24:] * sd).permute(0, 2, 1)
+    xx = x_enc.permute(0, 2, 1); mu = xx.mean(-1, keepdim=True)
+    sn = torch.cat([xx - mu, yb.permute(0, 2, 1) - mu], -1)            # centred, not scaled
+    ref = reference_z(pr.dlt, sn)[..., -24:].permute(0, 2, 1)
     err = (c - ref).abs().max().item()
-ok(f'refine == sigma * explicit sum_j sum_tau K_ij(tau) s_j(t - tau) over past + forecast (max err {err:.1e})', err < 1e-10)
+ok(f'refine == explicit sum_j sum_tau K_ij(tau) s_j(t - tau) over centred past + forecast (max err {err:.1e})', err < 1e-10)
 with torch.no_grad():                                  # a change of the forecast at step h0 moves steps >= h0 only
     yb2 = yb.clone(); yb2[:, 10:, :] += 1.0
     moved = (pr.refine(x_enc, yb2) - c).abs().amax((0, 2)).gt(1e-12).nonzero().flatten().tolist()
 ok('refine is causal in time: a change of the backbone forecast at step 10 moves the correction at steps >= 10 only',
    moved == list(range(10, 24)))
+xf = x_enc.clone(); xf[..., 0] = 0.3                                      # variable 0 flat over the window
+with torch.no_grad():
+    cf = pr.refine(xf, pr._backbone(xf, mark, None, None) + 5.0)
+ok(f'refine stays bounded with a flat neighbour window and a far-off forecast (max |c| {cf.abs().max().item():.2f})',
+   bool(torch.isfinite(cf).all()) and cf.abs().max().item() < 100)
 # decoupled training: the backbone gets exactly the gradient of its own loss; the branch learns the residual
 yt = torch.randn(4, 24, 9)
 for fu in ('output', 'refine'):

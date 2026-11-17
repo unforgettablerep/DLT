@@ -106,8 +106,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return criterion
  
 
-    def vali(self, vali_data, vali_loader, criterion):
+    def vali(self, vali_data, vali_loader, criterion, part=None):
+        """validation loss; part='backbone': of the backbone part of DLTPlug (--dlt_train decoupled, stage 1)"""
         total_loss = []
+        net = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
         self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
@@ -123,7 +125,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
                 # encoder - decoder
-                if self.args.use_amp:
+                if part == 'backbone':
+                    outputs = net.parts(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                elif self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
@@ -177,6 +181,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         no_epoch_test = getattr(self.args, 'no_epoch_test', False)
         aux_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
         extra_loss = getattr(aux_model, 'extra_loss', None)      # a model's own extra training loss, if any
+        # DLTPlug --dlt_train decoupled: stage 1 stops on the validation loss of the backbone part (the backbone is
+        # trained and selected as if it were alone), stage 2 then trains the branch on the frozen backbone
+        two_stage = getattr(aux_model, 'use_dlt', False) and getattr(aux_model, 'training_mode', 'joint') == 'decoupled'
         self.train_info = {'epochs': 0, 'best_epoch': 0, 'best_vali': None, 'train_secs': 0.0, 'epoch_secs': []}
         train_start = time.time()
         for epoch in range(self.args.train_epochs):
@@ -241,7 +248,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             self.train_info['epoch_secs'].append(round(time.time() - epoch_time, 2))
             train_loss = np.average(train_loss)
-            vali_loss = self.vali(vali_data, vali_loader, criterion)
+            vali_loss = self.vali(vali_data, vali_loader, criterion, part='backbone' if two_stage else None)
             test_loss = float('nan') if no_epoch_test else self.vali(test_data, test_loader, criterion)
             self.train_info['epochs'] = epoch + 1
             if self.train_info['best_vali'] is None or vali_loss < self.train_info['best_vali']:
@@ -258,11 +265,63 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
             adjust_learning_rate(model_optim, epoch + 1, self.args)
 
-        self.train_info['train_secs'] = round(time.time() - train_start, 2)
         best_model_path = path + '/' + 'checkpoint.pth'
         self.model.load_state_dict(torch.load(best_model_path))
+        if two_stage:
+            self._train_branch(aux_model, path, train_loader, vali_data, vali_loader, criterion)
+            self.model.load_state_dict(torch.load(best_model_path))
+        self.train_info['train_secs'] = round(time.time() - train_start, 2)
 
         return self.model
+
+    def _train_branch(self, net, path, train_loader, vali_data, vali_loader, criterion):
+        """--dlt_train decoupled, stage 2: the backbone, early-stopped on its own validation loss in stage 1, is frozen
+        (and in eval mode, as at test time); the DLT branch is trained on its error, starting from its stage-1 state,
+        with its own early stopping on the validation loss of backbone + correction (learning rate --dlt_lr, else
+        --learning_rate, halved per epoch as with --lradj type1)"""
+        for q in net.base.parameters():
+            q.requires_grad_(False)
+        lr = getattr(self.args, 'dlt_lr', 0.0) or self.args.learning_rate
+        opt = optim.Adam([{'params': [q for q in net.dlt.parameters()], 'lr': lr,
+                           'lr_scale': lr / self.args.learning_rate}])
+        es = EarlyStopping(patience=self.args.patience, verbose=True)
+        start = self.vali(vali_data, vali_loader, criterion)
+        es(start, self.model, path)                            # the starting point: stage 1's branch
+        self.train_info.update({'stage1_epochs': self.train_info['epochs'], 'branch_epochs': 0,
+                                'branch_best_epoch': 0, 'branch_start_vali': float(start), 'branch_best_vali': float(start)})
+        for epoch in range(self.args.train_epochs):
+            self.model.train()
+            net.base.eval()
+            losses = []
+            for batch_x, batch_y, batch_x_mark, batch_y_mark in train_loader:
+                opt.zero_grad()
+                batch_x = batch_x.float().to(self.device)
+                batch_y = batch_y.float().to(self.device)
+                batch_x_mark = batch_x_mark.float().to(self.device)
+                batch_y_mark = batch_y_mark.float().to(self.device)
+                if getattr(self.args, 'no_time_marks', False):
+                    batch_x_mark = batch_y_mark = None
+                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
+                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                f_dim = -1 if self.args.features == 'MS' else 0
+                loss = criterion(outputs[:, -self.args.pred_len:, f_dim:], batch_y[:, -self.args.pred_len:, f_dim:])
+                loss.backward()
+                opt.step()
+                losses.append(loss.item())
+            vali_loss = self.vali(vali_data, vali_loader, criterion)
+            self.train_info['branch_epochs'] = epoch + 1
+            if vali_loss < self.train_info['branch_best_vali']:
+                self.train_info['branch_best_vali'] = float(vali_loss)
+                self.train_info['branch_best_epoch'] = epoch + 1
+            print("Branch epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f}".format(epoch + 1, np.average(losses), vali_loss))
+            es(vali_loss, self.model, path)
+            if es.early_stop:
+                print("Early stopping (branch)")
+                break
+            adjust_learning_rate(opt, epoch + 1, self.args)
+        for q in net.base.parameters():
+            q.requires_grad_(True)
 
     def _variable_mask(self, net):
         """--dlt_select variable: keep the plug-in correction only for the variables whose validation MSE it lowers
@@ -452,6 +511,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                    'n_params': int(sum(p.numel() for p in self.model.parameters())),
                    'torch': torch.__version__, 'time_marks': not getattr(a, 'no_time_marks', False),
                    'test_batch_size': getattr(a, 'test_batch_size', 0) or a.batch_size,
+                   'freq': a.freq, 'drop_last': bool(getattr(a, 'drop_last', False)),
                    'device': torch.cuda.get_device_name(self.device) if self.device.type == 'cuda' else self.device.type}
             if a.data == 'PEMS':
                 rec['pems_split'] = getattr(a, 'pems_split', 'tslib')

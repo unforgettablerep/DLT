@@ -265,13 +265,16 @@ Checked already (CPU, or earlier GPU runs with the previous protocol):
 - DLinear, S-Mamba and iTransformer alone matched the paper on the long-term sets within a few per cent;
 - RLinear with its official settings on ETTh1-96: 0.383 / 0.392 against 0.386 / 0.395;
 - TiDE with Time-Series-Library's script on ETTh1-96: 0.385 / 0.393, much better than the 0.479 / 0.464 published
-  (see results/p1/baseline_check_cpu.md).
+  (see [`results/p1/baseline_check_cpu.md`](results/p1/baseline_check_cpu.md)).
 
 ## How the branch enters the backbone (suite `plugin_fusion`, 2026-11-17)
 
 `--dlt_fusion output | refine | input`, `--dlt_train joint | decoupled` and `--dlt_select variable`
 (`models/DLTPlug.py`). The suite runs every backbone alone and with five arms (`FUSION_ARMS` in `scripts/exps.py`);
-the table is `python scripts/p1/fusion_table.py`.
+the table is `python scripts/p1/fusion_table.py`. On the CPU with RLinear and DLinear
+([evaluation](results/p1/fusion_cpu.md)), the output sum with two-stage decoupled training and per-variable
+selection kept most of the gains and removed most of the harm (mean −10.8 %, worst +6.7 %, against −7.2 % and
++25.9 % for the current joint recipe); refine and input were worse. The GPU runs check this for all six backbones.
 
 ```bash
 python scripts/exps.py plugin_fusion --device gpu --seeds 2021 --models SMamba iTransformer PatchTST RLinear DLinear TiDE

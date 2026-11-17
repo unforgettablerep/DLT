@@ -26,7 +26,7 @@ python scripts/p1/hpsearch.py make --datasets PEMS04 PEMS08 --H 12 --tag _pems $
 cat "$WORK"/jobs_hp.txt "$WORK"/jobs_hp_pems.txt > "$WORK/jobs_gpu_tier2_search.txt"
 # (after the search: hpsearch.py select / tuned, see GPU_RUNS.md, then the list gpu_tier2_tuned)
 
-# tier 3: the eight representative baselines with their official hyper-parameters, one seed
+# tier 3: the baseline check, the six baselines with their official settings and protocol, one seed
 python scripts/exps.py baselines --seeds 2021 $G
 cp "$WORK/jobs_baselines.txt" "$WORK/jobs_gpu_tier3.txt"
 

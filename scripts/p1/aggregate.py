@@ -164,7 +164,7 @@ if alln:
       'see P0 / P2 for DLT at horizon 96.\n')
 
 # ---------------------------------------------------------------- re-run baselines
-base = load('baselines')
+base = load('baselines_v1')            # the earlier eight baselines (before 2026-11-17; new check: baseline_check.py)
 if base:
     P('## Baselines re-run with the official TSLib hyper-parameters (MSE / MAE)\n')
     P('| dataset | H | model | ours (re-run) | reported |')
