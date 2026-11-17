@@ -6,7 +6,7 @@ Default     the stand-alone DLT-dyn model (both implementation paths).
 --all       the ten representative configurations of our code: DLT-dyn (kernel / basis / dense path), static DLT,
             the CI linear model, DLT-dyn with the static gate, DLTPlug with DLinear / PatchTST / iTransformer,
             and the S-Mamba baseline.
---ablation  also the other kernel variants of the P0 study, the MoVE-style gate, all-neighbour models and LagTS.
+--ablation  also the other kernel variants of the P0 study, the MoVE-style gate and all-neighbour models.
 The dataset of the selection check is read from the fixed data directory (scripts/paths.py).
 
 1. Each model is built and prepared on the CPU, copied to the GPU, and the forward output and the gradient of
@@ -39,7 +39,7 @@ import paths  # noqa: E402
 p = argparse.ArgumentParser()
 p.add_argument('--device', default='cuda')
 p.add_argument('--all', action='store_true', help='the ten representative configurations (DLT, plug-in, S-Mamba)')
-p.add_argument('--ablation', action='store_true', help='also the other kernel variants, gates and LagTS')
+p.add_argument('--ablation', action='store_true', help='also the other kernel variants and gates')
 a = p.parse_args()
 dev = torch.device(a.device)
 if dev.type == 'cuda' and not torch.cuda.is_available():
@@ -57,9 +57,7 @@ def cfg(**kw):
              dlt_topk=5, dlt_gate='none', dlt_gate_init=-3.0, dlt_neighbours='ccf', fix_seed=2021, moving_avg=25,
              individual=False, d_model=64, d_ff=64, n_heads=4, e_layers=2, d_layers=1, factor=3, dropout=0.0,
              activation='gelu', embed='timeF', freq='h', output_attention=False, use_norm=1, patch_len=16, stride=8,
-             lagts_rel_dim=8, lagts_lambda=0.1, plug_base='DLinear', down_sampling_layers=0, down_sampling_window=1,
-             down_sampling_method=None, channel_independence=1, decomp_method='moving_avg', top_k=5, num_kernels=6,
-             d_state=8, mamba_impl='torch')
+             plug_base='DLinear', top_k=5, d_state=8, mamba_impl='torch')
     c.update(kw)
     return types.SimpleNamespace(**c)
 
@@ -72,10 +70,9 @@ if a.all or a.ablation:
               ('DLT ci', DLT.Model, dict(dlt_variant='ci')),
               ('DLT dltdyn gate=static', DLT.Model, dict(dlt_gate='static'))]
     SPECS += [(f'DLTPlug {b} + dltdyn', DLTPlug.Model, dict(plug_base=b, dlt_impl='basis'))
-              for b in ('DLinear', 'PatchTST', 'iTransformer')]
+              for b in ('DLinear', 'RLinear', 'PatchTST', 'iTransformer', 'TiDE')]
     SPECS += [('S-Mamba (PyTorch block)', SMamba.Model, dict())]
 if a.ablation:
-    from models import LagTS  # noqa: E402
     SPECS += [(f'DLT {v}', DLT.Model, dict(dlt_variant=v)) for v in
               ('scalar', 'shift', 'tap3', 'full', 'topk', 'mill', 'milldyn', 'scalardyn')]
     SPECS += [('DLT dlt impl=basis', DLT.Model, dict(dlt_variant='dlt', dlt_impl='basis')),
@@ -83,7 +80,6 @@ if a.ablation:
               ('DLT dltdyn gate=moe', DLT.Model, dict(dlt_gate='moe'))]
     SPECS += [(f'DLT {v} all neighbours (dense)', DLT.Model, dict(dlt_variant=v, dlt_impl='dense', dlt_neighbours='all'))
               for v in ('dlt', 'dltdyn')]
-    SPECS += [('LagTS', LagTS.Model, dict(enc_in=7, dec_in=7, c_out=7))]
 
 MODES = [('float64', torch.float64, None, 1e-9, True),
          ('float32, TF32 off', torch.float32, (False, False), 1e-4, True),
@@ -118,8 +114,6 @@ def run(model, c, name, d, dt):
     y = model(to(x), to(xm), to(xd), to(xmd))
     y = y[0] if isinstance(y, tuple) else y
     loss = (y ** 2).mean()
-    if name == 'LagTS':
-        loss = loss + model.extra_loss(to(x), y, to(tr))
     loss.backward()
     return y.detach().cpu().double(), {n: q.grad.detach().cpu().double() for n, q in model.named_parameters() if q.grad is not None}
 

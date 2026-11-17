@@ -3,12 +3,18 @@
 * --dlt_impl dense == the reference loop for dlt / dltdyn (also with all neighbours)
 * --dlt_neighbours random / all: valid neighbour sets (no self, distinct, reproducible per seed)
 * DLTPlug == backbone + sigma * W_c z; with --dlt_variant ci it is the backbone alone
-* LagTS lag relation loss == an explicit loop over pairs and steps (Eq. 7-9)
-* S-Mamba: the pure-PyTorch Mamba block == the independent block of models/MambaSimple.py (same parameters), is
-  causal and initialised like mamba_ssm; the model is bidirectional over the variates and drops the mark tokens
-* every representative baseline has a configuration for every long-term dataset and horizon
-* iTransformer: --use_norm 1 (default) is instance normalisation, --use_norm 0 turns it off; the plug-in study with
-  all backbones (plugin_all) uses the official per-horizon PEMS settings of iTransformer and S-Mamba
+* DLTPlug --dlt_fusion refine / input start as the backbone alone; refine == the explicit distributed-lag sum over
+  the observed past and the backbone forecast, causal in time; --dlt_train decoupled gives the backbone exactly the
+  gradient of its own loss; --dlt_select applies the per-variable mask
+* S-Mamba: the pure-PyTorch Mamba block == the independent block of Time-Series-Library's MambaSimple (kept in
+  scripts/p0/reference/), is causal and initialised like mamba_ssm; the model is bidirectional over the variates
+  and drops the mark tokens
+* RLinear == RevIN (learnable affine) + one linear map + RevIN^-1, written out; output follows scale and shift
+* the six baselines (scripts/baselines.py) have a setting for every dataset and horizon, taken from the official
+  scripts (spot checks against the files), the protocol of the official loaders, and every job line of the
+  baseline check parses with run.py
+* iTransformer: --use_norm 1 (default) is instance normalisation, --use_norm 0 turns it off; the official
+  per-horizon PEMS / Solar settings of iTransformer and S-Mamba
 """
 import sys, types
 from pathlib import Path
@@ -16,7 +22,7 @@ import numpy as np, torch
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / 'scripts' / 'p0'))
-from models import DLT, DLTPlug, LagTS, DLinear
+from models import DLT, DLTPlug, DLinear
 torch.set_default_dtype(torch.float64)
 ok_all = True
 def ok(name, cond):
@@ -90,33 +96,65 @@ ok('DLTPlug with variant ci == the backbone alone (same init, same output)',
    torch.equal(plug_ci(x_enc, mark, None, None), base(x_enc, mark, None, None)))
 ok('DLTPlug has no intra-variable DLT head', not hasattr(plug.dlt, 'self_head'))
 
-# LagTS loss against an explicit loop
-torch.manual_seed(5); lt = LagTS.Model(cfg(enc_in=4, pred_len=12, seq_len=16))
-xe = torch.randn(2, 16, 4); pr = torch.randn(2, 12, 4); tr = torch.randn(2, 12, 4)
-loss = lt.extra_loss(xe, pr, tr).item()
-mu = xe.mean(1, keepdim=True); sd = xe.std(1, keepdim=True) + 1e-5
-xh, yh, yt = (xe - mu) / sd, (pr - mu) / sd, (tr - mu) / sd
-S, T, N = 12, 16, 4
-acc, cnt = 0.0, 0
-for b in range(2):
-    for i in range(N):
-        for j in range(N):
-            R = [sum(yt[b, (t + tau) % S, j] * yt[b, t, i] for t in range(S)) / S for tau in range(S)]   # circular CCF
-            cand = R[1:] if i != j else R[1:S // 2 + 1]       # i = j: symmetric, smaller lag of each tie
-            d = min(int(np.argmax(cand)) + 1, T)
-            z = torch.cat([xh[b, :, i], yh[b, :, i]])
-            for t in range(S):
-                acc += float((z[T + t - d] - yh[b, t, j]) ** 2); cnt += 1
-ref = 0.5 * acc / cnt
-ok(f'LagTS lag relation loss == explicit loop ({loss:.6f} vs {ref:.6f})', abs(loss - ref) < 1e-9)
-y = lt(xe, None, None, None)
-ok('LagTS forward shape (B, S, N)', tuple(y.shape) == (2, 12, 4))
+# ---- DLTPlug fusions (--dlt_fusion refine / input) and decoupled training
+torch.manual_seed(4); base0 = DLinear.Model(cfg())
+with torch.no_grad():
+    yb0 = base0(x_enc, mark, None, None)
+for fu in ('refine', 'input'):
+    torch.manual_seed(4); pf = DLTPlug.Model(cfg(dlt_variant='dltdyn', dlt_fusion=fu)); pf.prepare(Xtr)
+    pf.base.load_state_dict(base0.state_dict())
+    with torch.no_grad():
+        same = torch.allclose(pf(x_enc, mark, None, None), yb0, atol=1e-12)
+    ok(f'DLTPlug --dlt_fusion {fu}: starts as the backbone alone (zero coefficients / gains), no free T->H head',
+       same and not hasattr(pf.dlt, 'cross_head'))
+# refine: explicit distributed-lag sum over [observed past ; backbone forecast], future part only
+torch.manual_seed(5); pr = DLTPlug.Model(cfg(dlt_variant='dlt', dlt_fusion='refine', dlt_impl='kernel')); pr.prepare(Xtr)
+with torch.no_grad():
+    pr.dlt.alpha.normal_(0, 0.3)
+    yb = pr._backbone(x_enc, mark, None, None)
+    c = pr.refine(x_enc, yb)
+    xx = x_enc.permute(0, 2, 1); mu = xx.mean(-1, keepdim=True); sd = xx.std(-1, keepdim=True) + 1e-5
+    sn = torch.cat([(xx - mu) / sd, (yb.permute(0, 2, 1) - mu) / sd], -1)
+    ref = (reference_z(pr.dlt, sn)[..., -24:] * sd).permute(0, 2, 1)
+    err = (c - ref).abs().max().item()
+ok(f'refine == sigma * explicit sum_j sum_tau K_ij(tau) s_j(t - tau) over past + forecast (max err {err:.1e})', err < 1e-10)
+with torch.no_grad():                                  # a change of the forecast at step h0 moves steps >= h0 only
+    yb2 = yb.clone(); yb2[:, 10:, :] += 1.0
+    moved = (pr.refine(x_enc, yb2) - c).abs().amax((0, 2)).gt(1e-12).nonzero().flatten().tolist()
+ok('refine is causal in time: a change of the backbone forecast at step 10 moves the correction at steps >= 10 only',
+   moved == list(range(10, 24)))
+# decoupled training: the backbone gets exactly the gradient of its own loss; the branch learns the residual
+yt = torch.randn(4, 24, 9)
+for fu in ('output', 'refine'):
+    torch.manual_seed(6); pd_ = DLTPlug.Model(cfg(dlt_variant='dltdyn', dlt_fusion=fu, dlt_train='decoupled')); pd_.prepare(Xtr)
+    torch.manual_seed(6); b_alone = DLinear.Model(cfg()); b_alone.load_state_dict(pd_.base.state_dict())
+    with torch.no_grad():
+        for q in pd_.dlt.parameters():
+            q.add_(0.05 * torch.randn_like(q))
+    pd_.train()
+    out = pd_(x_enc, mark, None, None)
+    loss = torch.nn.functional.mse_loss(out, yt) + pd_.extra_loss(x_enc, out, yt)
+    loss.backward()
+    torch.nn.functional.mse_loss(b_alone(x_enc, mark, None, None), yt).backward()
+    gb = max((p1.grad - p2.grad).abs().max().item() for p1, p2 in zip(pd_.base.parameters(), b_alone.parameters()))
+    gd = sum(q.grad.abs().sum().item() for q in pd_.dlt.parameters() if q.grad is not None)
+    ok(f'--dlt_train decoupled ({fu}): backbone gradient == that of the backbone alone (max diff {gb:.1e}), '
+       f'branch gradient non-zero', gb < 1e-12 and gd > 0)
+# per-variable selection mask
+torch.manual_seed(7); ps_ = DLTPlug.Model(cfg(dlt_variant='dltdyn')); ps_.prepare(Xtr); ps_.eval()
+with torch.no_grad():
+    yb_, c_ = ps_.parts(x_enc, mark, None, None)
+    ps_.select_mask = torch.tensor([True, False] * 4 + [True])
+    y_sel = ps_(x_enc, mark, None, None)
+ok('--dlt_select: the correction is added for the kept variables only',
+   torch.allclose(y_sel, yb_ + c_ * ps_.select_mask.to(c_.dtype), atol=1e-12)
+   and torch.allclose(y_sel[..., 1], yb_[..., 1], atol=1e-12))
 
 # ---- S-Mamba
 import math
 from layers.MambaPy import Mamba
 from models import SMamba
-from models.MambaSimple import MambaBlock
+from reference.mamba_simple_block import MambaBlock
 torch.manual_seed(5)
 worst = 0.0
 for d_model, d_state, d_conv, expand, Lq in ((32, 16, 2, 1, 11), (48, 2, 2, 1, 25), (64, 32, 4, 2, 9)):
@@ -127,7 +165,7 @@ for d_model, d_state, d_conv, expand, Lq in ((32, 16, 2, 1, 11), (48, 2, 2, 1, 2
     hq = torch.randn(3, Lq, d_model)
     with torch.no_grad():
         worst = max(worst, (blk(hq) - ref(hq)).abs().max().item())
-ok(f'Mamba block (PyTorch) == MambaSimple block with the same parameters (max err {worst:.1e})', worst < 1e-10)
+ok(f'Mamba block (PyTorch) == TSLib MambaSimple block with the same parameters (max err {worst:.1e})', worst < 1e-10)
 blk = Mamba(32, d_state=8, d_conv=2, expand=1)
 hq = torch.randn(2, 12, 32); h2 = hq.clone(); h2[:, 7:] += 1.0
 with torch.no_grad():
@@ -153,14 +191,71 @@ with torch.no_grad():
 err = (ys - (yq * 3.0 + 5.0)).abs().max().item()               # exact up to the 1e-5 inside sqrt(var + 1e-5)
 ok(f'S-Mamba instance normalisation (output follows scale and shift of the input, max err {err:.1e})', err < 1e-4)
 
-# ---- configurations of the representative baselines
-sys.path.insert(0, str(REPO / 'scripts'))
-import exps
-missing = [(m, ds, H) for m in exps.BASELINES for ds in exps.LONG_SETS for H in exps.HORIZONS
-           if exps.backbone_args(m, ds, H)[1] == 'fallback' and m != 'DLinear' and not exps.FALLBACK.get(m, {}).get(ds)]
-ok(f'official or documented configuration for every baseline, dataset and horizon ({len(exps.BASELINES)} models)', not missing)
+# ---- RLinear
+from models import RLinear
+cr = cfg(enc_in=5, seq_len=16, pred_len=8, dropout=0.0, use_norm=1)
+torch.manual_seed(3); rl = RLinear.Model(cr).eval()
+with torch.no_grad():
+    rl.rev.affine_weight.uniform_(0.5, 1.5); rl.rev.affine_bias.uniform_(-0.3, 0.3)
+xr = torch.randn(3, 16, 5) * 2 + 1
+with torch.no_grad():
+    yr = rl(xr, None, None, None)
+    mu = xr.mean(1, keepdim=True); sd = torch.sqrt(xr.var(1, keepdim=True, unbiased=False) + 1e-5)
+    w, b = rl.rev.affine_weight, rl.rev.affine_bias
+    z = ((xr - mu) / sd) * w + b                                 # RevIN, affine
+    p = rl.Linear(z.transpose(1, 2)).transpose(1, 2)             # one map seq_len -> pred_len for every variate
+    ref = (p - b) / (w + 1e-10) * sd + mu                        # RevIN^-1 (eps^2 in the official code)
+    err = (yr - ref).abs().max().item()
+    err2 = (rl(xr * 3.0 + 5.0, None, None, None) - (yr * 3.0 + 5.0)).abs().max().item()
+ok(f'RLinear == RevIN + linear map + RevIN^-1, written out (max err {err:.1e})', err < 1e-10)
+ok(f'RLinear output follows scale and shift of the input (max err {err2:.1e})', err2 < 1e-4)
 
-# ---- iTransformer --use_norm and the settings of plugin_all
+# ---- settings of the six baselines (scripts/baselines.py) and the baseline check
+sys.path.insert(0, str(REPO / 'scripts'))
+import exps, baselines, shlex, paths
+from run import get_parser
+A = {(m, ds, H): baselines.args(m, ds, H) for m in baselines.BASELINES for ds in baselines.FILES
+     for H in baselines.horizons(ds)}
+ok(f'a setting for every baseline, dataset and horizon ({len(A)} = 6 x 52)', len(A) == 6 * 52)
+a = lambda m, ds, H: A[(m, ds, H)][0]
+ok('official values (iTransformer ETTh1-336: d_model 512, Exchange-336: 1 epoch; S-Mamba ETTh1-96: d_state 2, '
+   'lr 7e-5; TiDE: decoder output 8; RLinear ETTh2: batch 256, 15 epochs; PatchTST ETTm1-192: batch 128)',
+   '--d_model 512' in a('iTransformer', 'ETTh1', 336) and '--train_epochs 1' in a('iTransformer', 'Exchange', 336)
+   and '--d_state 2' in a('SMamba', 'ETTh1', 96) and '--learning_rate 0.00007' in a('SMamba', 'ETTh1', 96)
+   and all('--c_out 8' in a('TiDE', ds, 96) for ds in ('ETTh1', 'ECL', 'Weather'))
+   and '--batch_size 256' in a('RLinear', 'ETTh2', 96) and '--train_epochs 15' in a('RLinear', 'ETTh2', 96)
+   and '--batch_size 128' in a('PatchTST', 'ETTm1', 192))
+ok('documented fallbacks (PatchTST Solar / PEMS: Electricity; TiDE: ETTh1; RLinear Exchange: ETTh1, PEMS: '
+   'Electricity; DLinear without a script: library defaults)',
+   'ECL configuration' in A[('PatchTST', 'PEMS08', 12)][1] and 'ETTh1 configuration' in A[('TiDE', 'Weather', 96)][1]
+   and 'ETTh1 configuration' in A[('RLinear', 'Exchange', 96)][1] and 'ECL configuration' in A[('RLinear', 'PEMS04', 12)][1]
+   and a('DLinear', 'Weather', 96) == '' and 'c_out' not in a('iTransformer', 'ECL', 96))
+ok('official PEMS settings per horizon (iTransformer PEMS08-48: 4 layers, use_norm 0; S-Mamba PEMS08-24: lr 7e-4)',
+   '--e_layers 4' in a('iTransformer', 'PEMS08', 48) and '--use_norm 0' in a('iTransformer', 'PEMS08', 48)
+   and '--use_norm 1' in a('iTransformer', 'PEMS08', 12) and '--learning_rate 0.0007' in a('SMamba', 'PEMS08', 24)
+   and all('--use_norm 0' in a(m, 'PEMS04', H) for m in ('iTransformer', 'SMamba') for H in (12, 24, 48, 96)))
+ok('official PEMS03/07 and Solar settings (S-Mamba PEMS03-12: 5 epochs, PEMS03-48: 5 layers lr 1e-4; '
+   'iTransformer PEMS07-96: batch 16, Solar: lr 5e-4)',
+   '--train_epochs 5' in a('SMamba', 'PEMS03', 12) and '--e_layers 5' in a('SMamba', 'PEMS03', 48)
+   and '--learning_rate 0.0001' in a('SMamba', 'PEMS03', 48) and '--batch_size 16' in a('iTransformer', 'PEMS07', 96)
+   and '--use_norm 0' in a('SMamba', 'PEMS07', 24) and '--learning_rate 0.0005' in a('iTransformer', 'Solar', 336))
+ok('protocol of the official loaders (freq h, drop_last, test batch 1; PEMS / Solar: no time marks; PEMS: their split)',
+   baselines.protocol('ETTm1') == '--freq h --drop_last --test_batch_size 1'
+   and baselines.protocol('Solar').endswith('--no_time_marks') and '--pems_split itransformer' in baselines.protocol('PEMS07'))
+import contextlib, io
+with contextlib.redirect_stdout(io.StringIO()):
+    sys.argv = ['exps.py', 'baselines', '--seeds', '2021', '--list', '_test_baselines']
+    exps.main()
+P, bad, n = get_parser(), [], 0
+jf = paths.jobs_file('_test_baselines')
+for line in open(jf):
+    toks = shlex.split(line.split(' > ')[0]); args = P.parse_args(toks[toks.index('run.py') + 1:]); n += 1
+    if args.freq != 'h' or not args.drop_last or args.test_batch_size != 1:
+        bad.append(args.des)
+import os; os.remove(jf)
+ok(f'baseline check: every job line parses with run.py and carries the protocol ({n} lines)', n == 312 and not bad)
+
+# ---- iTransformer --use_norm
 from models import iTransformer
 ci = cfg(enc_in=6, d_model=16, d_ff=16, e_layers=1, n_heads=2, output_attention=False)
 torch.manual_seed(0); it1 = iTransformer.Model(ci).eval()
@@ -172,20 +267,4 @@ with torch.no_grad():
     err = (it1(xq * 3.0 + 5.0, mq, None, None) - (y1 * 3.0 + 5.0)).abs().max().item()
 ok(f'iTransformer --use_norm 1 (default): output follows scale and shift of the input (max err {err:.1e})', err < 1e-4)
 ok('iTransformer --use_norm 0: no instance normalisation (same weights, different output)', (y1 - y0).abs().max() > 1e-3)
-pa = {(m, ds, H): exps.plugin_all_args(m, ds, H)[0] for m in exps.BASELINES for ds in exps.PLUGIN_ALL_SETS
-      for H in (exps.PEMS_HORIZONS if ds in exps.PEMS_SETS else exps.HORIZONS)}
-ok('plugin_all: official PEMS settings per horizon (iTransformer PEMS08-48: 4 layers, use_norm 0; S-Mamba PEMS08-24: lr 7e-4)',
-   '--e_layers 4' in pa[('iTransformer', 'PEMS08', 48)] and '--use_norm 0' in pa[('iTransformer', 'PEMS08', 48)]
-   and '--use_norm 1' in pa[('iTransformer', 'PEMS08', 12)] and '--learning_rate 0.0007' in pa[('SMamba', 'PEMS08', 24)]
-   and all('--use_norm 0' in pa[(m, 'PEMS04', H)] for m in ('iTransformer', 'SMamba') for H in exps.PEMS_HORIZONS))
-ok('plugin_all: official PEMS03/07 and Solar settings (S-Mamba PEMS03-12: 5 epochs, PEMS03-48: 5 layers lr 1e-4; '
-   'iTransformer PEMS07-96: batch 16, Solar: lr 5e-4; TimeMixer Solar: d_ff 2048, PEMS: patience 10)',
-   '--train_epochs 5' in pa[('SMamba', 'PEMS03', 12)] and '--e_layers 5' in pa[('SMamba', 'PEMS03', 48)]
-   and '--learning_rate 0.0001' in pa[('SMamba', 'PEMS03', 48)] and '--batch_size 16' in pa[('iTransformer', 'PEMS07', 96)]
-   and '--use_norm 0' in pa[('SMamba', 'PEMS07', 24)] and '--learning_rate 0.0005' in pa[('iTransformer', 'Solar', 336)]
-   and '--d_ff 2048' in pa[('TimeMixer', 'Solar', 720)] and '--patience 10' in pa[('TimeMixer', 'PEMS07', 48)])
-fb = [(m, ds) for m in ('Informer', 'TimesNet', 'TimeXer') for ds in ('Solar', 'PEMS03', 'PEMS07')
-      if pa[(m, ds, 96)] != exps.plugin_all_args(m, 'ECL' if m != 'Informer' else 'ETTh1', 96)[0]]
-ok('plugin_all: without official settings, Solar / PEMS03 / PEMS07 take the documented fallback (ECL; Informer: ETTh1)',
-   not fb)
 print('ALL PASS' if ok_all else 'SOME CHECKS FAILED')

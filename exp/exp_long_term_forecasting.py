@@ -176,7 +176,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         no_epoch_test = getattr(self.args, 'no_epoch_test', False)
         aux_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
-        extra_loss = getattr(aux_model, 'extra_loss', None)      # e.g. LagTS: lambda * lag relation loss
+        extra_loss = getattr(aux_model, 'extra_loss', None)      # a model's own extra training loss, if any
         self.train_info = {'epochs': 0, 'best_epoch': 0, 'best_vali': None, 'train_secs': 0.0, 'epoch_secs': []}
         train_start = time.time()
         for epoch in range(self.args.train_epochs):
@@ -264,6 +264,27 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         return self.model
 
+    def _variable_mask(self, net):
+        """--dlt_select variable: keep the plug-in correction only for the variables whose validation MSE it lowers
+        (normalised scale, the validation split of the training run); returns a (C,) bool tensor"""
+        vali_data, vali_loader = self._get_data(flag='val')
+        se_b = se_f = None
+        net.eval()
+        with torch.no_grad():
+            for batch_x, batch_y, batch_x_mark, batch_y_mark in vali_loader:
+                batch_x, batch_y = batch_x.float().to(self.device), batch_y.float().to(self.device)
+                batch_x_mark, batch_y_mark = batch_x_mark.float().to(self.device), batch_y_mark.float().to(self.device)
+                if getattr(self.args, 'no_time_marks', False):
+                    batch_x_mark = batch_y_mark = None
+                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
+                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                y_b, c = net.parts(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                true = batch_y[:, -self.args.pred_len:, :]
+                b = ((y_b - true) ** 2).sum((0, 1)).double()
+                f = ((y_b + c - true) ** 2).sum((0, 1)).double()
+                se_b, se_f = (b, f) if se_b is None else (se_b + b, se_f + f)
+        return (se_f < se_b).cpu()
+
     def test(self, setting, test=0):
         test_data, test_loader = self._get_data(flag='test')
         if test:
@@ -277,6 +298,26 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
+
+        # DLTPlug (output / refine): the backbone part and the correction are scored separately as well
+        net = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+        plug = getattr(net, 'use_dlt', False) and getattr(net, 'fusion', 'input') != 'input'
+        self.dlt_kept = None
+        if plug and getattr(self.args, 'dlt_select', 'none') == 'variable':
+            net.select_mask = None
+            net.select_mask = self._variable_mask(net).to(self.device)
+            self.dlt_kept = float(net.select_mask.float().mean())
+            print(f'--dlt_select variable: correction kept for {int(net.select_mask.sum())} of '
+                  f'{net.select_mask.numel()} variables (validation MSE)')
+        part_streams = (StreamMetrics(), StreamMetrics()) if plug and stream is not None else None
+
+        def to_eval(o, y_shape):
+            o = o[:, -self.args.pred_len:, :].detach().cpu().numpy()
+            if test_data.scale and self.args.inverse:
+                if o.shape[-1] != y_shape[-1]:
+                    o = np.tile(o, [1, 1, int(y_shape[-1] / o.shape[-1])])
+                o = test_data.inverse_transform(o.reshape(y_shape[0] * y_shape[1], -1)).reshape(y_shape)
+            return o[:, :, -1 if self.args.features == 'MS' else 0:]
 
         self.model.eval()
         with torch.no_grad():
@@ -293,7 +334,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
                 # encoder - decoder
-                if self.args.use_amp:
+                parts = None
+                if part_streams is not None:
+                    y_b, c = net.parts(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    m = net.select_mask.to(c.dtype) if net.select_mask is not None else 1.0
+                    outputs, parts = y_b + m * c, (y_b, y_b + c)
+                elif self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
@@ -302,6 +348,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, :]
                 batch_y = batch_y[:, -self.args.pred_len:, :].to(self.device)
+                if parts is not None:
+                    y_shape = tuple(batch_y.shape)
+                    true_eval = batch_y.detach().cpu().numpy()
+                    if test_data.scale and self.args.inverse:
+                        true_eval = test_data.inverse_transform(
+                            true_eval.reshape(y_shape[0] * y_shape[1], -1)).reshape(y_shape)
+                    true_eval = true_eval[:, :, f_dim:]
+                    for ps, o in zip(part_streams, parts):
+                        ps.update(to_eval(o, y_shape), true_eval)
                 outputs = outputs.detach().cpu().numpy()
                 batch_y = batch_y.detach().cpu().numpy()
                 if test_data.scale and self.args.inverse:
@@ -409,8 +464,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             if a.model == 'DLTPlug':
                 rec['plug_base'] = a.plug_base
                 rec['dlt_lr'] = getattr(a, 'dlt_lr', 0.0)
-            if a.model == 'LagTS':
-                rec.update({'lagts_lambda': a.lagts_lambda, 'lagts_rel_dim': a.lagts_rel_dim})
+                rec.update({'fusion': getattr(a, 'dlt_fusion', 'output'), 'dlt_train': getattr(a, 'dlt_train', 'joint'),
+                            'dlt_select': getattr(a, 'dlt_select', 'none')})
+                if part_streams is not None:          # backbone part alone, and backbone + correction unselected
+                    (mae_b, mse_b, *_), (mae_f, mse_f, *_) = part_streams[0].result(), part_streams[1].result()
+                    rec.update({'mse_backbone': float(mse_b), 'mae_backbone': float(mae_b),
+                                'mse_full': float(mse_f), 'mae_full': float(mae_f)})
+                if self.dlt_kept is not None:
+                    rec['dlt_kept'] = self.dlt_kept
             net = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
             if a.model == 'SMamba' or (a.model == 'DLTPlug' and a.plug_base == 'SMamba'):   # which Mamba block ran
                 rec.update({'d_state': a.d_state, 'mamba_impl': getattr(getattr(net, 'base', net), 'mamba_impl', None)})

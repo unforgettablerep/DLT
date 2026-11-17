@@ -13,6 +13,10 @@ def dlt_suffix(args):
         suf = '_{}'.format(args.plug_base) + suf
         if args.dlt_lr > 0:
             suf += '_dlr{:g}'.format(args.dlt_lr)
+        if args.dlt_fusion != 'output':
+            suf += '_f{}'.format(args.dlt_fusion)
+        if args.dlt_train != 'joint':
+            suf += '_t{}'.format(args.dlt_train)
     if args.dlt_neighbours != 'ccf':
         suf += '_nb{}'.format(args.dlt_neighbours)
     if args.dlt_variant in ('topk', 'mill', 'milldyn'):
@@ -192,6 +196,9 @@ def get_parser():
     parser.add_argument('--pems_split', type=str, default='tslib', choices=['tslib', 'itransformer'],
                         help='PEMS: validation / test windows take their look-back from the preceding split (tslib) or '
                              'start inside their split (itransformer, as the iTransformer / S-Mamba loaders)')
+    parser.add_argument('--drop_last', action='store_true',
+                        help='drop the last incomplete training / validation batch (official iTransformer, S-Mamba and '
+                             'RLinear loaders)')
     parser.add_argument('--test_batch_size', type=int, default=0,
                         help='batch size of the test (0 = --batch_size); the iTransformer / S-Mamba code tests with 1')
     parser.add_argument('--no_time_marks', action='store_true',
@@ -213,6 +220,16 @@ def get_parser():
                              'static = per-variable sigmoid gate)')
     parser.add_argument('--dlt_gate_init', type=float, default=-3.0,
                         help='DLT: initial logit of the static gate (sigmoid(-3) = 0.047)')
+    parser.add_argument('--dlt_fusion', type=str, default='output', choices=['output', 'refine', 'input'],
+                        help='DLTPlug: how the branch enters (output = backbone + W_c z on the look-back window; '
+                             'refine = distributed-lag correction over the observed past and the backbone forecast; '
+                             'input = neighbour signal added to the backbone input); see models/DLTPlug.py')
+    parser.add_argument('--dlt_train', type=str, default='joint', choices=['joint', 'decoupled'],
+                        help='DLTPlug: joint = one loss on the sum; decoupled = the backbone trains on its own loss, '
+                             'the branch on the backbone\'s error (output / refine)')
+    parser.add_argument('--dlt_select', type=str, default='none', choices=['none', 'variable'],
+                        help='DLTPlug: variable = keep the correction only for the variables whose validation MSE '
+                             'it lowers (decided after training, on validation data)')
 
     # reproducibility / bookkeeping (all default to the upstream behaviour)
     parser.add_argument('--fix_seed', type=int, default=2021, help='seed of python / numpy / torch')

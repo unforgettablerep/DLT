@@ -80,13 +80,16 @@ with a small bank of shared basis kernels φ_r (cost linear in the number of var
 
 ## Repository layout
 ```
-run.py  exp/  data_provider/  layers/  models/  utils/     Time-Series-Library; ours: models/DLT.py, DLTPlug.py,
-                                     LagTS.py, SMamba.py (S-Mamba baseline) and layers/MambaPy.py
+run.py  exp/  data_provider/  layers/  models/  utils/     Time-Series-Library, reduced to DLT and the six
+                                     baselines; ours: models/DLT.py, DLTPlug.py, SMamba.py and RLinear.py (ports of
+                                     the official code) and layers/MambaPy.py
 scripts/paths.py                     the fixed data and work directories (dataset/, work/)
 scripts/train_dltdyn.sh              quick start: one GPU, one dataset, stand-alone DLT-dyn
 scripts/gpu/                         GPU-vs-CPU check, job lists and queue of the remaining GPU experiments
-scripts/long_term_forecast/DLT_script/   DLT per dataset at four horizons; */SMamba*.sh: official S-Mamba settings
-                                     (the other scripts of the *_script/ folders are upstream)
+scripts/long_term_forecast/DLT_script/   DLT per dataset at four horizons; the other scripts there are those
+                                     of the kept baselines
+scripts/baselines.py  scripts/official/  the six baselines and their official settings (copies of the official
+                                     scripts of S-Mamba, iTransformer, Time-Series-Library and RLinear)
 scripts/exps.py  scripts/p0 p1 p2/   experiment suites, validation search, aggregation, unit tests
 scripts/run_queue.sh  run_missing.py  run_p1p2_cpu.sh     resumable CPU queues
 scripts/collect_results.py           merges the records of work/ into results/ and rebuilds the tables
@@ -110,11 +113,15 @@ is ignored by git; `results/p0`, `p1`, `p2` are the tracked experiment records.
 All of these ran on a 4-core CPU with the code of this repository; the unit tests are
 `python scripts/p0/test_variants.py` and `python scripts/p0/test_p1p2.py`.
 
-**Baselines.** Every comparison (accuracy and efficiency) uses the same eight representative models, one per
-family: Informer, TimesNet, DLinear, PatchTST, iTransformer, TimeMixer, TimeXer and S-Mamba (`BASELINES` in
-[`scripts/exps.py`](scripts/exps.py)), each with its official hyper-parameters. S-Mamba is not in
-Time-Series-Library; `models/SMamba.py` re-implements it after the official code (`mamba_ssm` block if
-installed, a pure-PyTorch block otherwise).
+**Baselines.** Every comparison (accuracy and efficiency) uses six baselines, those of the S-Mamba paper
+(Neurocomputing 2025): S-Mamba, iTransformer, PatchTST, RLinear, DLinear and TiDE (`BASELINES` in
+[`scripts/baselines.py`](scripts/baselines.py)). Their settings are read from the official scripts, copied to
+[`scripts/official/`](scripts/official/README.md), and they run with the protocol of the official data loaders. The
+baseline check (`python scripts/exps.py baselines`, then `python scripts/p1/baseline_check.py`) compares every
+baseline with the numbers of the S-Mamba paper (`scripts/p1/reported.json`, block `smamba_paper`). S-Mamba and
+RLinear are not in Time-Series-Library; `models/SMamba.py` and `models/RLinear.py` follow the official code
+(S-Mamba: `mamba_ssm` block if installed, a pure-PyTorch block otherwise). The other models of the library were
+removed.
 
 ## DLT in Time-Series-Library
 The repository root is a snapshot of [thuml/Time-Series-Library](https://github.com/thuml/Time-Series-Library)
@@ -133,8 +140,11 @@ Main flags (all in `run.py --help`, details in `models/DLT.py`):
 * `--dlt_k` neighbours (8), `--dlt_L` maximum lag (48), `--dlt_R` basis kernels (4), `--dlt_dyn_dim` (16)
 * `--dlt_impl` `kernel` | `basis` | `dense`: identical results; `basis` is the path of all reported DLT-dyn runs
 * `--dlt_neighbours` `ccf` | `random` | `all`, `--dlt_gate` `none` | `moe` | `static`
-* `--model DLTPlug --plug_base <model>` adds the DLT branch to another forecaster; `--model LagTS` is our
-  re-implementation of LagTS
+* `--model DLTPlug --plug_base <model>` adds the DLT branch to another forecaster; `--dlt_fusion`
+  `output` (default, Eq. 2) | `refine` (distributed-lag correction over the observed past and the backbone's
+  forecast) | `input` (neighbour signal added to the backbone input), `--dlt_train` `joint` | `decoupled`
+  (the backbone trains on its own loss, the branch on its error), `--dlt_select variable` (correction kept per
+  variable on validation data); see `models/DLTPlug.py`
 * `--result_jsonl <file>` appends one JSON record per run; `--no_save_preds` streams the test metrics
 
 **GPU memory.** DLT itself is small (≤ 0.36 M parameters even at Traffic scale; DLT-dyn needs about 1 GB per

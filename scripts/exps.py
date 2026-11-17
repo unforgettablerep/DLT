@@ -14,32 +14,27 @@ Suites
                    test MAE / MAPE / RMSE on the original scale): DLT-dyn, DLT, CI (+ DLT-dyn trained with MSE)
   long_small   P1  DLT-dyn on ETTh1/2, ETTm1/2, Exchange, Weather, horizons 96/192/336/720
   long_large   P1  DLT-dyn on Electricity and Traffic, horizons 96/192/336/720 (GPU recommended)
-  plugin       P1  DLinear / PatchTST / iTransformer, alone and + DLT-dyn (DLTPlug) on ETTh1, Weather, PEMS08-12
-                   (PatchTST on PEMS08 only with --device gpu; PatchTST uses the configurations of its paper)
-  plugin_large P1  the same on Electricity / Traffic (all horizons) and PEMS04-12 (GPU)
-  baselines    P1  the eight representative baselines (BASELINES below: Informer, TimesNet, DLinear, PatchTST,
-                   iTransformer, TimeMixer, TimeXer, S-Mamba) on the long-term benchmark with their official
-                   hyper-parameters (GPU recommended). --models LagTS adds our LagTS re-implementation (<= 21 variables)
+  baselines    P1  the baseline check: the six baselines (scripts/baselines.py: S-Mamba, iTransformer, PatchTST,
+                   RLinear, DLinear, TiDE) alone, with their official settings and the protocol of the official
+                   loaders, on all 13 datasets (horizons 96/192/336/720; PEMS 12/24/48/96), to be compared with the
+                   S-Mamba paper: python scripts/p1/baseline_check.py
   sensitivity  P2  DLT-dyn, one factor at a time: L in {12,24,96}, R in {2,8}, k in {4,16} (default 48/4/8)
                    on ETTh1-96, Weather-96, PEMS08-96
   neighbours   P2  DLT-dyn / DLT with random or all neighbours instead of the CCF top-k (Weather-96, PEMS08-96)
   ci_long      P1  the channel-independent linear model (DLT without the cross branch) on the long-term benchmark
   allnb        P1  DLT-dyn / DLT with all other variables as neighbours (dense path): PEMS04/08-12, Weather and
                    Electricity (DLT-dyn there only with --device gpu), iTransformer + DLT-dyn on PEMS08-12
-  plugin_probe P1  diagnosis of the plug-in on Traffic-96: + DLT-dyn with the backbone's learning rate, with a
-                   static gate, and with both (PatchTST, iTransformer; use --seeds 2021 for six runs)
-  plugin_all   P1  every representative backbone (BASELINES) alone and + DLT-dyn (DLTPlug, branch lr 3e-3) on the
-                   long-term benchmark and Solar (horizons 96/192/336/720) and on PEMS03/04/07/08 (horizons
-                   12/24/48/96, protocol of iTransformer and S-Mamba: MSE loss, metrics on the normalised scale,
-                   no time marks on PEMS and Solar).
-                   Settings: the official ones, so that every backbone alone reproduces its published numbers (TSLib
-                   scripts; for Solar and PEMS those of the iTransformer, S-Mamba and TimeMixer repositories,
-                   REPO_OFFICIAL), else the documented fallbacks (FALLBACK_FROM). PEMS and Solar as in the
-                   iTransformer / S-Mamba code: no time marks, test batch 1, and on PEMS their split.
+  plugin_fusion P1 how the branch enters the backbone (models/DLTPlug.py): each backbone alone and with the arms
+                   of FUSION_ARMS (output = Eq. 2, refine = distributed-lag correction over past + forecast, input =
+                   neighbour signal into the backbone input; joint or decoupled training; per-variable selection on
+                   validation data), same settings and protocol as plugin_all. Default: RLinear, DLinear and
+                   iTransformer on ETTh2, Exchange, Weather (horizon 96) and PEMS08 (horizon 12); --horizons all for
+                   every horizon. The table: python scripts/p1/fusion_table.py
+  plugin_all   P1  every baseline alone and + DLT-dyn (DLTPlug, branch lr 3e-3) on the 13 datasets, the backbone
+                   with the settings and the protocol of the baseline check (scripts/baselines.py).
                    GPU. The table (section 6 checks the published numbers): python scripts/p1/plugin_table.py
-
 --models / --datasets restrict the baselines, ci_long and plugin_all suites, e.g. the CPU-feasible subset
-    python scripts/exps.py baselines --models DLinear iTransformer TimeMixer --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange
+    python scripts/exps.py baselines --models RLinear DLinear --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange Weather
 Learning-rate check (plugin_all), for backbones that run far behind their published numbers (plugin_table.py,
 section 6): --backbone_lr 0.0005 0.001 runs the backbone alone at these learning rates; --select_lr then runs both
 arms at the learning rate with the lowest validation loss of the backbone alone, where it is not the setting's own.
@@ -52,21 +47,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import paths  # noqa: E402
+import baselines  # noqa: E402
 
 REPO = paths.REPO
-TSLIB = REPO
-# The representative baselines of every comparison (accuracy and efficiency): one model per family.
-#   Informer (classic Transformer), TimesNet (CNN), DLinear (linear), PatchTST (channel-independent Transformer),
-#   iTransformer (variate tokens), TimeMixer (multi-scale MLP), TimeXer (patch + variate tokens), S-Mamba (state space)
-BASELINES = ('Informer', 'TimesNet', 'DLinear', 'PatchTST', 'iTransformer', 'TimeMixer', 'TimeXer', 'SMamba')
+# the six baselines of every comparison (scripts/baselines.py: those of the S-Mamba paper)
+BASELINES = baselines.BASELINES
 HORIZONS = (96, 192, 336, 720)
 LONG_SETS = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', 'Traffic')
 PEMS_SETS = ('PEMS03', 'PEMS04', 'PEMS07', 'PEMS08')
 PEMS_HORIZONS = (12, 24, 48, 96)                               # iTransformer / S-Mamba protocol, input 96
 PLUGIN_ALL_SETS = LONG_SETS + ('Solar',) + PEMS_SETS           # the datasets of plugin_all
 # The iTransformer and S-Mamba code gives no time marks to the model on PEMS and Solar (x_mark = None); their
-# per-horizon settings (REPO_OFFICIAL) were tuned that way, and plugin_all follows it for every backbone.
-NO_MARKS_SETS = ('Solar',) + PEMS_SETS
+# settings were tuned that way, and every baseline run follows it (scripts/baselines.py, protocol)
+NO_MARKS_SETS = baselines.NO_MARKS
 
 # name: (--data, file, variables, --freq, train windows (for cost estimates))
 DATASETS = {
@@ -90,127 +83,18 @@ DLT_TRAIN = '--learning_rate 0.003 --batch_size 32 --train_epochs 10 --patience 
 PEMS_PROTOCOL = '--loss MAE --inverse --vali_inverse'          # TimeMixer / MillGNN short-term protocol
 
 
-def official_args(model, data_file, H):
-    """Hyper-parameters of a baseline from the official TSLib script (scripts/long_term_forecast/*_script)."""
-    keys = ('e_layers', 'd_layers', 'factor', 'd_model', 'd_ff', 'n_heads', 'batch_size', 'learning_rate',
-            'train_epochs', 'patience', 'dropout', 'down_sampling_layers', 'down_sampling_window',
-            'down_sampling_method', 'channel_independence', 'top_k', 'moving_avg', 'label_len', 'use_norm',
-            'd_state')
-    for path in sorted((TSLIB / 'scripts' / 'long_term_forecast').glob(f'*_script/{model}*.sh')):
-        txt = re.sub(r'\\[ \t]*\n', ' ', path.read_text())      # a backslash continues one line only
-        var = dict(re.findall(r'^(\w+)=(\S+)', txt, re.M))
-        for line in txt.splitlines():
-            if 'run.py' not in line or line.lstrip().startswith('#'):
-                continue
-            toks, d, i = line.split(), {}, 0
-            while i < len(toks):
-                if toks[i].startswith('--'):
-                    val = toks[i + 1] if i + 1 < len(toks) and not toks[i + 1].startswith('--') else ''
-                    if val.startswith('$'):
-                        val = var.get(val[1:].strip('{}'), val)
-                    d[toks[i][2:]] = val
-                    i += 2 if val else 1
-                else:
-                    i += 1
-            if d.get('model', '').strip('$') in (model, 'model_name') and d.get('data_path') == data_file \
-                    and str(d.get('pred_len')) == str(H):
-                return ' '.join(f'--{k} {d[k]}' for k in keys if k in d and d[k]), path.name
-    return None, None
-
-
-# where TSLib has no official script: settings of the original papers' repositories / TSLib defaults
-FALLBACK = {
-    'iTransformer': {'ETTh1': '--e_layers 2 --d_model 256 --d_ff 256', 'ETTm1': '--e_layers 2 --d_model 128 --d_ff 128',
-                     'ETTm2': '--e_layers 2 --d_model 128 --d_ff 128', 'Exchange': '--e_layers 2 --d_model 128 --d_ff 128',
-                     'Weather': '--e_layers 3 --d_model 512 --d_ff 512',
-                     'PEMS04': '--e_layers 4 --d_model 1024 --d_ff 1024 --learning_rate 0.0005',
-                     'PEMS08': '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.001 --batch_size 16'},
-    'PatchTST': {'PEMS04': '--e_layers 2 --d_model 128 --d_ff 256 --n_heads 16', 'PEMS08': '--e_layers 2 --d_model 128 --d_ff 256 --n_heads 16',
-                 'ETTh1': '--e_layers 1 --n_heads 2'},
-    'DLinear': {},
-    'TimeMixer': {'Exchange': '--e_layers 2 --d_model 16 --d_ff 32 --learning_rate 0.01 --down_sampling_layers 3 --down_sampling_window 2',
-                  'PEMS04': '--e_layers 5 --d_model 128 --d_ff 256 --learning_rate 0.003 --down_sampling_layers 1 --down_sampling_window 2 --channel_independence 0 --use_norm 0',
-                  'PEMS08': '--e_layers 5 --d_model 128 --d_ff 256 --learning_rate 0.003 --down_sampling_layers 1 --down_sampling_window 2 --channel_independence 0 --use_norm 0'},
-    'LagTS': {'ETTh1': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
-              'ETTh2': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
-              'ETTm1': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
-              'ETTm2': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
-              'Exchange': '--e_layers 2 --d_model 128 --d_ff 128 --learning_rate 0.0001',
-              'Weather': '--e_layers 3 --d_model 512 --d_ff 512 --learning_rate 0.0001'},
-    # official S-Mamba scripts for PEMS at horizon 12 (scripts/multivariate_forecasting/PEMS/S_Mamba_0x.sh)
-    'SMamba': {'PEMS04': '--e_layers 4 --d_model 1024 --d_ff 1024 --learning_rate 0.0003 --use_norm 0',
-               'PEMS08': '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.001 --use_norm 1'},
+# plugin_fusion: arm name -> DLTPlug arguments after the default recipe (--dlt_lr 0.003 and DLT_DEFAULT)
+FUSION_ARMS = {
+    'dlt': '',                                                               # output, joint: plugin_all's arm (Eq. 2)
+    'dlt_out-dec': '--dlt_train decoupled --dlt_select variable',
+    'dlt_refine': '--dlt_fusion refine',
+    'dlt_refine-dec': '--dlt_fusion refine --dlt_train decoupled --dlt_select variable',
+    'dlt_input': '--dlt_fusion input',
 }
-# no official configuration for this dataset: the configuration of another dataset at the same horizon.
-# Informer has one generic setting in every TSLib script; TimeXer was not tuned on Exchange (small-data setting of ETTh1).
-# Solar and PEMS (many variables) take the Electricity configuration where a model has none of its own.
-FALLBACK_FROM = {'Informer': {d: 'ETTh1' for d in ('ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'Traffic',
-                                                    'Solar', 'PEMS03', 'PEMS04', 'PEMS07', 'PEMS08')},
-                 'TimeXer': {'Exchange': 'ETTh1', **{d: 'ECL' for d in ('Solar', 'PEMS03', 'PEMS04', 'PEMS07', 'PEMS08')}},
-                 'TimesNet': {d: 'ECL' for d in ('Solar', 'PEMS03', 'PEMS04', 'PEMS07', 'PEMS08')}}
-MODEL_EXTRA = {'TimeMixer': '--down_sampling_method avg'}
-
-# Official settings of the models' own repositories for the datasets that TSLib has no script for, per horizon:
-# scripts/multivariate_forecasting/{PEMS/*_0x.sh, SolarEnergy/*.sh} of iTransformer and S-Mamba, and of TimeMixer
-# scripts/long_term_forecast/Solar_script/TimeMixer_unify.sh and scripts/short_term_forecast/PEMS/TimeMixer.sh (its
-# only PEMS setting, horizon 12, used here for every horizon). Unset values are the defaults there and here
-# (lr 1e-4, batch 32, 10 epochs, patience 3, use_norm 1, d_state 32). Used by plugin_all. The older PEMS-12 suites
-# (pems12 protocol) keep FALLBACK above, which for iTransformer differs: PEMS04 without --use_norm 0, PEMS08 with
-# lr 1e-3 / batch 16 (the settings of its horizons 48 and 96).
-def _per_h(short, long):                                       # one setting for 12 / 24, another for 48 / 96
-    return {12: short, 24: short, 48: long, 96: long}
-
-
-_TM_PEMS = ('--e_layers 5 --d_model 128 --d_ff 256 --batch_size 32 --learning_rate 0.003 --train_epochs 10 '
-            '--patience 10 --use_norm 0 --down_sampling_layers 1 --down_sampling_window 2 --channel_independence 0')
-REPO_OFFICIAL = {
-    'iTransformer': {
-        'PEMS03': dict.fromkeys(PEMS_HORIZONS, '--e_layers 4 --d_model 512 --d_ff 512 --learning_rate 0.001'),
-        'PEMS04': dict.fromkeys(PEMS_HORIZONS, '--e_layers 4 --d_model 1024 --d_ff 1024 --learning_rate 0.0005 --use_norm 0'),
-        'PEMS07': _per_h('--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.001 --use_norm 0',
-                         '--e_layers 4 --d_model 512 --d_ff 512 --batch_size 16 --learning_rate 0.001 --use_norm 0'),
-        'PEMS08': _per_h('--e_layers 2 --d_model 512 --d_ff 512 --use_norm 1',
-                         '--e_layers 4 --d_model 512 --d_ff 512 --batch_size 16 --learning_rate 0.001 --use_norm 0'),
-        'Solar': dict.fromkeys(HORIZONS, '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.0005')},
-    'SMamba': {
-        'PEMS03': {12: '--e_layers 4 --d_model 512 --d_ff 512 --learning_rate 0.001 --train_epochs 5',
-                   24: '--e_layers 4 --d_model 512 --d_ff 512 --learning_rate 0.001',
-                   48: '--e_layers 5 --d_model 512 --d_ff 512 --learning_rate 0.0001',
-                   96: '--e_layers 4 --d_model 512 --d_ff 512 --learning_rate 0.0015'},
-        'PEMS04': dict.fromkeys(PEMS_HORIZONS, '--e_layers 4 --d_model 1024 --d_ff 1024 --learning_rate 0.0003 --use_norm 0'),
-        'PEMS07': {12: '--e_layers 2 --d_model 512 --d_ff 512 --batch_size 16 --learning_rate 0.0007 --use_norm 0',
-                   24: '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.0007 --use_norm 0',
-                   48: '--e_layers 4 --d_model 512 --d_ff 512 --learning_rate 0.0005 --use_norm 0',
-                   96: '--e_layers 4 --d_model 512 --d_ff 512 --batch_size 16 --learning_rate 0.0005 --use_norm 0'},
-        'PEMS08': {12: '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.001 --use_norm 1',
-                   24: '--e_layers 2 --d_model 512 --d_ff 512 --learning_rate 0.0007 --use_norm 1',
-                   **dict.fromkeys((48, 96), '--e_layers 4 --d_model 256 --d_ff 256 --batch_size 16 '
-                                             '--learning_rate 0.001 --use_norm 1')},
-        'Solar': dict.fromkeys(HORIZONS, '--e_layers 2 --d_model 512 --d_ff 512')},
-    'TimeMixer': {
-        **{d: dict.fromkeys(PEMS_HORIZONS, _TM_PEMS) for d in PEMS_SETS},
-        'Solar': dict.fromkeys(HORIZONS, '--e_layers 3 --d_model 512 --d_ff 2048 --batch_size 32 --learning_rate 0.001 '
-                                         '--train_epochs 10 --patience 3 --use_norm 0 --down_sampling_layers 2 '
-                                         '--down_sampling_window 2 --channel_independence 0')},
-}
+FUSION_SETS = (('ETTh2', 96), ('Exchange', 96), ('Weather', 96), ('PEMS08', 12))
+FUSION_MODELS = ('RLinear', 'DLinear', 'iTransformer')
 # relative cost of a backbone (only orders the job lists, longest first)
-REL_COST = {'Informer': 1.0, 'TimesNet': 6.0, 'DLinear': 0.3, 'PatchTST': 3.0, 'iTransformer': 1.5, 'TimeMixer': 2.0,
-            'TimeXer': 3.0, 'SMamba': 1.5}
-
-
-# PatchTST in the plug-in study: the configurations of the PatchTST paper (TSLib's scripts use d_model 512 /
-# d_ff 2048, which is ~8x more expensive and not what the paper reports); the training budget stays TSLib's
-PATCHTST_PAPER = {'small': '--e_layers 3 --d_model 16 --d_ff 128 --n_heads 4 --dropout 0.3',
-                  'large': '--e_layers 3 --d_model 128 --d_ff 256 --n_heads 16 --dropout 0.2'}
-
-
-def plugin_backbone_args(model, ds, H):
-    args, src = backbone_args(model, ds, H)
-    if model == 'PatchTST':
-        keep = ' '.join(t for t in re.findall(r'--(?:batch_size|train_epochs|patience|learning_rate) \S+', args))
-        size = 'small' if ds.startswith('ETT') or ds == 'Exchange' else 'large'
-        args, src = f'{PATCHTST_PAPER[size]} {keep}'.strip(), 'PatchTST paper'
-    return args, src
+REL_COST = {'SMamba': 1.5, 'iTransformer': 1.5, 'PatchTST': 3.0, 'RLinear': 0.2, 'DLinear': 0.3, 'TiDE': 2.0}
 
 
 # Learning-rate check of a backbone alone: where a backbone runs far behind its published numbers, its learning rate
@@ -263,29 +147,8 @@ def recipe_tag(extra):
 
 
 def plugin_all_args(model, ds, H):
-    """Backbone settings of plugin_all, so that the backbone alone reproduces its published numbers:
-    - Solar and PEMS: the official per-horizon settings of the model's repository (REPO_OFFICIAL) where they exist;
-    - otherwise the official TSLib scripts (backbone_args), which produced the published input-96 numbers; for
-      PatchTST too (the older plug-in suites use its paper's settings instead, PATCHTST_PAPER);
-    - Solar and PEMS without settings of their own: the documented fallbacks (FALLBACK_FROM: the Electricity
-      configuration; Informer its generic one); PatchTST likewise the Electricity configuration."""
-    if H in REPO_OFFICIAL.get(model, {}).get(ds, {}):
-        return (REPO_OFFICIAL[model][ds][H] + ' ' + MODEL_EXTRA.get(model, '')).strip(), f'{model} repository'
-    if model == 'PatchTST' and ds in NO_MARKS_SETS:
-        args, src = official_args(model, DATASETS['ECL'][1], H if H in HORIZONS else 96)
-        return args, f'{src} (ECL configuration)'
-    return backbone_args(model, ds, H)
-
-
-def backbone_args(model, ds, H):
-    args, src = official_args(model, DATASETS[ds][1], H)
-    if args is None and ds in FALLBACK_FROM.get(model, {}):
-        other = FALLBACK_FROM[model][ds]
-        args, src = official_args(model, DATASETS[other][1], H if H in HORIZONS else 96)
-        src = f'{src} ({other} configuration)'
-    if args is None:
-        args, src = FALLBACK.get(model, {}).get(ds, ''), 'fallback'
-    return (args + ' ' + MODEL_EXTRA.get(model, '')).strip(), src
+    """(settings, source) of a baseline for this dataset and horizon: scripts/baselines.py (without the protocol)"""
+    return baselines.args(model, ds, H)
 
 
 class Gen:
@@ -346,6 +209,7 @@ def main():
     p.add_argument('--list', help='name of the job list (work/jobs_<list>.txt; default: the suite), e.g. to run a '
                                   'second list of the same suite next to a running queue; results still go to '
                                   'work/results_<suite>.jsonl')
+    p.add_argument('--horizons', default='first', choices=['first', 'all'], help='plugin_fusion: the first or all horizons')
     p.add_argument('--models', nargs='+', help='baselines / plugin_all / plugin_probe: only these models')
     p.add_argument('--datasets', nargs='+', help='baselines / ci_long / plugin_all / plugin_probe / allnb: only these datasets')
     a = p.parse_args()
@@ -369,33 +233,16 @@ def main():
         sets = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather') if a.suite == 'long_small' else ('ECL', 'Traffic')
         for ds, H, seed in itertools.product(sets, HORIZONS, S):
             g.add(f'{ds}_{H}_dltdyn', 'DLT', ds, H, seed, f'{dlt} {DLT_TRAIN}', cost(ds))
-    elif a.suite in ('plugin', 'plugin_large'):
-        sets = (('ETTh1', 96), ('Weather', 96), ('PEMS08', 12)) if a.suite == 'plugin' else \
-               tuple((d, H) for d in ('ECL', 'Traffic', 'PEMS04') for H in (HORIZONS if d != 'PEMS04' else (12,)))
-        for (ds, H), base, seed in itertools.product(sets, ('DLinear', 'PatchTST', 'iTransformer'), S):
-            if a.suite == 'plugin' and a.device == 'cpu' and (base, ds) == ('PatchTST', 'PEMS08'):
-                continue                                       # ~5 h per run on one CPU thread: GPU only
-            bargs, _ = plugin_backbone_args(base, ds, H)
-            proto = PEMS_PROTOCOL if ds.startswith('PEMS') else ''
-            rel = {'DLinear': 0.3, 'PatchTST': 3.0, 'iTransformer': 1.5}[base]
-            g.add(f'{ds}_{H}_{base}_alone', 'DLTPlug', ds, H, seed,
-                  f'--plug_base {base} --dlt_variant ci {bargs} {proto}', cost(ds, rel))
-            g.add(f'{ds}_{H}_{base}_dlt', 'DLTPlug', ds, H, seed,
-                  f'--plug_base {base} {dlt} --dlt_lr 0.003 {bargs} {proto}', cost(ds, rel + 1))
     elif a.suite == 'plugin_all':
         # each backbone alone and + DLT-dyn on every dataset and horizon. Both arms go through DLTPlug ("alone":
-        # --dlt_variant ci, which builds the backbone only and is identical to running it directly). label_len 48 on
-        # PEMS too (iTransformer / S-Mamba protocol; only Informer reads it). --dlt_lr comes first so that --dlt can
-        # override it.
+        # --dlt_variant ci, which builds the backbone only and is identical to running it directly). The backbone
+        # has the settings and the protocol of the baseline check (scripts/baselines.py). --dlt_lr comes first so
+        # that --dlt can override it.
         arm = 'dlt' + (f'_{recipe_tag(a.dlt)}' if a.dlt else '')
         chosen = selected_lrs(plugin_records()) if a.select_lr else {}
         for ds, base, seed in itertools.product(a.datasets or PLUGIN_ALL_SETS, a.models or BASELINES, S):
             for H in PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS:
-                bargs, _ = plugin_all_args(base, ds, H)
-                if ds in NO_MARKS_SETS:                       # as the iTransformer / S-Mamba code: no time marks,
-                    bargs = f'--no_time_marks --test_batch_size 1 {bargs}'     # test with batch 1, and on PEMS
-                    if ds in PEMS_SETS:                       # the split of their PEMS loader
-                        bargs = f'--pems_split itransformer {bargs}'
+                bargs = f'{baselines.protocol(ds)} {plugin_all_args(base, ds, H)[0]}'
                 rel = REL_COST.get(base, 2.0)
                 if a.backbone_lr:                             # learning-rate check: the backbone alone only
                     for lr in a.backbone_lr:
@@ -413,20 +260,21 @@ def main():
                       f'--plug_base {base} --dlt_variant ci {bargs}', cost(ds, rel), label=48)
                 g.add(f'{ds}_{H}_{base}_{arm}{sfx}', 'DLTPlug', ds, H, seed,
                       f'--plug_base {base} --dlt_lr 0.003 {dlt} {bargs}', cost(ds, rel + 1), label=48)
-    elif a.suite == 'plugin_probe':
-        # Why does the DLT-dyn branch hurt PatchTST / iTransformer on Traffic (GPU tier 1c)? Three variants of the
-        # "+ DLT-dyn" arm at horizon 96, to be compared with the finished alone / default arms of plugin_large:
-        #   samelr       the branch trains with the learning rate of the backbone (no --dlt_lr)
-        #   gate         the branch starts at 4.7 % strength (--dlt_gate static); branch lr 3e-3 as before
-        #   gate_samelr  both
-        for ds, seed in itertools.product(a.datasets or ('Traffic',), S):
-            for base in a.models or ('PatchTST', 'iTransformer'):
-                bargs, _ = plugin_backbone_args(base, ds, 96)
-                rel = {'DLinear': 0.3, 'PatchTST': 3.0, 'iTransformer': 1.5}[base] + 1
-                for name, extra in (('samelr', ''), ('gate', '--dlt_gate static --dlt_lr 0.003'),
-                                    ('gate_samelr', '--dlt_gate static')):
-                    g.add(f'{ds}_96_{base}_dlt_{name}', 'DLTPlug', ds, 96, seed,
-                          f'--plug_base {base} {dlt} {extra} {bargs}', cost(ds, rel))
+    elif a.suite == 'plugin_fusion':
+        sets = [(ds, H) for ds, H0 in FUSION_SETS if not a.datasets or ds in a.datasets
+                for H in ((PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS) if a.horizons == 'all' else (H0,))]
+        if a.datasets:
+            sets += [(ds, H) for ds in a.datasets if ds not in dict(FUSION_SETS)
+                     for H in ((PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS) if a.horizons == 'all'
+                               else ((12,) if ds in PEMS_SETS else (96,)))]
+        for (ds, H), base, seed in itertools.product(sets, a.models or FUSION_MODELS, S):
+            bargs = f'{baselines.protocol(ds)} {plugin_all_args(base, ds, H)[0]}'
+            rel = REL_COST.get(base, 2.0)
+            g.add(f'{ds}_{H}_{base}_alone', 'DLTPlug', ds, H, seed,
+                  f'--plug_base {base} --dlt_variant ci {bargs}', cost(ds, rel), label=48)
+            for arm, extra in FUSION_ARMS.items():
+                g.add(f'{ds}_{H}_{base}_{arm}', 'DLTPlug', ds, H, seed,
+                      f'--plug_base {base} --dlt_lr 0.003 {dlt} {extra} {bargs}', cost(ds, rel + 1), label=48)
     elif a.suite == 'allnb':
         # every other variable as a neighbour (dense path); follow-up of the P2 neighbour study, where all
         # neighbours beat the CCF top-8 on Weather and PEMS08. DLT-dyn on Electricity / Traffic: GPU.
@@ -442,7 +290,7 @@ def main():
                 g.add(f'{ds}_{H}_{v}_all', 'DLT', ds, H, seed, f'--dlt_variant {v} {allnb} {DLT_TRAIN}',
                       cost(ds, 0.6 if v == 'dlt' else 1.0))
         for seed in S:                                         # strongest backbone of the plug-in study
-            bargs, _ = plugin_backbone_args('iTransformer', 'PEMS08', 12)
+            bargs, _ = baselines.args('iTransformer', 'PEMS08', 12)
             g.add('PEMS08_12_iTransformer_dlt_all', 'DLTPlug', 'PEMS08', 12, seed,
                   f'--plug_base iTransformer --dlt_variant dltdyn {allnb} --dlt_lr 0.003 {bargs} {PEMS_PROTOCOL}',
                   cost('PEMS08', 6.0))
@@ -450,12 +298,12 @@ def main():
         for ds, H, seed in itertools.product(a.datasets or LONG_SETS, HORIZONS, S):
             g.add(f'{ds}_{H}_ci', 'DLT', ds, H, seed, f'--dlt_variant ci {DLT_TRAIN}', cost(ds, 0.1))
     elif a.suite == 'baselines':
-        for ds, H, seed in itertools.product(a.datasets or LONG_SETS, HORIZONS, S):
-            for base in a.models or BASELINES:
-                if base == 'LagTS' and DATASETS[ds][2] > 21:
-                    continue                                   # O(N^2) pairs: the paper uses N <= 21
-                bargs, _ = backbone_args(base, ds, H)
-                g.add(f'{ds}_{H}_{base}', base, ds, H, seed, bargs, cost(ds, 2.0))
+        # the baseline check: each baseline alone, official settings and protocol (scripts/baselines.py)
+        for ds, base, seed in itertools.product(a.datasets or PLUGIN_ALL_SETS, a.models or BASELINES, S):
+            for H in PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS:
+                bargs, _ = baselines.args(base, ds, H)
+                g.add(f'{ds}_{H}_{base}', base, ds, H, seed, f'{baselines.protocol(ds)} {bargs}',
+                      cost(ds, REL_COST[base]), label=48)
     elif a.suite == 'sensitivity':
         for ds, H in (('ETTh1', 96), ('Weather', 96), ('PEMS08', 96)):
             for name, args, rel in (('L12', '--dlt_L 12', 0.6), ('L24', '--dlt_L 24', 0.7), ('L96', '--dlt_L 96', 1.8),

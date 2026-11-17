@@ -9,19 +9,31 @@ Removed upstream files: `README.md`, `README_zh.md`, `CONTRIBUTING.md`, `pic/` a
 images of upstream; see the upstream repository). `requirements.txt` of upstream is kept as
 `requirements_tslib_full.txt`, and the `Dockerfile` installs that file.
 
+Removed models (2026-11-17): the study keeps six baselines, those of the S-Mamba paper (S-Mamba, iTransformer,
+PatchTST, RLinear, DLinear, TiDE; `scripts/baselines.py`). Every other model of upstream was removed with the layers
+only they used (`AutoCorrelation`, `Conv_Blocks`, `Crossformer_EncDec`, `DWT_Decomposition`, `ETSformer_EncDec`,
+`FourierCorrelation`, `MSGBlock`, `MambaBlock`, `MultiWaveletCorrelation`, `Pyraformer_EncDec`, `StandardNorm`,
+`TimeFilter_layers`) and the scripts that run them (all tasks); our LagTS re-implementation was removed as well.
+`models/` holds `DLT`, `DLTPlug`, `SMamba`, `iTransformer`, `PatchTST`, `RLinear`, `DLinear` and `TiDE`. The Mamba
+block of upstream's `MambaSimple`, the reference of a unit test, is kept in `scripts/p0/reference/`.
+
 | file | change |
 |---|---|
 | `models/DLT.py` | **new** – DLT model (11 kernel variants incl. the MillGNN-style `topk` / `mill` / `milldyn`), neighbour and lag-set selection, `prepare()` hook, optional branch gates (`--dlt_gate none|moe|static`); two identical computation paths for `dlt`/`dltdyn` (`--dlt_impl kernel` = default, less memory; `basis`) |
 | `data_provider/data_loader.py` | **new** `Dataset_PEMS` (PEMS03/04/07/08 `.npz`, 6:2:2 split, rebuilt 5-min time marks) |
 | `data_provider/data_factory.py` | register `--data PEMS` |
 | `exp/exp_long_term_forecasting.py` | call `model.prepare(train_data)` before training if the model defines it (DataParallel-safe); optional `--no_epoch_test`, `--no_save_preds` (also streams the test metrics batch by batch instead of holding the whole test split in memory, which needs tens of GB for Electricity / Traffic at horizon 720; same values up to float32 rounding), `--result_jsonl` (one JSON line per run with metrics incl. TimeMixer's clipped MAPE and the masked MAPE over |true| > 1e-3 — a zero flow is ~1e-5, not 0, after the float32 scale / inverse round trip; runs before commit f694112 (incl. all P0 and the frozen P1/P2 runs at e232fba) used `true != 0` and their masked MAPE is not meaningful on PEMS, epochs, best epoch and timing; since 2026-11-13 also the PyTorch version and the device, `torch` and `device`; since 2026-11-15 the number of NaN / inf forecasts, `test_nonfinite`, with a warning in the log); `--loss MAE` (L1 training loss) and `--vali_inverse` (validation MAE on the original scale) for the TimeMixer / MillGNN PEMS protocol together with `--inverse`; models may add an auxiliary loss via `extra_loss(x, pred, true)`; per-group learning rates for `--dlt_lr` |
-| `models/DLTPlug.py` | **new** – the DLT cross-variable branch as a plug-in: `Backbone(X) + sigma * W_c z` for any TSLib forecaster (`--plug_base`); `--dlt_variant ci` = backbone alone through the same code path; `--dlt_lr` gives the branch its own learning rate |
-| `models/LagTS.py` | **new** – re-implementation of LagTS (ICASSP 2025; no official code) incl. its lag relation loss (`extra_loss`), `--lagts_lambda`, `--lagts_rel_dim` |
+| `models/DLTPlug.py` | **new** – the DLT cross-variable branch as a plug-in for any TSLib forecaster (`--plug_base`); `--dlt_variant ci` = backbone alone through the same code path; `--dlt_lr` gives the branch its own learning rate. Since 2026-11-17: `--dlt_fusion output` (`Backbone(X) + sigma * W_c z`, the default) \| `refine` (distributed-lag correction over the observed past followed by the backbone's forecast, no free head) \| `input` (neighbour signal added to the backbone input); `--dlt_train joint \| decoupled` (the backbone trains on its own loss, the branch on the backbone's error); `--dlt_select variable` (the correction is kept for the variables whose validation MSE it lowers) |
+| `models/RLinear.py` | **new** – RLinear (Li et al., 2023), as the official code (RevIN with learnable affine parameters, dropout, one linear map shared by the variates; `--individual`, `--use_norm 0` without RevIN) |
+| `scripts/baselines.py`, `scripts/official/` | **new** – the six baselines and their settings, read from copies of the official scripts (S-Mamba, iTransformer, Time-Series-Library, RLinear) with documented fallbacks, and the protocol of the official loaders (`--freq h --drop_last --test_batch_size 1`; PEMS / Solar without time marks) |
 | `scripts/train_dltdyn.sh` | **new** quick start: one GPU, one dataset, stand-alone DLT-dyn |
 | `models/SMamba.py`, `layers/MambaPy.py` | **new** – the S-Mamba baseline (Wang et al., Neurocomputing 2025), re-implemented after the official code: bidirectional Mamba over variate tokens; `mamba_ssm.Mamba` if it imports (from the environment, else from the source checkouts `../mamba` and `../causal-conv1d`; the block is imported without `mamba_ssm/__init__.py`, so `transformers` is not needed; a mamba_ssm without its CUDA kernel `selective_scan_cuda`, as a source install of mamba_ssm >= 2.3 without `MAMBA_KEEP_CUDA_BUILD=TRUE`, counts as not importable) and the run is on a GPU, else a pure-PyTorch block with the same parameters, initialisation and outputs (`--mamba_impl auto|ssm|torch`, `--d_state`; `scripts/gpu/check_mamba.py` checks the installation). The unused modules of the official encoder layer are left out |
 | `scripts/long_term_forecast/*_script/SMamba*.sh` | **new** – the hyper-parameters of the official S-Mamba scripts for Electricity, Traffic, Weather, Exchange and ETTh1/h2/m1/m2 in the format of this library |
 | `run.py` | `--d_state`, `--mamba_impl` (S-Mamba); `--no_time_marks`: the model gets no time-mark features (`x_mark = None`), as the iTransformer / S-Mamba code does on PEMS and Solar (records: `time_marks`); `--test_batch_size` (that code tests with batch 1); `--pems_split itransformer`: PEMS validation / test windows start inside their split, as in its PEMS loader (default `tslib`: unchanged) |
 | `models/iTransformer.py` | honours `--use_norm` (default 1: unchanged); the official PEMS settings of iTransformer use `--use_norm 0` |
+| `run.py`, `data_provider/data_factory.py` | `--drop_last`: the training and validation loaders drop their last incomplete batch, as the official loaders of iTransformer, S-Mamba and RLinear (default: unchanged) |
+| `models/DLT.py` (2026-11-17) | `cross(xn, mod_input)`: the input-dependent coefficients can come from the look-back window while the kernels run over a longer sequence (DLTPlug `refine`); unchanged otherwise |
+| `exp/exp_long_term_forecasting.py` (2026-11-17) | DLTPlug with `output` / `refine` fusion: the test also scores the backbone part and the uncorrected sum (`mse_backbone`, `mse_full` in the record) and applies `--dlt_select variable` (mask from the validation split, `dlt_kept`); records name `fusion`, `dlt_train`, `dlt_select` |
 | `data_provider/data_loader.py`, `data_factory.py` | **new** `Dataset_Solar` (`--data Solar`, `solar_AL.txt`): split 7:1:2 and scaling as in iTransformer / S-Mamba, time marks rebuilt from 2006-01-01 at 10 minutes (as `Dataset_PEMS` does) |
 | `scripts/download_data.sh`, `scripts/check_data.py` | all forecasting datasets (ETT, Exchange, Weather, ECL, Traffic, ILI, PEMS03/04/07/08 with road networks, Solar) from their sources, with fallbacks and `--mirror`; check of every file against its published size |
 | `scripts/paths.py` | **new** – the fixed locations used by every script: data (`dataset/`, or `../data` next to the repository), work (`work/`), Mamba sources (`../mamba`, `../causal-conv1d`) |
@@ -71,7 +83,7 @@ for the same seed, identical outputs) relative to commit `af398bd`.
 `--dlt_neighbours ccf|random|all`: CCF top-k (default), k random sources (drawn with `--fix_seed`), or all other
 variables (k = C - 1). `--dlt_impl dense` evaluates dlt / dltdyn with a dense C x C x R coefficient tensor, which is
 the cheapest path when k is close to C - 1. Verification: `scripts/p0/test_p1p2.py` (dense path, neighbour sets,
-DLTPlug, LagTS loss against explicit loops).
+DLTPlug and its fusions against explicit sums, RLinear, the settings of the six baselines).
 
 ## Reproducing P1 / P2
 See `scripts/exps.py` (job lists per suite, `--device cpu|gpu`), `scripts/run_queue.sh`, `scripts/p1/hpsearch.py`,

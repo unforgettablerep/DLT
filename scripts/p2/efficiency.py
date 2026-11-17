@@ -3,12 +3,11 @@
     python scripts/p2/efficiency.py --device gpu          # on the CUDA machine -> results/p2/efficiency_gpu.jsonl
     python scripts/p2/efficiency.py --device cpu --threads 4                 # -> results/p2/efficiency_cpu.jsonl
 
-Default models: DLT-dyn and the eight representative baselines (Informer, TimesNet, DLinear, PatchTST, iTransformer,
-TimeMixer, TimeXer, S-Mamba). --variants adds the kernel variants of the controlled study, the plug-in and LagTS.
-
+Default models: DLT-dyn and the six baselines (S-Mamba, iTransformer, PatchTST, RLinear, DLinear, TiDE).
+--variants adds the kernel variants of the controlled study and the plug-in.
 Every (dataset, model) is measured in a fresh subprocess (clean peak-memory counter) on random data with the
-dataset's shape: batch 32, input 96, horizon 96. Baselines use the official TSLib hyper-parameters of that
-dataset (scripts/exps.py). Train time = forward + MSE + backward + Adam step. Memory: GPU = peak allocated by
+dataset's shape: batch 32, input 96, horizon 96. Baselines use the official hyper-parameters of that dataset
+(scripts/baselines.py). Train time = forward + MSE + backward + Adam step. Memory: GPU = peak allocated by
 PyTorch; CPU = growth of the peak resident set size of the process during model creation and training.
 """
 import argparse, json, os, resource, subprocess, sys, time
@@ -16,11 +15,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 
 DATASETS = {'Weather': 21, 'PEMS08': 170, 'ECL': 321, 'Traffic': 862}
-# name: (TSLib model, extra args). Baselines also get their official arguments for the dataset (scripts/exps.py).
+# name: (TSLib model, extra args). Baselines also get their official arguments for the dataset (scripts/baselines.py).
 OURS = {'DLT-dyn': ('DLT', '--dlt_variant dltdyn --dlt_impl basis')}
-BASELINES = {'Informer': ('Informer', ''), 'TimesNet': ('TimesNet', ''), 'DLinear': ('DLinear', ''),
-             'PatchTST': ('PatchTST', ''), 'iTransformer': ('iTransformer', ''), 'TimeMixer': ('TimeMixer', ''),
-             'TimeXer': ('TimeXer', ''), 'S-Mamba': ('SMamba', '')}
+BASELINES = {'S-Mamba': ('SMamba', ''), 'iTransformer': ('iTransformer', ''), 'PatchTST': ('PatchTST', ''),
+             'RLinear': ('RLinear', ''), 'DLinear': ('DLinear', ''), 'TiDE': ('TiDE', '')}
 VARIANTS = {   # --variants: the kernels of the controlled study, the plug-in and further configurations
     'CI (RLinear-style)': ('DLT', '--dlt_variant ci'),
     'scalar': ('DLT', '--dlt_variant scalar'),
@@ -31,27 +29,24 @@ VARIANTS = {   # --variants: the kernels of the controlled study, the plug-in an
     'DLT-dyn (kernel path)': ('DLT', '--dlt_variant dltdyn --dlt_impl kernel'),
     'iTransformer + DLT-dyn': ('DLTPlug', '--plug_base iTransformer --dlt_variant dltdyn --dlt_impl basis'),
     'PatchTST (paper config)': ('PatchTST', '--e_layers 3 --d_model 128 --d_ff 256 --n_heads 16'),
-    'LagTS': ('LagTS', ''),
 }
 MODELS = {**OURS, **BASELINES, **VARIANTS}
 # too slow or too large for the 13 GB CPU machine at batch 32 (they are measured on the GPU)
-SKIP_CPU = {('PatchTST', 'Traffic'), ('PatchTST', 'ECL'), ('TimeMixer', 'Traffic'),
-            ('TimeXer', 'Traffic'),
-            ('LagTS', 'ECL'), ('LagTS', 'Traffic'), ('LagTS', 'PEMS08')}
+SKIP_CPU = {('PatchTST', 'Traffic'), ('PatchTST', 'ECL'), ('TiDE', 'Traffic')}
 
 
 def one(spec):
     import numpy as np, torch
     sys.path.insert(0, str(REPO)); sys.path.insert(0, str(REPO / 'scripts'))
     os.chdir(REPO)
-    import run, exps
+    import run, baselines
     from importlib import import_module
     dev = torch.device('cuda' if spec['device'] == 'gpu' else 'cpu')
     torch.set_num_threads(spec['threads'])
     C, H, B, T = DATASETS[spec['dataset']], 96, 32, 96
     model_name, extra = MODELS[spec['name']]
     base = model_name if model_name != 'DLTPlug' else extra.split()[1]
-    bargs = exps.backbone_args(base, spec['dataset'], H)[0] if base not in ('DLT',) else ''
+    bargs = baselines.args(base, spec['dataset'], H)[0] if base not in ('DLT',) else ''
     argv = (f'--task_name long_term_forecast --is_training 1 --model_id eff --model {model_name} --data custom '
             f'--seq_len {T} --label_len 48 --pred_len {H} --enc_in {C} --dec_in {C} --c_out {C} '
             f'--dlt_k 8 --dlt_L 48 --dlt_R 4 {bargs} {extra}').split()
@@ -104,7 +99,7 @@ def main():
     p.add_argument('--steps', type=int, default=8, help='measured training steps on the CPU')
     p.add_argument('--datasets', nargs='+', default=list(DATASETS))
     p.add_argument('--models', nargs='+', help='default: DLT-dyn and the eight representative baselines')
-    p.add_argument('--variants', action='store_true', help='also the kernel variants, the plug-in and LagTS')
+    p.add_argument('--variants', action='store_true', help='also the kernel variants and the plug-in')
     p.add_argument('--out', help='default: results/p2/efficiency_<device>.jsonl')
     p.add_argument('--one', help=argparse.SUPPRESS)
     a = p.parse_args()

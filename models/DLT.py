@@ -235,14 +235,18 @@ class Model(nn.Module):
         B, C, d = s.shape
         return torch.cat([s.unsqueeze(2).expand(B, C, self.k, d), s[:, self.idx]], dim=-1)  # (B, C, k, 2d)
 
-    def cross(self, xn):
-        """xn: (B, C, T) normalised input -> z: (B, C, T)."""
+    def cross(self, xn, mod_input=None):
+        """xn: (B, C, T) normalised input -> z: (B, C, T). The input-dependent coefficients (dltdyn, scalardyn,
+        milldyn) are computed from mod_input (default: xn), so that the kernels can also run over a longer sequence
+        than the look-back window (DLTPlug --dlt_fusion refine: past and forecast), with the coefficients of the
+        window."""
         B, C, T = xn.shape
         k, L, idx, v = self.k, self.L, self.idx, self.variant
+        m = xn if mod_input is None else mod_input
         if v == "scalar":
             return (xn[:, idx] * self.a[None, :, :, None]).sum(2)
         if v == "scalardyn":
-            a = self.a[None] * (1 + torch.tanh(self.mod(self._pair_features(xn)).squeeze(-1)))   # (B, C, k)
+            a = self.a[None] * (1 + torch.tanh(self.mod(self._pair_features(m)).squeeze(-1)))    # (B, C, k)
             return (xn[:, idx] * a[..., None]).sum(2)
         if v == "shift":
             src = F.pad(xn, (L, 0))[:, idx]                                     # (B, C, k, T + L)
@@ -252,7 +256,7 @@ class Model(nn.Module):
         if v in ("dlt", "dltdyn"):
             alpha = self.alpha
             if v == "dltdyn":
-                alpha = alpha[None] * (1 + torch.tanh(self.mod(self._pair_features(xn))))  # (B, C, k, R)
+                alpha = alpha[None] * (1 + torch.tanh(self.mod(self._pair_features(m))))   # (B, C, k, R)
             if self.impl == "dense":
                 # basis-filtered signals of all variables, mixed with a dense C x C x R coefficient tensor
                 xp = F.pad(xn, (L, 0)).reshape(B * C, 1, T + L)
@@ -278,7 +282,7 @@ class Model(nn.Module):
         if v == "topk":
             return self._lag_taps(xn, self.w)
         if v in ("mill", "milldyn"):
-            return self._lag_taps(xn, self.mill_weights(xn))
+            return self._lag_taps(xn, self.mill_weights(m))
         # tap3 / full: explicit per-pair kernels
         return self._pair_conv(xn, self.w)
 

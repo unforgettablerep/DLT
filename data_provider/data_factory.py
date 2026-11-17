@@ -26,7 +26,9 @@ def data_provider(args, flag):
     timeenc = 0 if args.embed != 'timeF' else 1
 
     shuffle_flag = False if (flag == 'test' or flag == 'TEST') else True
-    drop_last = False
+    # --drop_last: the training and validation loaders drop their last incomplete batch, as the loaders of the
+    # iTransformer, S-Mamba and RLinear code and of the Time-Series-Library version their baselines were run with
+    drop_last = bool(getattr(args, 'drop_last', False)) and flag not in ('test', 'TEST')
     batch_size = args.batch_size
     if flag in ('test', 'TEST') and getattr(args, 'test_batch_size', 0):
         batch_size = args.test_batch_size                 # e.g. 1, as the iTransformer / S-Mamba code evaluates

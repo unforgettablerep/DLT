@@ -72,8 +72,13 @@ Evaluation of the results so far: [`results/gpu/README.md`](results/gpu/README.m
 | 1c plug-in on PEMS04-12 | no result seen; check the logs for failed runs |
 | 0, 2, 3, 4 | not started |
 | plug-in study, all eight backbones (`plugin_all`) | stage 1 and PEMS04/08 done, Electricity / Traffic running (2026-11-15). Evaluation: [`results/gpu/plugin_all_stage1.md`](results/gpu/plugin_all_stage1.md), [`results/gpu/plugin_all_gate.md`](results/gpu/plugin_all_gate.md). The branch helps on Weather and PEMS (channel-independent backbones −32 % on average) and hurts on ETTh2 and Exchange. The static gate does not change that; keeping the branch only where it lowers the validation loss does (settings worse by > 2 %: 96 → 20 of 260). TimesNet on Traffic: test MSE NaN in both arms, under diagnosis (`scripts/gpu/diag_nonfinite.py`). On PEMS, iTransformer (PEMS08, horizons 48 / 96) and PatchTST fall far behind their published numbers, which inflates their gains; PEMS runs now follow the iTransformer code without time marks and are to be repeated. |
+| six baselines, baseline check, fusion study (2026-11-17) | The baselines are now those of the S-Mamba paper (S-Mamba, iTransformer, PatchTST, RLinear, DLinear, TiDE) with the settings of their official scripts and the protocol of the official loaders; the other models were removed. To run: the baseline check (312 runs), `plugin_all` again (624 runs; the earlier records used other backbones and protocol), and `plugin_fusion` (new ways to add the branch). |
 
-**What to run next.**
+**What to run next (2026-11-17).** The baseline check, baseline by baseline (section "Baseline check" below); then
+`plugin_fusion` for the six backbones; then `plugin_all` with the fusion that wins. The older list below is
+superseded where it names removed models.
+
+**What to run next (2026-11-11).**
 1. Stop the tier 1 queue. The 32 remaining runs repeat finished configurations with seed 2023 and cannot change
    a conclusion; the + DLT-dyn arms on Traffic need a changed recipe first.
 2. `python scripts/p1/plugin_diag.py`: epochs, best epoch and best validation loss of every plug-in arm
@@ -128,49 +133,43 @@ Job counts are runs that have no result yet, starting from the CPU records of th
 
 | tier | experiments | runs | what it verifies / which table it completes |
 |---|---|---:|---|
-| 0 | GPU correctness check; efficiency on the GPU | – | The GPU code paths match the CPU reference. Parameters, time per batch and peak GPU memory of DLT-dyn and the eight baselines on Weather, PEMS08, ECL and Traffic (paper efficiency table; MillGNN reports 9.7 GB, iTransformer 7.5 GB). |
+| 0 | GPU correctness check; efficiency on the GPU | – | The GPU code paths match the CPU reference. Parameters, time per batch and peak GPU memory of DLT-dyn and the six baselines on Weather, PEMS08, ECL and Traffic (paper efficiency table; MillGNN reports 9.7 GB, iTransformer 7.5 GB). |
 | 1a | DLT-dyn and CI linear on Traffic, 4 horizons | 24 | The last dataset of the long-term table, and whether the cross branch helps on Traffic. |
 | 1b | PatchTST ± DLT-dyn on PEMS08-12 | 6 | The plug-in claim for the third backbone on PEMS08. |
 | 1c | Plug-in on large data: DLinear / PatchTST / iTransformer ± DLT-dyn on ECL and Traffic (4 horizons each) and PEMS04-12 | 162 | Whether the plug-in gains (Weather −7 to −17 %, PEMS08 −4 to −27 %) hold on large data. |
 | probe | + DLT-dyn on Traffic-96 with the learning rate of the backbone, with a static gate, and with both (PatchTST, iTransformer) | 6 | Why the plug-in hurts on Traffic ([`results/gpu/README.md`](results/gpu/README.md), section 4). |
 | 2 | 20-trial validation search on ECL, Traffic (H = 96) and PEMS04/08 (H = 12), then the selected configurations: ECL/Traffic × 4 horizons, PEMS04/08 at H = 12 | 80 + 30 | Fair tuning budget against MillGNN (20 NNI trials) on the data where DLT is strongest. |
-| 3 | The eight representative baselines with their official hyper-parameters on the 8 long-term datasets × 4 horizons, one seed; 81 of the 256 runs were done on the CPU | 175 | Reported vs re-run baseline numbers under one pipeline (fairness). |
+| 3 | The baseline check: the six baselines with their official settings and protocol on all 13 datasets, one seed (section below) | 312 | Every baseline against the S-Mamba paper under one pipeline (fairness). |
 | 4 (optional) | All other variables as neighbours: DLT-dyn on ECL; DLT and DLT-dyn on Traffic | 36 | Whether more neighbours help on large data. Low priority: at horizon 12 and for DLT on ECL they overfitted. |
 
-**The eight representative baselines** (`BASELINES` in [`scripts/exps.py`](scripts/exps.py)), one per model family:
+**The six baselines** (`BASELINES` in [`scripts/baselines.py`](scripts/baselines.py)), those of the S-Mamba paper
+(2026-11-17; the other models of Time-Series-Library, and Informer, TimesNet, TimeMixer, TimeXer and LagTS of the
+earlier studies, were removed):
 
-| model | family | hyper-parameters |
+| model | family | settings (copies in `scripts/official/`) |
 |---|---|---|
-| Informer | classic Transformer | TSLib scripts (one generic setting) |
-| TimesNet | CNN on 2-D period maps | TSLib scripts |
-| DLinear | linear | TSLib scripts |
-| PatchTST | channel-independent patch Transformer | TSLib scripts |
-| iTransformer | Transformer over variate tokens | TSLib scripts |
-| TimeMixer | multi-scale MLP mixing | TSLib scripts |
-| TimeXer | patch and variate tokens | TSLib scripts (ETTh1 setting on Exchange) |
-| S-Mamba | bidirectional Mamba over variate tokens | official S-Mamba scripts, as `scripts/long_term_forecast/*_script/SMamba*.sh` |
+| S-Mamba | bidirectional Mamba over variate tokens | official S-Mamba scripts |
+| iTransformer | Transformer over variate tokens | official iTransformer scripts |
+| PatchTST | channel-independent patch Transformer | Time-Series-Library scripts (Solar, PEMS: the Electricity line) |
+| RLinear | RevIN + one linear map | RLinear code's `script.md` (Exchange: ETTh1; Traffic, Solar, PEMS: Electricity) |
+| DLinear | decomposition + linear | Time-Series-Library scripts / defaults |
+| TiDE | dense encoder-decoder (MLP) | Time-Series-Library script (ETTh1, the only one, on every dataset) |
 
-S-Mamba is not part of Time-Series-Library; `models/SMamba.py` re-implements it after the official code. It uses
-`mamba_ssm` (installed, or from `~/mamba` and `~/causal-conv1d`) and a pure-PyTorch block otherwise (same model,
-sequential scan); `python scripts/gpu/check_mamba.py` checks which one a GPU run will use.
-Trained on the CPU with the official settings it reproduces the published numbers: the average over the four
-horizons is within +0.9 % (ETTh1), +0.3 % (ETTh2) and −0.6 % (Exchange) of the paper's MSE, Weather-96 within
-+1.1 %; single horizons lie between −1.1 % and +4.2 % (13 runs in `results/p1/results_baselines.jsonl`).
-With the PyTorch block one step per variate token is taken in Python, which is slow on Electricity and Traffic:
-make sure `check_mamba.py` ends with "S-Mamba will use mamba_ssm" before tier 3 (set-up below). LagTS (our re-implementation, at most 21 variables) is no
-longer in the default set; `python scripts/exps.py baselines --models LagTS` adds it.
+S-Mamba and RLinear are not part of Time-Series-Library; `models/SMamba.py` and `models/RLinear.py` follow the
+official code. S-Mamba uses `mamba_ssm` (installed, or from `~/mamba` and `~/causal-conv1d`) and a pure-PyTorch
+block otherwise (same model, sequential scan); `python scripts/gpu/check_mamba.py` checks which one a GPU run will
+use. With the PyTorch block one step per variate token is taken in Python, which is slow on Electricity and
+Traffic: make sure `check_mamba.py` ends with "S-Mamba will use mamba_ssm" before the large datasets.
 
-**Cost of tier 3.** TimesNet is the expensive model: 150 M parameters on Electricity and 302 M on Traffic with its
-official settings (112 s and 123 s per training batch on the 4-thread CPU). Order the list by need:
+**Cost of the baseline check.** TiDE runs one forward pass per variable (Time-Series-Library's implementation), so
+it is slow on Traffic and PEMS07 (862 and 883 variables). Order the list by need:
 `python scripts/exps.py baselines --seeds 2021 --device gpu --models <models> --datasets <datasets>` writes a
 smaller list `baselines`.
 
 **Memory on one 24 GB card.**
 - DLT is small: DLT-dyn needs about 1 GB per step on Traffic at batch 32 (measured on the CPU).
-- The heavy runs are the baselines on Traffic: iTransformer (12.4 GB at batch 32 on the CPU; its TSLib script
-  uses batch 16), PatchTST with the TSLib configuration (d_model 512, batch 4), TimeMixer (batch 8), TimesNet
-  (5.9 GB at batch 32 on the CPU) and TimeXer (10.9 GB on Electricity at batch 32 on the CPU; its script uses
-  batch 4 there and batch 16 on Traffic).
+- The heavy runs are the baselines on Traffic: iTransformer (12.4 GB at batch 32 on the CPU; its script uses
+  batch 16) and PatchTST with the TSLib configuration (d_model 512, batch 4).
 - DLT-dyn with all neighbours on Traffic (tier 4) is the one to watch: the pair features take about 3 GB per
   tensor at batch 32, so the peak is estimated at 15–20 GB (not measured). Use `--batch_size 16` if it does not fit.
 
@@ -205,7 +204,7 @@ python scripts/p2/efficiency.py --device gpu    # -> results/p2/efficiency_gpu.j
 It also checks that neighbour selection on the GPU picks the same sources as on the CPU (ties, for example a
 dead sensor, may be broken differently and are accepted when the scores agree) and, when `mamba_ssm` can be
 imported, that S-Mamba with the `mamba_ssm` block equals S-Mamba with the pure-PyTorch block. `--ablation` adds the
-other kernel variants of the P0 study and LagTS.
+other kernel variants of the P0 study.
 
 **S-Mamba and the Mamba sources.** `models/SMamba.py` imports the Mamba block of `mamba_ssm`
 (`mamba_ssm.modules.mamba_simple`) from the environment, else from the checkouts `../mamba` and `../causal-conv1d`;
@@ -239,23 +238,59 @@ and ends with the verdict and, if needed, the commands for the machine it runs o
   ```
   This compiles for every GPU architecture and takes long; the wheels are the quicker way.
 
+## Baseline check: the six baselines against the S-Mamba paper (suite `baselines`, 2026-11-17)
+
+Each baseline alone, with the settings of its official scripts (`scripts/baselines.py`) and the protocol of the
+official loaders: four time features on every dataset (`--freq h`, as no official script sets it), training and
+validation loaders that drop their last incomplete batch (`--drop_last`), test batch 1; PEMS and Solar without time
+marks, PEMS with the split of the iTransformer / S-Mamba loader. 6 baselines × 52 settings = 312 runs per seed.
+`baseline_check.py` compares every setting with the S-Mamba paper (`reported.json`, block `smamba_paper`), baseline
+by baseline, and lists the settings more than 10 % worse than published.
+
+```bash
+python scripts/exps.py baselines --device gpu --seeds 2021                 # 312 jobs
+python scripts/smoke_jobs.py baselines                                     # pre-flight, peak GPU memory
+# baseline by baseline, the cheap ones first (each line can run on its own)
+for m in DLinear RLinear iTransformer SMamba PatchTST TiDE; do
+  python scripts/exps.py baselines --device gpu --seeds 2021 --models $m --list baselines_$m &&
+  bash scripts/gpu/run_gpu_queue.sh baselines_$m 0 0 &&
+  python scripts/p1/baseline_check.py --models $m
+done > work/baselines.out 2>&1
+python scripts/p1/baseline_check.py --out results/p1/baseline_check.md   # all six; commit this file
+```
+
+Checked already (CPU, or earlier GPU runs with the previous protocol):
+- the implementations equal the official code (DLinear, PatchTST, TiDE: Time-Series-Library; iTransformer and
+  S-Mamba: the authors' repositories; RLinear: a port of the official model);
+- DLinear, S-Mamba and iTransformer alone matched the paper on the long-term sets within a few per cent;
+- RLinear with its official settings on ETTh1-96: 0.383 / 0.392 against 0.386 / 0.395;
+- TiDE with Time-Series-Library's script on ETTh1-96: 0.385 / 0.393, much better than the 0.479 / 0.464 published
+  (see results/p1/baseline_check_cpu.md).
+
+## How the branch enters the backbone (suite `plugin_fusion`, 2026-11-17)
+
+`--dlt_fusion output | refine | input`, `--dlt_train joint | decoupled` and `--dlt_select variable`
+(`models/DLTPlug.py`). The suite runs every backbone alone and with five arms (`FUSION_ARMS` in `scripts/exps.py`);
+the table is `python scripts/p1/fusion_table.py`.
+
+```bash
+python scripts/exps.py plugin_fusion --device gpu --seeds 2021 --models SMamba iTransformer PatchTST RLinear DLinear TiDE
+bash scripts/gpu/run_gpu_queue.sh plugin_fusion 0 0 0
+python scripts/p1/fusion_table.py
+```
+
 ## Plug-in study: every backbone alone and + DLT-dyn (suite `plugin_all`)
 
-Each of the eight representative backbones alone and with the DLT-dyn branch, on thirteen datasets: the eight
-long-term sets and Solar at horizons 96/192/336/720, PEMS03/04/07/08 at 12/24/48/96. That is 8 × 13 × 4 × 2 = 832
-runs per seed.
+Each of the six baselines alone and with the DLT-dyn branch, on thirteen datasets: the eight long-term sets and
+Solar at horizons 96/192/336/720, PEMS03/04/07/08 at 12/24/48/96. That is 6 × 13 × 4 × 2 = 624 runs per seed. The
+backbone runs with the settings and the protocol of the baseline check. The records of this suite made before
+2026-11-17 used the earlier eight backbones and the earlier protocol (time features per dataset frequency, no
+dropped batches); they stay in `results/gpu/plugin_all.jsonl` and are not comparable with new runs.
 - Both arms run through `DLTPlug`. "Alone" (`--dlt_variant ci`) builds only the backbone and is identical to
   running the backbone directly; "+ DLT" adds the branch with its default recipe (DLT-dyn, k 8, L 48, R 4, branch
   learning rate 3e-3).
-- Backbone settings: the official ones, so that every backbone alone reproduces its published numbers; section 6
-  of `plugin_table.py` checks this.
-  - Long-term sets: the TSLib scripts, which produced the published input-96 numbers; PatchTST too (until
-    2026-11-15 it used its paper's settings, as in the earlier plug-in study).
-  - Solar and PEMS: the repositories of iTransformer, S-Mamba and TimeMixer, per horizon (`REPO_OFFICIAL` in
-    `scripts/exps.py`; TimeMixer has one PEMS setting, horizon 12, used for every horizon).
-  - Models without settings for Solar or PEMS (Informer, TimesNet, TimeXer, DLinear, PatchTST) take the
-    documented fallbacks: TimesNet, TimeXer and PatchTST the Electricity configuration, Informer its generic one,
-    DLinear the defaults.
+- Backbone settings and protocol: those of the baseline check (`scripts/baselines.py`), so that every backbone
+  alone reproduces its published numbers; section 6 of `plugin_table.py` and `baseline_check.py` check this.
 - PEMS follows iTransformer and S-Mamba: input 96, MSE loss, MSE / MAE on the normalised scale, no time marks,
   their split (`--pems_split itransformer`: validation and test windows start inside their split) and test batch 1;
   Solar likewise (no time marks, test batch 1). The other suites
@@ -288,7 +323,7 @@ python scripts/p1/plugin_table.py              # the comparison so far (markdown
   GPU memory, so a configuration that does not fit fails here and not after hours. Jobs that run at the same time
   on the card need the sum of their peaks.
 - The stages run one after the other. Three jobs at a time suit the small datasets, one at a time Electricity,
-  Traffic and PEMS07 (862 and 883 variables; TimesNet on Electricity / Traffic: 150 M / 302 M parameters).
+  Traffic and PEMS07 (862 and 883 variables).
 - A failed job leaves its log in `work/logs/plugin_all/<job>_s2021.log`. Running the same stage again runs only
   the jobs without a result.
 - More seeds later: the same commands with `--seeds 2022 2023`; the table averages the seeds.
@@ -341,9 +376,9 @@ python scripts/p1/plugin_table.py                                   # pairs at t
 The table states for which settings another learning rate was chosen. A paper reports this rule as it is: where
 a backbone ran more than 10 % behind its published result, its learning rate was chosen on the validation set.
 
-**NaN forecasts.** TimesNet on Traffic gave a NaN test MSE in both arms. On the GPU machine:
-`python scripts/gpu/diag_nonfinite.py Traffic_96_TimesNet_alone` (it needs the job in `work/jobs_plugin_all.txt`,
-i.e. the list of stage 3, and the checkpoint in `work/ckpt`; `--list` names another list).
+**NaN forecasts.** TimesNet on Traffic gave a NaN test MSE in both arms (TimesNet is no longer a baseline). For a
+future case: `python scripts/gpu/diag_nonfinite.py <job>` (it needs the job in the job list and the checkpoint in
+`work/ckpt`; `--list` names the list).
 
 **PEMS and Solar without time marks (2026-11-15).** The iTransformer and S-Mamba code, where the official PEMS
 and Solar settings come from, gives the model no time marks on these datasets (`x_mark = None`). The first
@@ -427,5 +462,5 @@ Records are merged by job name and seed, so nothing in `results/` is lost; `effi
   - MoVE is compared through Table 4 of its submission (input 96, seed 2024).
   - The MillGNN-style and MoVE-style mechanisms are re-implemented inside DLT for the controlled study (P0).
 - **If the GPU budget is small.** Run tier 0, then 1a and 1b, the probe, then 1c with iTransformer only. Run tier 2
-  for PEMS only (40 + 6 runs). In tier 3 leave out TimesNet on Electricity and Traffic and use its reported
-  numbers (`scripts/p1/reported.json` holds them, next to those of S-Mamba).
+  for PEMS only (40 + 6 runs). In the baseline check run the long-term sets first; TiDE on Traffic and PEMS07 is
+  the slowest part.

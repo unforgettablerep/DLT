@@ -29,9 +29,9 @@ python scripts/p1/hpsearch.py select > "$WORK/hp_select.md"
 python scripts/p1/hpsearch.py tuned
 bash scripts/run_queue.sh tuned 4 || echo "some tuned jobs failed"
 
-python scripts/exps.py baselines --models DLinear --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange Weather ECL
+python scripts/exps.py baselines --models RLinear DLinear --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange Weather ECL
 mv "$WORK/jobs_baselines.txt" "$WORK/jobs_baselines_a.txt"
-python scripts/exps.py baselines --models iTransformer TimeMixer LagTS --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange
+python scripts/exps.py baselines --models iTransformer TiDE --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange
 mv "$WORK/jobs_baselines.txt" "$WORK/jobs_baselines_b.txt"
 cat "$WORK"/jobs_ci_long.txt "$WORK"/jobs_allnb.txt "$WORK"/jobs_baselines_a.txt "$WORK"/jobs_baselines_b.txt \
     > "$WORK/jobs_cpu_extra.txt"
