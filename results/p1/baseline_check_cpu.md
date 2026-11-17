@@ -164,7 +164,8 @@ ETTh1-96, CPU, seed 2021, protocol of the check (published: 0.479 / 0.464):
 | library defaults (lr 1e-4, batch 32, d_model 512): stopped after 8 of 10 epochs, validation MSE 0.753 against 0.69 with the script | – | – |
 
 The official implementation with the official script is 20 % better than the published number, the TiDE paper's
-settings at input 96 are far worse. The published TiDE column cannot be reproduced from an official configuration;
+settings at input 96 are far worse. With the same script TiDE is also better than published on ETTh2-96 (-28 %) and
+Exchange-96 (-10 %) (table above). The published TiDE column cannot be reproduced from an official configuration;
 the defaults may be closest but were not finished. The comparison should use our TiDE runs (a stronger baseline)
 and say so, rather than the published column.
 
@@ -177,7 +178,7 @@ and say so, rather than the published column.
 | PatchTST | Time-Series-Library | TSLib scripts (Solar, PEMS: Electricity line) | ETTh1-96 0.403 against 0.414 with the TSLib script (the paper's settings gave 0.427); the rest on the GPU |
 | RLinear | port of the official code | RLinear `script.md` | 24 settings on six sets: 23 within 5 %, none worse by more than 10 % (mean abs. change 1.7 %) |
 | DLinear | Time-Series-Library | TSLib scripts / defaults | 32 settings: 30 within 5 %, none worse by more than 10 % (earlier protocol; DLinear ignores time marks) |
-| TiDE | Time-Series-Library | TSLib script (ETTh1 line everywhere) | better than published on ETTh1 (section 4); the published column is not reproducible |
+| TiDE | Time-Series-Library | TSLib script (ETTh1 line everywhere) | at horizon 96 better than published by 20 % (ETTh1), 28 % (ETTh2) and 10 % (Exchange); the published column is not reproducible (section 4) |
 
 Still to run on the GPU (GPU_RUNS.md, "Baseline check"): every baseline on every dataset with the protocol of the
 check; then `python scripts/p1/baseline_check.py`.
