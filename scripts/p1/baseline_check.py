@@ -15,6 +15,9 @@ ours / paper (change of MSE) per horizon and the change of MAE averaged over the
 when the MSE is more than --tol % worse than published (default 5 %; ** more than 10 %). Below each table: settings
 within the tolerance, mean |change|, and the settings that are worse by more than 10 % (to be explained or fixed
 before the baseline is used).
+Learning-rate check (scripts/exps.py baselines --backbone_lr ...; jobs <name>@lr<x>): where such runs exist, the
+setting takes the learning rate with the lowest validation loss among the official one and the checked ones; the
+cell then names it ([lr x]). --official_only ignores these runs.
 """
 import argparse, collections, json, statistics, sys
 from pathlib import Path
@@ -26,7 +29,7 @@ import baselines  # noqa: E402
 DS_OF_FILE = {f: d for d, f in baselines.FILES.items()}
 
 
-def load(files, any_protocol=False):
+def load(files, any_protocol=False, official_only=False):
     runs = {}
     default = [d / f'results_{s}.jsonl' for d in (paths.REPO / 'results' / 'p1', paths.WORK)
                for s in ('baselines', 'plugin_all', 'plugin_fusion')]
@@ -47,10 +50,25 @@ def load(files, any_protocol=False):
             if not any_protocol and not (r.get('freq') == 'h' and r.get('drop_last')):
                 continue                                         # an earlier protocol (records before 2026-11-17)
             runs[(r['des'], r.get('seed'), r.get('model'))] = (model, r)
-    cells = collections.defaultdict(list)                       # (model, dataset, H) -> records
+    variants = collections.defaultdict(lambda: collections.defaultdict(list))   # (model, ds, H) -> {suffix: records}
     for model, r in runs.values():
-        cells[(model, DS_OF_FILE[r['data_path']], r['pred_len'])].append(r)
-    return cells
+        ds, H = DS_OF_FILE[r['data_path']], r['pred_len']
+        sfx = r['des'][len(f'{ds}_{H}_{model}'):] if r['des'].startswith(f'{ds}_{H}_{model}') else ''
+        sfx = sfx.replace('_alone', '')                         # plug-in suites: arm "alone"
+        if sfx and not sfx.startswith('@lr'):
+            continue
+        variants[(model, ds, H)][sfx].append(r)
+    cells, chosen = {}, {}
+    for key, v in variants.items():
+        vali = lambda rs: statistics.mean(r['best_vali'] for r in rs if r.get('best_vali') is not None) \
+            if any(r.get('best_vali') is not None for r in rs) else float('inf')
+        sfx = '' if official_only or len(v) == 1 else min(v, key=lambda x: vali(v[x]))
+        if sfx not in v:
+            continue
+        cells[key] = v[sfx]
+        if sfx:
+            chosen[key] = sfx[3:]
+    return cells, chosen
 
 
 def main():
@@ -59,10 +77,11 @@ def main():
     p.add_argument('--models', nargs='+', default=list(baselines.BASELINES))
     p.add_argument('--tol', type=float, default=5.0)
     p.add_argument('--any_protocol', action='store_true', help='also records of the earlier protocol')
+    p.add_argument('--official_only', action='store_true', help='ignore the runs of the learning-rate check')
     p.add_argument('--out')
     a = p.parse_args()
     R = json.load(open(Path(__file__).with_name('reported.json')))['smamba_paper']
-    cells = load(a.files, a.any_protocol)
+    cells, chosen = load(a.files, a.any_protocol, a.official_only)
     tol = a.tol / 100
     fmt = lambda d: f'{100 * d:+.1f} %'
     out = ['# Baseline check against the S-Mamba paper', '',
@@ -90,7 +109,9 @@ def main():
                 mark = '**' if d > 0.10 else ('*' if d > tol else '')
                 if d > 0.10:
                     bad.append(f'{ds}-{H} {fmt(d)}')
-                line.append(f'{mse:.3f} / {ref[0]:.3f} ({fmt(d)}){mark}' + (f' n={len(rs)}' if len(rs) > 1 else ''))
+                lr = chosen.get((m, ds, H))
+                line.append(f'{mse:.3f} / {ref[0]:.3f} ({fmt(d)}){mark}' + (f' n={len(rs)}' if len(rs) > 1 else '')
+                            + (f' [lr {lr}]' if lr else ''))
             rows.append(f'| {ds} | ' + ' | '.join(line) + f' | {fmt(statistics.mean(mae_ch)) if mae_ch else "-"} |')
         name = baselines.NAME.get(m, m)
         if not rows:

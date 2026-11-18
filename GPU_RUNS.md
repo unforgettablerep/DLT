@@ -73,6 +73,7 @@ Evaluation of the results so far: [`results/gpu/README.md`](results/gpu/README.m
 | 0, 2, 3, 4 | not started |
 | plug-in study, all eight backbones (`plugin_all`) | stage 1 and PEMS04/08 done, Electricity / Traffic running (2026-11-15). Evaluation: [`results/gpu/plugin_all_stage1.md`](results/gpu/plugin_all_stage1.md), [`results/gpu/plugin_all_gate.md`](results/gpu/plugin_all_gate.md). The branch helps on Weather and PEMS (channel-independent backbones −32 % on average) and hurts on ETTh2 and Exchange. The static gate does not change that; keeping the branch only where it lowers the validation loss does (settings worse by > 2 %: 96 → 20 of 260). TimesNet on Traffic: test MSE NaN in both arms, under diagnosis (`scripts/gpu/diag_nonfinite.py`). On PEMS, iTransformer (PEMS08, horizons 48 / 96) and PatchTST fall far behind their published numbers, which inflates their gains; PEMS runs now follow the iTransformer code without time marks and are to be repeated. |
 | six baselines, baseline check, fusion study (2026-11-17) | The baselines are now those of the S-Mamba paper (S-Mamba, iTransformer, PatchTST, RLinear, DLinear, TiDE) with the settings of their official scripts and the protocol of the official loaders; the other models were removed. To run: the baseline check (312 runs), `plugin_all` again (624 runs; the earlier records used other backbones and protocol), and `plugin_fusion` (new ways to add the branch). |
+| baseline check, Weather and PEMS04 (2026-11-18) | Weather: all six baselines within 5 % of the S-Mamba paper in all 24 settings. PEMS04: DLinear, RLinear and S-Mamba match or beat it, TiDE is far better (horizon 12; 3 horizons pending); iTransformer is 13–14 % behind at horizons 48 / 96 and PatchTST (no official PEMS setting) 18–112 % behind at 24–96: learning-rate check next ([evaluation](results/gpu/baseline_check.md)). |
 
 **What to run next (2026-11-17).** The baseline check, baseline by baseline (section "Baseline check" below); then
 `plugin_fusion` for the six backbones; then `plugin_all` with the fusion that wins. The older list below is
@@ -257,6 +258,17 @@ for m in DLinear RLinear iTransformer SMamba PatchTST TiDE; do
   python scripts/p1/baseline_check.py --models $m
 done > work/baselines.out 2>&1
 python scripts/p1/baseline_check.py --out results/p1/baseline_check.md   # all six; commit this file
+```
+
+Upload `work/results_baselines.jsonl`; it is kept as `results/gpu/baselines.jsonl`
+([evaluation](results/gpu/baseline_check.md)). Where a baseline stays more than 10 % behind the paper, the
+learning-rate check runs the same settings at the other learning rates of {1e-4, 5e-4, 1e-3} (jobs `<name>@lr<x>`).
+`baseline_check.py` then takes, per setting, the learning rate with the lowest validation loss and names it:
+
+```bash
+python scripts/exps.py baselines --device gpu --seeds 2021 --models iTransformer PatchTST --datasets PEMS04 \
+    --backbone_lr 0.0001 0.0005 0.001 --list bl_lrcheck
+bash scripts/gpu/run_gpu_queue.sh bl_lrcheck 0 0
 ```
 
 Checked already (CPU, or earlier GPU runs with the previous protocol):

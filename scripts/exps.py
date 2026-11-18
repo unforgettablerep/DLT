@@ -17,7 +17,9 @@ Suites
   baselines    P1  the baseline check: the six baselines (scripts/baselines.py: S-Mamba, iTransformer, PatchTST,
                    RLinear, DLinear, TiDE) alone, with their official settings and the protocol of the official
                    loaders, on all 13 datasets (horizons 96/192/336/720; PEMS 12/24/48/96), to be compared with the
-                   S-Mamba paper: python scripts/p1/baseline_check.py
+                   S-Mamba paper: python scripts/p1/baseline_check.py. With --backbone_lr x y ... the same settings
+                   at these learning rates (learning-rate check; the check takes the one with the lowest validation
+                   loss, and says so)
   sensitivity  P2  DLT-dyn, one factor at a time: L in {12,24,96}, R in {2,8}, k in {4,16} (default 48/4/8)
                    on ETTh1-96, Weather-96, PEMS08-96
   neighbours   P2  DLT-dyn / DLT with random or all neighbours instead of the CCF top-k (Weather-96, PEMS08-96)
@@ -202,7 +204,7 @@ def main():
     p.add_argument('--seeds', type=int, nargs='+', default=[2021, 2022, 2023])
     p.add_argument('--dlt', default='', help='extra --dlt_* arguments of the proposed model (e.g. a gate)')
     p.add_argument('--backbone_lr', type=float, nargs='+',
-                   help='plugin_all: learning-rate check, the backbone alone only, at these learning rates (arm alone@lr<x>)')
+                   help='plugin_all / baselines: learning-rate check, the backbone alone only, at these learning rates (<job>@lr<x>)')
     p.add_argument('--select_lr', action='store_true',
                    help='plugin_all: both arms at the learning rate whose backbone-alone run has the lowest validation '
                         'loss, for the settings with a learning-rate check (arms alone@lr<x>, dlt@lr<x>)')
@@ -298,12 +300,20 @@ def main():
         for ds, H, seed in itertools.product(a.datasets or LONG_SETS, HORIZONS, S):
             g.add(f'{ds}_{H}_ci', 'DLT', ds, H, seed, f'--dlt_variant ci {DLT_TRAIN}', cost(ds, 0.1))
     elif a.suite == 'baselines':
-        # the baseline check: each baseline alone, official settings and protocol (scripts/baselines.py)
+        # the baseline check: each baseline alone, official settings and protocol (scripts/baselines.py).
+        # --backbone_lr: learning-rate check, the same settings at these learning rates (jobs <name>@lr<x>);
+        # baseline_check.py then takes, per setting, the learning rate with the lowest validation loss
         for ds, base, seed in itertools.product(a.datasets or PLUGIN_ALL_SETS, a.models or BASELINES, S):
             for H in PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS:
                 bargs, _ = baselines.args(base, ds, H)
-                g.add(f'{ds}_{H}_{base}', base, ds, H, seed, f'{baselines.protocol(ds)} {bargs}',
-                      cost(ds, REL_COST[base]), label=48)
+                full = f'{baselines.protocol(ds)} {bargs}'
+                if a.backbone_lr:
+                    for lr in a.backbone_lr:
+                        if abs(lr - setting_lr(full)) > 1e-12:
+                            g.add(f'{ds}_{H}_{base}{lr_suffix(lr)}', base, ds, H, seed, f'{full} --learning_rate {lr:g}',
+                                  cost(ds, REL_COST[base]), label=48)
+                    continue
+                g.add(f'{ds}_{H}_{base}', base, ds, H, seed, full, cost(ds, REL_COST[base]), label=48)
     elif a.suite == 'sensitivity':
         for ds, H in (('ETTh1', 96), ('Weather', 96), ('PEMS08', 96)):
             for name, args, rel in (('L12', '--dlt_L 12', 0.6), ('L24', '--dlt_L 24', 0.7), ('L96', '--dlt_L 96', 1.8),
