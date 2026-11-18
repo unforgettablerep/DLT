@@ -13,6 +13,7 @@
 * the six baselines (scripts/baselines.py) have a setting for every dataset and horizon, taken from the official
   scripts (spot checks against the files), the protocol of the official loaders, and every job line of the
   baseline check parses with run.py
+* TiDE --tide_checkpoint: identical outputs and gradients (dropout masks replayed)
 * iTransformer: --use_norm 1 (default) is instance normalisation, --use_norm 0 turns it off; the official
   per-horizon PEMS / Solar settings of iTransformer and S-Mamba
 """
@@ -259,6 +260,20 @@ for line in open(jf):
         bad.append(args.des)
 import os; os.remove(jf)
 ok(f'baseline check: every job line parses with run.py and carries the protocol ({n} lines)', n == 312 and not bad)
+
+# ---- TiDE --tide_checkpoint: same outputs and gradients (dropout on), far less memory kept for backward
+from models import TiDE
+ct = cfg(enc_in=12, dec_in=12, c_out=8, seq_len=96, pred_len=24, d_model=32, d_ff=16, e_layers=2, d_layers=2,
+         dropout=0.3, freq='h', embed='timeF')
+torch.manual_seed(1); t0 = TiDE.Model(ct).train()
+ct.tide_checkpoint = True
+torch.manual_seed(1); t1 = TiDE.Model(ct).train()
+xt, ytt = torch.randn(4, 96, 12), torch.randn(4, 24, 12)
+torch.manual_seed(7); o0 = t0(xt, None, None, None); ((o0 - ytt) ** 2).mean().backward()
+torch.manual_seed(7); o1 = t1(xt, None, None, None); ((o1 - ytt) ** 2).mean().backward()
+gdiff = max((p.grad - q.grad).abs().max().item() for p, q in zip(t0.parameters(), t1.parameters()))
+ok(f'TiDE --tide_checkpoint: identical outputs and gradients with dropout (max gradient difference {gdiff:.1e})',
+   torch.equal(o0, o1) and gdiff == 0.0)
 
 # ---- iTransformer --use_norm
 from models import iTransformer

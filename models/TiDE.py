@@ -1,4 +1,5 @@
 import torch
+from torch.utils.checkpoint import checkpoint
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -58,6 +59,7 @@ class Model(nn.Module):
         self.feature_encode_dim=feature_encode_dim
         self.decode_dim = configs.c_out
         self.temporalDecoderHidden=configs.d_ff
+        self.checkpoint = bool(getattr(configs, 'tide_checkpoint', False))   # DLT addition, see forward()
         dropout=configs.dropout
 
         
@@ -128,7 +130,13 @@ class Model(nn.Module):
                 batch_y_mark = torch.zeros((x_enc.shape[0], self.seq_len+self.pred_len, self.feature_dim)).to(x_enc.device).detach()
             else:
                 batch_y_mark = torch.concat([x_mark_enc, batch_y_mark[:, -self.pred_len:, :]],dim=1)
-            dec_out = torch.stack([self.forecast(x_enc[:, :, feature], x_mark_enc, x_dec, batch_y_mark) for feature in range(x_enc.shape[-1])],dim=-1)
+            run = self.forecast
+            if self.checkpoint and self.training and torch.is_grad_enabled():
+                # --tide_checkpoint (DLT addition): recompute each variable's forward pass in the backward pass instead
+                # of keeping the activations of all variables (about 140-320 KB per sample and variable at input 96;
+                # 48 GB on PEMS04 at batch 512 and horizon 96). Same outputs and gradients (dropout masks are replayed).
+                run = lambda *a: checkpoint(self.forecast, *a, use_reentrant=False)
+            dec_out = torch.stack([run(x_enc[:, :, feature], x_mark_enc, x_dec, batch_y_mark) for feature in range(x_enc.shape[-1])],dim=-1)
             return dec_out # [B, L, D]
         if self.task_name == 'imputation':
             dec_out = torch.stack([self.imputation(x_enc[:, :, feature], x_mark_enc, x_dec, batch_y_mark, mask) for feature in range(x_enc.shape[-1])],dim=-1)

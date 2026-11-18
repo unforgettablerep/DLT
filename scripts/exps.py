@@ -95,6 +95,13 @@ FUSION_ARMS = {
 }
 FUSION_SETS = (('ETTh2', 96), ('Exchange', 96), ('Weather', 96), ('PEMS08', 12))
 FUSION_MODELS = ('RLinear', 'DLinear', 'iTransformer')
+def runtime_args(model, ds):
+    """options that change memory or speed but not the results: TiDE on data with many variables recomputes each
+    variable's forward pass in the backward pass (--tide_checkpoint; same outputs and gradients, unit-tested).
+    Without it TiDE needs 25-48 GB for its activations on PEMS04 at batch 512 (horizons 24-96)."""
+    return '--tide_checkpoint' if model == 'TiDE' and DATASETS[ds][2] > 100 else ''
+
+
 # relative cost of a backbone (only orders the job lists, longest first)
 REL_COST = {'SMamba': 1.5, 'iTransformer': 1.5, 'PatchTST': 3.0, 'RLinear': 0.2, 'DLinear': 0.3, 'TiDE': 2.0}
 
@@ -244,7 +251,7 @@ def main():
         chosen = selected_lrs(plugin_records()) if a.select_lr else {}
         for ds, base, seed in itertools.product(a.datasets or PLUGIN_ALL_SETS, a.models or BASELINES, S):
             for H in PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS:
-                bargs = f'{baselines.protocol(ds)} {plugin_all_args(base, ds, H)[0]}'
+                bargs = f'{baselines.protocol(ds)} {plugin_all_args(base, ds, H)[0]} {runtime_args(base, ds)}'.strip()
                 rel = REL_COST.get(base, 2.0)
                 if a.backbone_lr:                             # learning-rate check: the backbone alone only
                     for lr in a.backbone_lr:
@@ -270,7 +277,7 @@ def main():
                      for H in ((PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS) if a.horizons == 'all'
                                else ((12,) if ds in PEMS_SETS else (96,)))]
         for (ds, H), base, seed in itertools.product(sets, a.models or FUSION_MODELS, S):
-            bargs = f'{baselines.protocol(ds)} {plugin_all_args(base, ds, H)[0]}'
+            bargs = f'{baselines.protocol(ds)} {plugin_all_args(base, ds, H)[0]} {runtime_args(base, ds)}'.strip()
             rel = REL_COST.get(base, 2.0)
             g.add(f'{ds}_{H}_{base}_alone', 'DLTPlug', ds, H, seed,
                   f'--plug_base {base} --dlt_variant ci {bargs}', cost(ds, rel), label=48)
@@ -306,7 +313,7 @@ def main():
         for ds, base, seed in itertools.product(a.datasets or PLUGIN_ALL_SETS, a.models or BASELINES, S):
             for H in PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS:
                 bargs, _ = baselines.args(base, ds, H)
-                full = f'{baselines.protocol(ds)} {bargs}'
+                full = f'{baselines.protocol(ds)} {bargs} {runtime_args(base, ds)}'.strip()
                 if a.backbone_lr:
                     for lr in a.backbone_lr:
                         if abs(lr - setting_lr(full)) > 1e-12:

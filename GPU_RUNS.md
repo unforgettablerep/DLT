@@ -260,6 +260,8 @@ done > work/baselines.out 2>&1
 python scripts/p1/baseline_check.py --out results/p1/baseline_check.md   # all six; commit this file
 ```
 
+**TiDE memory.** TiDE (Time-Series-Library) runs one forward pass per variable and keeps the activations of all of them for the backward pass: at batch 512 on PEMS04 that is 21 GB at horizon 12 and 25 / 33 / 48 GB at 24 / 48 / 96, more than the 24 GB of the card. On data with more than 100 variables the jobs therefore carry `--tide_checkpoint`, which recomputes each pass in the backward pass: identical outputs and gradients, 0.06 GB kept, somewhat more time. Jobs written before 2026-11-18 lack the flag: write the list again.
+
 Upload `work/results_baselines.jsonl`; it is kept as `results/gpu/baselines.jsonl`
 ([evaluation](results/gpu/baseline_check.md)). Where a baseline stays more than 10 % behind the paper, the
 learning-rate check runs the same settings at the other learning rates of {1e-4, 5e-4, 1e-3} (jobs `<name>@lr<x>`).

@@ -40,7 +40,14 @@ Tables: `python scripts/p1/baseline_check.py --files results/gpu/baselines.jsonl
 
 ## Next on the GPU
 
-1. PEMS04 TiDE, the remaining three horizons (already queued).
+1. PEMS04 TiDE, horizons 24 / 48 / 96. With the original configuration they run out of GPU memory: TiDE runs one
+   forward pass per variable and keeps all their activations, 25 / 33 / 48 GB at batch 512 (21 GB at horizon 12,
+   which fit). The jobs now carry `--tide_checkpoint`, which recomputes each pass in the backward pass: the same
+   settings and the same outputs and gradients (unit test), 0.06 GB kept for backward. Write the list again:
+   ```bash
+   python scripts/exps.py baselines --device gpu --seeds 2021 --models TiDE --datasets PEMS04 --list bl_tide
+   bash scripts/gpu/run_gpu_queue.sh bl_tide 0              # horizon 12 is done and skipped
+   ```
 2. Learning-rate check for iTransformer and PatchTST on PEMS04: the same settings at the other learning rates of
    {1e-4, 5e-4, 1e-3}, 16 runs. `baseline_check.py` then takes, per setting, the learning rate with the lowest
    validation loss and names it in the table:

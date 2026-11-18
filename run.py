@@ -196,6 +196,9 @@ def get_parser():
     parser.add_argument('--pems_split', type=str, default='tslib', choices=['tslib', 'itransformer'],
                         help='PEMS: validation / test windows take their look-back from the preceding split (tslib) or '
                              'start inside their split (itransformer, as the iTransformer / S-Mamba loaders)')
+    parser.add_argument('--tide_checkpoint', action='store_true',
+                        help='TiDE: recompute each variable\'s forward pass in the backward pass (same results, '
+                             'far less memory on data with many variables)')
     parser.add_argument('--drop_last', action='store_true',
                         help='drop the last incomplete training / validation batch (official iTransformer, S-Mamba and '
                              'RLinear loaders)')
