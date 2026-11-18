@@ -115,7 +115,8 @@ def figure(path_pdf, examples, idx, K, h, d, centroid):
     col = {1: '#2a78d6', 2: '#eb6834', 3: '#1baf7a'}               # categorical slots 1-3 (validated, all pairs)
     style = {1: '-', 2: '--', 3: ':'}
     plt.rcParams.update({'font.size': 8, 'axes.edgecolor': ink2, 'axes.labelcolor': ink, 'xtick.color': ink2,
-                         'ytick.color': ink2, 'axes.spines.top': False, 'axes.spines.right': False})
+                         'ytick.color': ink2, 'axes.spines.top': False, 'axes.spines.right': False,
+                         'pdf.fonttype': 42, 'ps.fonttype': 42})           # embedded TrueType, no Type 3 fonts
     fig, axes = plt.subplots(1, len(examples) + 1, figsize=(7.2, 2.2), gridspec_kw={'width_ratios': [1] * len(examples) + [1.3]})
     tau = np.arange(K.shape[-1])
     for ax, i in zip(axes, examples):
@@ -161,7 +162,8 @@ def main():
     hops, dist, down = road_graph(str(fixed.path_of('PEMS08_edges.csv')), C)
     res = {}
     for variant in ('dlt', 'dltdyn'):
-        paths = sorted(glob.glob(os.path.join(a.ckpt, f'*PEMS08_{a.H}_DLT_*_pl{a.H}_*_{variant}_k8_L48_R4*', 'checkpoint.pth')))
+        paths = sorted(glob.glob(os.path.join(a.ckpt, f'*_P0_PEMS08_{a.H}_DLT_*_pl{a.H}_*_{variant}_k8_L48_R4*', 'checkpoint.pth')))
+        # the P0 grid only: other suites (e.g. long_extra) also train DLT-dyn on PEMS08
         paths = [q for q in paths if '_g' not in q.split(f'_{variant}_k8_L48_R4')[1]]   # ungated models only
         per_seed = []
         for q in paths:

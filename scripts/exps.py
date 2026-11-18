@@ -14,6 +14,10 @@ Suites
                    test MAE / MAPE / RMSE on the original scale): DLT-dyn, DLT, CI (+ DLT-dyn trained with MSE)
   long_small   P1  DLT-dyn on ETTh1/2, ETTm1/2, Exchange, Weather, horizons 96/192/336/720
   long_large   P1  DLT-dyn on Electricity and Traffic, horizons 96/192/336/720 (GPU recommended)
+  long_extra   P1  DLT-dyn on the other five datasets of the S-Mamba benchmark: Solar (horizons 96/192/336/720)
+                   and PEMS03/04/07/08 (12/24/48/96), with the protocol of the baseline check (normalised MSE / MAE,
+                   no time marks, the PEMS split of the iTransformer loader), so that DLT-dyn has a full row in the
+                   S-Mamba-style results table (--datasets restricts the sets)
   baselines    P1  the baseline check: the six baselines (scripts/baselines.py: S-Mamba, iTransformer, PatchTST,
                    RLinear, DLinear, TiDE) alone, with their official settings and the protocol of the official
                    loaders, on all 13 datasets (horizons 96/192/336/720; PEMS 12/24/48/96), to be compared with the
@@ -238,6 +242,10 @@ def main():
                                     ('ci', f'--dlt_variant ci {DLT_TRAIN} {PEMS_PROTOCOL}', 0.1),
                                     ('dltdyn_mse', f'{dlt} {DLT_TRAIN} --inverse --vali_inverse', 1.0)):
                 g.add(f'{ds}_{name}', 'DLT', ds, 12, seed, args, cost(ds, rel))
+    elif a.suite == 'long_extra':
+        for ds in a.datasets or ('PEMS08', 'PEMS04', 'Solar', 'PEMS03', 'PEMS07'):
+            for H, seed in itertools.product(PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS, S):
+                g.add(f'{ds}_{H}_dltdyn', 'DLT', ds, H, seed, f'{dlt} {DLT_TRAIN} {baselines.protocol(ds)}', cost(ds))
     elif a.suite in ('long_small', 'long_large'):
         sets = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather') if a.suite == 'long_small' else ('ECL', 'Traffic')
         for ds, H, seed in itertools.product(sets, HORIZONS, S):

@@ -296,6 +296,19 @@ bash scripts/gpu/run_gpu_queue.sh plugin_fusion 0 0 0
 python scripts/p1/fusion_table.py
 ```
 
+## Stand-alone DLT-dyn on Solar and PEMS (suite `long_extra`, 2026-11-18)
+
+The paper's full-result tables (layout of the S-Mamba paper) need DLT-dyn on all thirteen datasets. Solar-Energy and
+PEMS03/04/07/08 were missing; `long_extra` runs them with the protocol of the baseline check (normalised MSE / MAE,
+no time marks, the PEMS split of the iTransformer loader). Seed 2021 runs on the CPU of the cloud session
+(`work/jobs_long_extra_small_first.txt`, records copied to `results/p1/results_long_extra.jsonl`); seeds 2022 and
+2023 are cheap on the GPU:
+
+```bash
+python scripts/exps.py long_extra --device gpu --seeds 2022 2023
+bash scripts/gpu/run_gpu_queue.sh long_extra 0
+```
+
 ## Plug-in study: every backbone alone and + DLT-dyn (suite `plugin_all`)
 
 Each of the six baselines alone and with the DLT-dyn branch, on thirteen datasets: the eight long-term sets and
