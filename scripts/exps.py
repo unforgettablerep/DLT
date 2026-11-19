@@ -18,6 +18,11 @@ Suites
                    and PEMS03/04/07/08 (12/24/48/96), with the protocol of the baseline check (normalised MSE / MAE,
                    no time marks, the PEMS split of the iTransformer loader), so that DLT-dyn has a full row in the
                    S-Mamba-style results table (--datasets restricts the sets)
+  eff_tune     P2  DLT-dyn in the efficiency setting of the S-Mamba paper (Fig. 5): PEMS07 (horizon 12), Electricity,
+                   Traffic and ETTm1 (horizon 96); batch size 16, the epochs of the official S-Mamba scripts (Electricity
+                   5, otherwise 10), patience 3, no AMP, the protocol of the baseline check. The recipe is --dlt "<args>"
+                   (appended last, so it can override --learning_rate or the DLT defaults) and named by --tag; the
+                   recipes are compared on the validation loss: python scripts/p2/eff_tune.py
   baselines    P1  the baseline check: the six baselines (scripts/baselines.py: S-Mamba, iTransformer, PatchTST,
                    RLinear, DLinear, TiDE) alone, with their official settings and the protocol of the official
                    loaders, on all 13 datasets (horizons 96/192/336/720; PEMS 12/24/48/96), to be compared with the
@@ -90,6 +95,10 @@ PEMS_PROTOCOL = '--loss MAE --inverse --vali_inverse'          # TimeMixer / Mil
 
 
 # plugin_fusion: arm name -> DLTPlug arguments after the default recipe (--dlt_lr 0.003 and DLT_DEFAULT)
+EFF_SETS = (('ETTm1', 96), ('ECL', 96), ('Traffic', 96), ('PEMS07', 12))   # S-Mamba, Fig. 5
+EFF_EPOCHS = {'ETTm1': 10, 'ECL': 5, 'Traffic': 10, 'PEMS07': 10}           # official S-Mamba scripts
+
+
 FUSION_ARMS = {
     'dlt': '',                                                               # output, joint: plugin_all's arm (Eq. 2)
     'dlt_out-dec': '--dlt_train decoupled --dlt_select variable',
@@ -219,6 +228,7 @@ def main():
     p.add_argument('--select_lr', action='store_true',
                    help='plugin_all: both arms at the learning rate whose backbone-alone run has the lowest validation '
                         'loss, for the settings with a learning-rate check (arms alone@lr<x>, dlt@lr<x>)')
+    p.add_argument('--tag', help='eff_tune: name of the recipe given by --dlt (job names <ds>_<H>_dltdyn_<tag>)')
     p.add_argument('--list', help='name of the job list (work/jobs_<list>.txt; default: the suite), e.g. to run a '
                                   'second list of the same suite next to a running queue; results still go to '
                                   'work/results_<suite>.jsonl')
@@ -242,6 +252,14 @@ def main():
                                     ('ci', f'--dlt_variant ci {DLT_TRAIN} {PEMS_PROTOCOL}', 0.1),
                                     ('dltdyn_mse', f'{dlt} {DLT_TRAIN} --inverse --vali_inverse', 1.0)):
                 g.add(f'{ds}_{name}', 'DLT', ds, 12, seed, args, cost(ds, rel))
+    elif a.suite == 'eff_tune':
+        tag = a.tag or 'default'
+        for (ds, H), seed in itertools.product(EFF_SETS, S):
+            if a.datasets and ds not in a.datasets:
+                continue
+            train = f'--batch_size 16 --train_epochs {EFF_EPOCHS[ds]} --patience 3 --learning_rate 0.003'
+            g.add(f'{ds}_{H}_dltdyn_{tag}', 'DLT', ds, H, seed,
+                  f'{DLT_DEFAULT} {train} {baselines.protocol(ds)} {a.dlt or ""}'.strip(), cost(ds, 2.0))
     elif a.suite == 'long_extra':
         for ds in a.datasets or ('PEMS08', 'PEMS04', 'Solar', 'PEMS03', 'PEMS07'):
             for H, seed in itertools.product(PEMS_HORIZONS if ds in PEMS_SETS else HORIZONS, S):

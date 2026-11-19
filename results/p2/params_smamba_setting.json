@@ -1,0 +1,202 @@
+[
+ {
+  "dataset": "PEMS07",
+  "model": "S-Mamba",
+  "params": 4595212
+ },
+ {
+  "dataset": "PEMS07",
+  "model": "iTransformer",
+  "params": 3212812
+ },
+ {
+  "dataset": "PEMS07",
+  "model": "PatchTST",
+  "params": 6387724
+ },
+ {
+  "dataset": "PEMS07",
+  "model": "RLinear",
+  "params": 2930
+ },
+ {
+  "dataset": "PEMS07",
+  "model": "DLinear",
+  "params": 2328
+ },
+ {
+  "dataset": "PEMS07",
+  "model": "TiDE",
+  "params": 743722
+ },
+ {
+  "dataset": "PEMS07",
+  "model": "DLT-dyn k8 R4",
+  "params": 33520
+ },
+ {
+  "dataset": "PEMS07",
+  "model": "DLT-dyn k8 R8",
+  "params": 62104
+ },
+ {
+  "dataset": "PEMS07",
+  "model": "DLT-dyn k16 R4",
+  "params": 61776
+ },
+ {
+  "dataset": "PEMS07",
+  "model": "DLT-dyn k16 R8",
+  "params": 118616
+ },
+ {
+  "dataset": "ECL",
+  "model": "S-Mamba",
+  "params": 6760032
+ },
+ {
+  "dataset": "ECL",
+  "model": "iTransformer",
+  "params": 4833888
+ },
+ {
+  "dataset": "ECL",
+  "model": "PatchTST",
+  "params": 6903904
+ },
+ {
+  "dataset": "ECL",
+  "model": "RLinear",
+  "params": 9954
+ },
+ {
+  "dataset": "ECL",
+  "model": "DLinear",
+  "params": 18624
+ },
+ {
+  "dataset": "ECL",
+  "model": "TiDE",
+  "params": 1184638
+ },
+ {
+  "dataset": "ECL",
+  "model": "DLT-dyn k8 R4",
+  "params": 31832
+ },
+ {
+  "dataset": "ECL",
+  "model": "DLT-dyn k8 R8",
+  "params": 42432
+ },
+ {
+  "dataset": "ECL",
+  "model": "DLT-dyn k16 R4",
+  "params": 42104
+ },
+ {
+  "dataset": "ECL",
+  "model": "DLT-dyn k16 R8",
+  "params": 62976
+ },
+ {
+  "dataset": "Traffic",
+  "model": "S-Mamba",
+  "params": 9176672
+ },
+ {
+  "dataset": "Traffic",
+  "model": "iTransformer",
+  "params": 6411872
+ },
+ {
+  "dataset": "Traffic",
+  "model": "PatchTST",
+  "params": 3755104
+ },
+ {
+  "dataset": "Traffic",
+  "model": "RLinear",
+  "params": 11036
+ },
+ {
+  "dataset": "Traffic",
+  "model": "DLinear",
+  "params": 18624
+ },
+ {
+  "dataset": "Traffic",
+  "model": "TiDE",
+  "params": 1184638
+ },
+ {
+  "dataset": "Traffic",
+  "model": "DLT-dyn k8 R4",
+  "params": 49144
+ },
+ {
+  "dataset": "Traffic",
+  "model": "DLT-dyn k8 R8",
+  "params": 77056
+ },
+ {
+  "dataset": "Traffic",
+  "model": "DLT-dyn k16 R4",
+  "params": 76728
+ },
+ {
+  "dataset": "Traffic",
+  "model": "DLT-dyn k16 R8",
+  "params": 132224
+ },
+ {
+  "dataset": "ETTm1",
+  "model": "S-Mamba",
+  "params": 1145696
+ },
+ {
+  "dataset": "ETTm1",
+  "model": "iTransformer",
+  "params": 224224
+ },
+ {
+  "dataset": "ETTm1",
+  "model": "PatchTST",
+  "params": 3751520
+ },
+ {
+  "dataset": "ETTm1",
+  "model": "RLinear",
+  "params": 9326
+ },
+ {
+  "dataset": "ETTm1",
+  "model": "DLinear",
+  "params": 18624
+ },
+ {
+  "dataset": "ETTm1",
+  "model": "TiDE",
+  "params": 1184638
+ },
+ {
+  "dataset": "ETTm1",
+  "model": "DLT-dyn k8 R4",
+  "params": 21728
+ },
+ {
+  "dataset": "ETTm1",
+  "model": "DLT-dyn k8 R8",
+  "params": 22224
+ },
+ {
+  "dataset": "ETTm1",
+  "model": "DLT-dyn k16 R4",
+  "params": 21728
+ },
+ {
+  "dataset": "ETTm1",
+  "model": "DLT-dyn k16 R8",
+  "params": 22224
+ }
+]

@@ -296,6 +296,24 @@ bash scripts/gpu/run_gpu_queue.sh plugin_fusion 0 0 0
 python scripts/p1/fusion_table.py
 ```
 
+## Efficiency in the setting of the S-Mamba paper (2026-11-19)
+
+The paper compares efficiency as the S-Mamba paper does (its Fig. 5): PEMS07 (horizon 12), Electricity, Traffic and
+ETTm1 (horizon 96), batch size 16, the epochs of the official S-Mamba scripts (Electricity 5, otherwise 10),
+patience 3, no AMP. The recipe of DLT-dyn for this setting was chosen on the validation loss in five tuning rounds on
+the CPU (suite `eff_tune`, `python scripts/p2/eff_tune.py`; records in `results/p2/results_eff_tune.jsonl`). Time
+per iteration and GPU memory must come from one GPU for all models; one command measures the six baselines, DLT-dyn
+with the default recipe and DLT-dyn with the recipe selected for each dataset (read from the tuning records, see
+`results/p2/eff_tune.md`), the latter on the basis path (as trained) and on the equivalent kernel path:
+
+```bash
+python scripts/p2/efficiency.py --setting smamba --device gpu --tuned
+# -> results/p2/efficiency_smamba_gpu.jsonl (about 10 minutes); the paper (tables/src/make_tables.py,
+#    figures/src/make_efficiency.py) then takes time and memory of all models from these measurements
+```
+S-Mamba needs the CUDA kernels of `mamba_ssm` for a meaningful measurement: its records must show
+`"mamba_impl": "mamba_ssm"`, not `"torch"` (the slow fallback; `python scripts/gpu/check_mamba.py` diagnoses why).
+
 ## Stand-alone DLT-dyn on Solar and PEMS (suite `long_extra`, 2026-11-18)
 
 The paper's full-result tables (layout of the S-Mamba paper) need DLT-dyn on all thirteen datasets. Solar-Energy and

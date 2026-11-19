@@ -5,7 +5,8 @@
   "pems_96": "PEMS03/04/07/08, input 96, horizons 12/24/48/96, MSE / MAE on the normalised scale (protocol of iTransformer): iTransformer, PatchTST, DLinear and TimesNet from the iTransformer paper (ICLR 2024), Table 9; S-Mamba from Wang et al. (Neurocomputing 2025), Table 2.",
   "solar": "Solar-Energy (long_term / Solar), input 96: S-Mamba, iTransformer, PatchTST, DLinear and TimesNet from Wang et al. (S-Mamba, Neurocomputing 2025), Table 4.",
   "informer_timexer": "long_term / Informer, input 96: TimesNet (Wu et al., ICLR 2023) Table 13 for ETTh1, ETTh2 (horizon 96 only), ETTm1, ETTm2; Autoformer (Wu et al., NeurIPS 2021) Table 1 for Electricity, Exchange, Traffic, Weather. long_term / TimeXer, look-back 96: TimeXer (Wang et al., NeurIPS 2024), full multivariate results for ETTh1, ETTh2, Weather, Electricity; Table 3 averages (key Avg) for ETTm1, ETTm2, Traffic.",
-  "smamba_paper": "The reference of the baseline check: Wang et al., \"Is Mamba Effective for Time Series Forecasting?\", Neurocomputing 2025 (arXiv:2403.11144, HTML version of v3), Tables 2-4: input 96, horizons 96/192/336/720 (PEMS: 12/24/48/96), MSE / MAE on the normalised scale, for S-Mamba, iTransformer, RLinear, PatchTST, DLinear and TiDE on all 13 datasets. The baseline columns equal the iTransformer paper (ICLR 2024, Tables 8-9), whose Appendix A.2 states that the baselines were reproduced in the TimesNet benchmark (Time-Series-Library) with the configurations of each model's paper or official code."
+  "smamba_paper": "The reference of the baseline check: Wang et al., \"Is Mamba Effective for Time Series Forecasting?\", Neurocomputing 2025 (arXiv:2403.11144, HTML version of v3), Tables 2-4: input 96, horizons 96/192/336/720 (PEMS: 12/24/48/96), MSE / MAE on the normalised scale, for S-Mamba, iTransformer, RLinear, PatchTST, DLinear and TiDE on all 13 datasets. The baseline columns equal the iTransformer paper (ICLR 2024, Tables 8-9), whose Appendix A.2 states that the baselines were reproduced in the TimesNet benchmark (Time-Series-Library) with the configurations of each model's paper or official code.",
+  "smamba_efficiency": "S-Mamba paper (Wang et al., Neurocomputing 2025), Fig. 5: one NVIDIA RTX 3090, batch size 16, look-back 96, horizon 12 on PEMS07 and 96 otherwise. MSE as in its Tables 2-4; GPU memory (GB) as printed next to each bubble; training time (ms/iter) read from the bubble centres on the horizontal axis, hence approximate (about +-10 ms on ETTm1, +-30 ms on the other datasets)."
  },
  "long_term": {
   "MillGNN": {
@@ -4375,6 +4376,162 @@
      0.464
     ]
    }
+  }
+ },
+ "smamba_efficiency": {
+  "SMamba": {
+   "PEMS07": [
+    0.063,
+    530,
+    1.47
+   ],
+   "ECL": [
+    0.139,
+    310,
+    0.84
+   ],
+   "Traffic": [
+    0.382,
+    960,
+    2.91
+   ],
+   "ETTm1": [
+    0.333,
+    15,
+    0.05
+   ]
+  },
+  "iTransformer": {
+   "PEMS07": [
+    0.067,
+    540,
+    2.38
+   ],
+   "ECL": [
+    0.148,
+    225,
+    0.79
+   ],
+   "Traffic": [
+    0.395,
+    1040,
+    4.66
+   ],
+   "ETTm1": [
+    0.334,
+    10,
+    0.04
+   ]
+  },
+  "RLinear": {
+   "PEMS07": [
+    0.118,
+    100,
+    0.04
+   ],
+   "ECL": [
+    0.201,
+    70,
+    0.03
+   ],
+   "Traffic": [
+    0.649,
+    120,
+    0.06
+   ],
+   "ETTm1": [
+    0.355,
+    5,
+    0.02
+   ]
+  },
+  "PatchTST": {
+   "PEMS07": [
+    0.095,
+    1430,
+    2.01
+   ],
+   "ECL": [
+    0.181,
+    1530,
+    1.38
+   ],
+   "Traffic": [
+    0.462,
+    2330,
+    3.67
+   ],
+   "ETTm1": [
+    0.329,
+    150,
+    0.05
+   ]
+  },
+  "Crossformer": {
+   "PEMS07": [
+    0.094,
+    1015,
+    2.51
+   ],
+   "ECL": [
+    0.219,
+    1000,
+    2.04
+   ],
+   "Traffic": [
+    0.522,
+    1930,
+    5.4
+   ],
+   "ETTm1": [
+    0.404,
+    77,
+    0.35
+   ]
+  },
+  "FEDformer": {
+   "PEMS07": [
+    0.109,
+    1000,
+    0.37
+   ],
+   "ECL": [
+    0.193,
+    1330,
+    0.68
+   ],
+   "Traffic": [
+    0.587,
+    1670,
+    0.88
+   ],
+   "ETTm1": [
+    0.379,
+    148,
+    0.6
+   ]
+  },
+  "Autoformer": {
+   "PEMS07": [
+    0.199,
+    300,
+    0.39
+   ],
+   "ECL": [
+    0.201,
+    475,
+    0.88
+   ],
+   "Traffic": [
+    0.613,
+    530,
+    0.94
+   ],
+   "ETTm1": [
+    0.505,
+    320,
+    0.37
+   ]
   }
  }
 }
