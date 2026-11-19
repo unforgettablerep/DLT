@@ -86,6 +86,9 @@ def main():
         out.append('')
         best = cells[(ds, H, tags[0])][0]
         out += [f'Selected recipe: `{tags[0]}`: `{recipe(best)}`, learning rate {best["lr"]:g}.', '']
+    if (paths.REPO / 'results' / 'p2' / 'results_eff_tune_superseded.jsonl').exists():
+        out += ['`results_eff_tune_superseded.jsonl`: the first run of r1 on ETTm1, on the kernel path; it was repeated on',
+                'the basis path used by all other runs and gave the same validation loss and test MSE to four decimals.', '']
     out += ['Time and memory of the selected recipes and of the baselines in this setting (one command; the recipes are',
             'read from the tuning records):', '',
             '    python scripts/p2/efficiency.py --setting smamba --device gpu --tuned', '']

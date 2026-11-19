@@ -1,0 +1,5 @@
+PEMS07_12_dltdyn_r2-lr1e-3: stopped after epoch 3 (validation 0.0763 vs 0.0753 for r1, +1.3 %)
+Traffic_96_dltdyn_r2-lr1e-3: not run (the learning rate of 1e-3 raised the validation loss on ETTm1 and Electricity and was stopped early on PEMS07)
+ECL_96_dltdyn_r4-all: stopped after epoch 3 (validation 0.1565 vs 0.1519 for r1, +3.1 %)
+PEMS07_12_dltdyn_r5-R8k16: not run to the end (stopped during epoch 1, before any validation, for its cost: R = 8 with k = 16 takes several times the time per epoch of r1 on the CPU; the selection on PEMS07 is among R1-R4)
+Traffic_96_dltdyn_r5-R8k16: not run to the end (stopped during epoch 1, before any validation, for its cost: R = 8 with k = 16 takes several times the time per epoch of r1 on the CPU; the selection on Traffic is among R1-R4)
