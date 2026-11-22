@@ -1,9 +1,9 @@
-# Lag premise check on the PEMS08 road edges:  python code/pems_lag.py
-# (PEMS08.npz and PEMS08_edges.csv from the fixed data directory, scripts/paths.py; or pass the two files)
+# Lag premise check on the PEMS08 road edges:  python scripts/mechanism/pems_lag.py [PEMS08.npz PEMS08_edges.csv]
+# (by default both from the data directory, src/utils/paths.py)
 import os, sys, numpy as np, csv
 if len(sys.argv) < 3:
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
-    import paths
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    from src.utils import paths
     sys.argv[1:] = [str(paths.path_of("PEMS08.npz")), str(paths.path_of("PEMS08_edges.csv"))]
 d = np.load(sys.argv[1], allow_pickle=False)["data"][:, :, 0].astype(float)
 n = int(0.6 * len(d)); x = np.diff(d[:n], axis=0); x = (x - x.mean(0)) / (x.std(0) + 1e-8)

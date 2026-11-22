@@ -1,10 +1,11 @@
-"""P2: learned lag kernels on PEMS08 against the road network.
+"""Mechanism: learned lag kernels on PEMS08 against the road network.
 
-    python scripts/p2/kernels.py [--fig_dir <dir>] [--H 96]
+    python scripts/mechanism/kernels.py [--fig_dir <dir>] [--H 96]
 
-Fixed locations (scripts/paths.py): PEMS08.npz and PEMS08_edges.csv from dataset/, the P0 checkpoints from
-work/ckpt, statistics to results/p2. The figure goes to ../DLTpaper/figures if that repository is checked out next
-to this one, else to results/p2 (ignored by git there).
+Fixed locations (src/utils/paths.py): PEMS08.npz and PEMS08_edges.csv from the data directory; the checkpoints of the
+P0 grid (scripts/ablation/make_jobs.py p0, des PEMS08_<H>_<variant>_none) from temp/checkpoints/PEMS08, and those of
+the runs before the refactor from work/ckpt if that directory exists; statistics to output/mechanism. The figure goes
+to ../DLTpaper/figures if that repository is checked out next to this one, else to output/mechanism (ignored by git).
 
 For every trained DLT / DLT-dyn checkpoint (all seeds) the kernels K_ij(tau) = sum_r alpha_ijr phi_r(tau) of the
 selected pairs are compared with the road graph (PEMS08_edges.csv: directed sensor links with length):
@@ -12,7 +13,7 @@ selected pairs are compared with the road graph (PEMS08_edges.csv: directed sens
   * lag centroid sum_tau tau |K| / sum |K| and peak lag of the kernel against the road distance,
   * upstream (a directed path source -> target exists) against downstream sources.
 DLT-dyn kernels are the mean input-adapted kernels over the test windows. Writes kernels_pems08.json (statistics)
-to results/p2 and fig_kernels_pems08.pdf / .png to --fig_dir. Figures are kept in the paper repository
+to output/mechanism and fig_kernels_pems08.pdf / .png to --fig_dir. Figures are kept in the paper repository
 (DLTpaper/figures), not in this one.
 """
 import argparse, glob, json, os, sys
@@ -24,8 +25,10 @@ from scipy.stats import spearmanr
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / 'scripts'))
-import paths as fixed  # noqa: E402
+from src.utils import paths  # noqa: E402
+from src.utils.checkpoint import find_checkpoints  # noqa: E402
+
+LEGACY_CKPT = REPO / 'work' / 'ckpt'      # checkpoints of the runs before the refactor (one folder per run)
 
 
 def road_graph(edges_csv, C):
@@ -41,16 +44,16 @@ def kernels_from_ckpt(path, data_dir, H):
     sd = torch.load(path, map_location='cpu')
     idx, alpha, phi = sd['idx'].numpy(), sd['alpha'], sd['phi']
     if 'mod.0.weight' in sd:                                       # DLT-dyn: mean adapted coefficients on the test set
-        from data_provider.data_loader import Dataset_PEMS
+        from src.data_provider.data_loader import Dataset_PEMS
         import types
-        from models import DLT
+        from src.model.DLT import Model
         C, k = idx.shape
         cfg = types.SimpleNamespace(task_name='long_term_forecast', seq_len=96, pred_len=H, enc_in=C,
                                     dlt_variant='dltdyn', dlt_k=k, dlt_L=phi.shape[1] - 1, dlt_R=phi.shape[0],
                                     dlt_dyn_dim=sd['summ.weight'].shape[0], dlt_impl='basis', dlt_gate='none')
-        m = DLT.Model(cfg); m.load_state_dict(sd, strict=False); m.eval()
-        ds = Dataset_PEMS(types.SimpleNamespace(), data_dir, flag='test', size=[96, 0, H], data_path='PEMS08.npz',
-                          timeenc=1, freq='t')
+        m = Model(cfg); m.load_state_dict(sd, strict=False); m.eval()
+        ds = Dataset_PEMS(types.SimpleNamespace(), data_dir, flag='test', size=[96, 0, H], features='M',
+                          data_path='PEMS08.npz', timeenc=1, freq='t')
         X = torch.tensor(np.stack([ds.data_x[s:s + 96] for s in range(0, len(ds), 4)]), dtype=torch.float32)
         acc = torch.zeros_like(alpha)
         with torch.no_grad():
@@ -145,13 +148,29 @@ def figure(path_pdf, examples, idx, K, h, d, centroid):
     fig.savefig(path_pdf); fig.savefig(path_pdf.replace('.pdf', '.png'), dpi=200)
 
 
+def p0_checkpoints(variant, H):
+    """Checkpoints of the ungated P0 runs of a variant on PEMS08 (the latest per seed), then those before the refactor."""
+    latest = {}
+    for q in find_checkpoints(str(paths.CHECKPOINTS), 'PEMS08', model='DLT', pred_len=H, des=f'PEMS08_{H}_{variant}_none',
+                              dlt_k=8, dlt_L=48, dlt_R=4):
+        latest[os.path.basename(q).rsplit('_', 1)[0]] = q                   # <prefix>_<seq>.pth: newest last
+    legacy = sorted(glob.glob(str(LEGACY_CKPT / f'*_P0_PEMS08_{H}_DLT_*_pl{H}_*_{variant}_k8_L48_R4*' / 'checkpoint.pth')))
+    # the P0 grid only: other suites (e.g. long_extra) also train DLT-dyn on PEMS08
+    legacy = [q for q in legacy if '_g' not in q.split(f'_{variant}_k8_L48_R4')[1]]   # ungated models only
+    return sorted(latest.values()) + legacy
+
+
+def label(q):
+    return os.path.basename(os.path.dirname(q)) if q.endswith('checkpoint.pth') else os.path.basename(q)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--H', type=int, default=96)
     p.add_argument('--fig_dir', default='', help='directory of the figure (default: ../DLTpaper/figures if present)')
     a = p.parse_args()
-    a.out, a.ckpt = str(REPO / 'results' / 'p2'), str(fixed.WORK / 'ckpt')
-    a.data = str(fixed.root_of('PEMS08.npz'))
+    a.out = str(paths.OUTPUT / 'mechanism')
+    a.data = str(paths.root_of('PEMS08.npz'))
     paper = next((d / 'figures' for d in REPO.parent.iterdir()                 # the paper repository next to this one
                   if d.name.lower() == 'dltpaper' and (d / 'figures').is_dir()), None)
     a.fig_dir = os.path.abspath(a.fig_dir) if a.fig_dir else (str(paper) if paper else a.out)
@@ -159,21 +178,19 @@ def main():
     os.chdir(REPO)
     os.makedirs(a.out, exist_ok=True)
     C = np.load(os.path.join(a.data, 'PEMS08.npz'))['data'].shape[1]
-    hops, dist, down = road_graph(str(fixed.path_of('PEMS08_edges.csv')), C)
+    hops, dist, down = road_graph(str(paths.path_of('PEMS08_edges.csv')), C)
     res = {}
     for variant in ('dlt', 'dltdyn'):
-        paths = sorted(glob.glob(os.path.join(a.ckpt, f'*_P0_PEMS08_{a.H}_DLT_*_pl{a.H}_*_{variant}_k8_L48_R4*', 'checkpoint.pth')))
-        # the P0 grid only: other suites (e.g. long_extra) also train DLT-dyn on PEMS08
-        paths = [q for q in paths if '_g' not in q.split(f'_{variant}_k8_L48_R4')[1]]   # ungated models only
+        ckpts = p0_checkpoints(variant, a.H)
         per_seed = []
-        for q in paths:
+        for q in ckpts:
             idx, lag, K = kernels_from_ckpt(q, a.data, a.H)
             s, centroid, h, d = stats(idx, lag, K, hops, dist, down)
             per_seed.append(s)
             if variant == 'dlt' and len(per_seed) == 1:
                 order = np.argsort(-(np.abs(K).sum(-1).sum(-1)))       # targets with the strongest cross input
                 figure(os.path.join(a.fig_dir, 'fig_kernels_pems08.pdf'), [int(order[0]), int(order[1])], idx, K, h, d, centroid)
-        res[variant] = {'checkpoints': [os.path.basename(os.path.dirname(q)) for q in paths], 'per_seed': per_seed}
+        res[variant] = {'checkpoints': [label(q) for q in ckpts], 'per_seed': per_seed}
         print(variant, json.dumps(per_seed[0] if per_seed else {}, indent=1)[:1500])
     json.dump(res, open(os.path.join(a.out, 'kernels_pems08.json'), 'w'), indent=1)
 

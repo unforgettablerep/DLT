@@ -1,9 +1,9 @@
-"""P2: parameters, training / inference time per batch and peak memory of DLT and the baselines.
+"""Efficiency: parameters, training / inference time per batch and peak memory of DLT and the baselines.
 
-    python scripts/p2/efficiency.py --device gpu          # on the CUDA machine -> results/p2/efficiency_gpu.jsonl
-    python scripts/p2/efficiency.py --device cpu --threads 4                 # -> results/p2/efficiency_cpu.jsonl
-    python scripts/p2/efficiency.py --setting smamba --device gpu             # the efficiency setting of the S-Mamba
-                                                                             # paper -> results/p2/efficiency_smamba_gpu.jsonl
+    python scripts/efficiency/run_efficiency.py --device gpu      # on the CUDA machine -> output/efficiency/efficiency_gpu.jsonl
+    python scripts/efficiency/run_efficiency.py --device cpu --threads 4        # -> output/efficiency/efficiency_cpu.jsonl
+    python scripts/efficiency/run_efficiency.py --setting smamba --device gpu   # the efficiency setting of the S-Mamba
+                                                                  # paper -> output/efficiency/efficiency_smamba_gpu.jsonl
 
 Default models: DLT-dyn and the six baselines (S-Mamba, iTransformer, PatchTST, RLinear, DLinear, TiDE).
 --variants adds the kernel variants of the controlled study and the plug-in.
@@ -11,21 +11,23 @@ Every (dataset, model) is measured in a fresh subprocess (clean peak-memory coun
 dataset's shape: batch 32, input 96, horizon 96. --setting smamba follows the efficiency experiment of the S-Mamba
 paper (Wang et al., Neurocomputing 2025, Fig. 5): PEMS07 (horizon 12), Electricity, Traffic and ETTm1 (horizon 96),
 batch size 16. --dlt "<args>" / --name replace the DLT-dyn arguments (e.g. a tuned recipe); --tuned adds, per dataset,
-DLT-dyn with the recipe chosen on the validation loss in the eff_tune rounds (scripts/p2/eff_tune.py), on the basis
+DLT-dyn with the recipe chosen on the validation loss in the eff_tune rounds (scripts/efficiency/eff_tune.py), on the basis
 path as trained and on the equivalent kernel path; --amp measures with torch.autocast (GPU). Baselines use the
 official hyper-parameters of that dataset
-(scripts/baselines.py). Train time = forward + MSE + backward + Adam step. Memory: GPU = peak allocated by
+(src/configs/baseline_profiles.py). Train time = forward + MSE + backward + Adam step. Memory: GPU = peak allocated by
 PyTorch; CPU = growth of the peak resident set size of the process during model creation and training.
 """
 import argparse, json, os, resource, subprocess, sys, time
 from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO))
+from src.utils.paths import OUTPUT  # noqa: E402
 
 DATASETS = {'Weather': 21, 'PEMS08': 170, 'ECL': 321, 'Traffic': 862, 'PEMS07': 883, 'ETTm1': 7}
 SMAMBA_SETTING = {'PEMS07': 12, 'ECL': 96, 'Traffic': 96, 'ETTm1': 96}   # dataset: horizon (S-Mamba, Fig. 5), batch 16
-# name: (TSLib model, extra args). Baselines also get their official arguments for the dataset (scripts/baselines.py).
+# name: (model, extra args). Baselines also get their official arguments for the dataset (src/configs/baseline_profiles.py).
 OURS = {'DLT-dyn': ('DLT', '--dlt_variant dltdyn --dlt_impl basis')}
-BASELINES = {'S-Mamba': ('SMamba', ''), 'iTransformer': ('iTransformer', ''), 'PatchTST': ('PatchTST', ''),
+BASELINES = {'S-Mamba': ('S_Mamba', ''), 'iTransformer': ('iTransformer', ''), 'PatchTST': ('PatchTST', ''),
              'RLinear': ('RLinear', ''), 'DLinear': ('DLinear', ''), 'TiDE': ('TiDE', '')}
 VARIANTS = {   # --variants: the kernels of the controlled study, the plug-in and further configurations
     'CI (RLinear-style)': ('DLT', '--dlt_variant ci'),
@@ -47,9 +49,10 @@ SKIP_CPU = {('PatchTST', 'Traffic'), ('PatchTST', 'ECL'), ('TiDE', 'Traffic')}
 
 def one(spec):
     import numpy as np, torch
-    sys.path.insert(0, str(REPO)); sys.path.insert(0, str(REPO / 'scripts'))
+    sys.path.insert(0, str(REPO / 'scripts'))
     os.chdir(REPO)
-    import run, baselines
+    import run
+    from src.configs import baseline_profiles
     from importlib import import_module
     dev = torch.device('cuda' if spec['device'] == 'gpu' else 'cpu')
     torch.set_num_threads(spec['threads'])
@@ -58,20 +61,21 @@ def one(spec):
     if spec.get('dlt') is not None and model_name == 'DLT':
         extra = spec['dlt']
     base = model_name if model_name != 'DLTPlug' else extra.split()[1]
-    bargs = baselines.args(base, spec['dataset'], H)[0] if base not in ('DLT',) else ''
-    argv = (f'--task_name long_term_forecast --is_training 1 --model_id eff --model {model_name} --data custom '
+    bargs = baseline_profiles.args(base, spec['dataset'], H)[0] if base not in ('DLT',) else ''
+    dlt_defaults = '--dlt_k 8 --dlt_L 48 --dlt_R 4' if model_name in ('DLT', 'DLTPlug') else ''   # the DLT parser only
+    argv = (f'--is_training 1 --model_id eff --model {model_name} --data custom '
             f'--seq_len {T} --label_len 48 --pred_len {H} --enc_in {C} --dec_in {C} --c_out {C} '
-            f'--dlt_k 8 --dlt_L 48 --dlt_R 4 {bargs} {extra}').split()
-    args = run.get_parser().parse_args(argv)
+            f'{dlt_defaults} {bargs} {extra}').split()
+    args = run.parse_args(argv)
     args.batch_size = B
     x = torch.randn(B, T, C, device=dev); y = torch.randn(B, H, C, device=dev)
     xm = torch.randn(B, T, 4, device=dev); dec = torch.randn(B, 48 + H, C, device=dev); dm = torch.randn(B, 48 + H, 4, device=dev)
     rss0 = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     if dev.type == 'cuda':
         torch.cuda.reset_peak_memory_stats(); m0 = torch.cuda.memory_allocated()
-    if model_name == 'SMamba' and dev.type == 'cpu':
+    if model_name == 'S_Mamba' and dev.type == 'cpu':
         args.mamba_impl = 'torch'                     # mamba_ssm needs CUDA
-    model = import_module(f'models.{model_name}').Model(args).float().to(dev)
+    model = import_module(f'src.model.{model_name}').Model(args).float().to(dev)
     if hasattr(model, 'prepare'):
         model.prepare(np.random.randn(4000, C).cumsum(0))
     opt = torch.optim.Adam(model.parameters(), 1e-3)
@@ -110,7 +114,7 @@ def one(spec):
             'amp': amp, **({'dlt': extra} if model_name == 'DLT' else {}),
             'train_ms': round(train_ms, 1), 'infer_ms': round(infer_ms, 1), 'mem_MB': round(mem, 1),
             'gpu': torch.cuda.get_device_name() if dev.type == 'cuda' else None, 'torch': torch.__version__,
-            **({'mamba_impl': model.mamba_impl} if model_name == 'SMamba' else {})}
+            **({'mamba_impl': model.mamba_impl} if model_name == 'S_Mamba' else {})}
 
 
 def main():
@@ -121,7 +125,7 @@ def main():
     p.add_argument('--datasets', nargs='+', default=list(DATASETS))
     p.add_argument('--models', nargs='+', help='default: DLT-dyn and the eight representative baselines')
     p.add_argument('--variants', action='store_true', help='also the kernel variants and the plug-in')
-    p.add_argument('--out', help='default: results/p2/efficiency_<device>.jsonl (efficiency_smamba_<device>.jsonl)')
+    p.add_argument('--out', help='default: output/efficiency/efficiency_<device>.jsonl (efficiency_smamba_<device>.jsonl)')
     p.add_argument('--setting', default='p2', choices=['p2', 'smamba'],
                    help='p2: batch 32, horizon 96 on --datasets; smamba: the setting of the S-Mamba paper (Fig. 5)')
     p.add_argument('--batch', type=int, help='batch size (default 32; 16 with --setting smamba)')
@@ -146,11 +150,14 @@ def main():
             a.models = a.models + list(TUNED)
     if a.dlt is not None:
         a.models = [a.name or 'DLT-dyn' if m == 'DLT-dyn' else m for m in a.models]
+    known = set(MODELS) | set(TUNED) | ({a.name or 'DLT-dyn'} if a.dlt is not None else set())
+    if any(m not in known for m in a.models):
+        p.error('unknown models {}; choose from {}'.format([m for m in a.models if m not in known], sorted(known)))
     smamba = a.setting == 'smamba'
     a.batch = a.batch or (16 if smamba else 32)
     if smamba and a.datasets == list(DATASETS):
         a.datasets = list(SMAMBA_SETTING)
-    a.out = a.out or str(REPO / 'results' / 'p2' / f'efficiency_{"smamba_" if smamba else ""}{a.device}.jsonl')
+    a.out = a.out or str(OUTPUT / 'efficiency' / f'efficiency_{"smamba_" if smamba else ""}{a.device}.jsonl')
     if a.one:
         print('RESULT ' + json.dumps(one(json.loads(a.one))))
         return
@@ -160,7 +167,7 @@ def main():
             if name in TUNED and ds not in tuned:
                 continue                              # no tuning record for this dataset (or --tuned not given)
             base_model = MODELS.get(name, ('DLT', ''))[0]
-            if a.device == 'cpu' and (((base_model, ds) in SKIP_CPU and a.batch > 16) or base_model == 'SMamba'):
+            if a.device == 'cpu' and (((base_model, ds) in SKIP_CPU and a.batch > 16) or base_model == 'S_Mamba'):
                 continue                              # S-Mamba: the CPU block is a slow fallback, not a measurement
             spec = {'dataset': ds, 'name': name, 'device': a.device, 'threads': a.threads, 'steps': a.steps,
                     'batch': a.batch, 'H': SMAMBA_SETTING.get(ds, 96) if smamba else 96, 'amp': a.amp,

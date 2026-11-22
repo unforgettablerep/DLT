@@ -67,6 +67,23 @@ Batch 32, input 96, horizon 96, random data; baselines with their official hyper
 
 MillGNN (reported, A100, Traffic): 9.7 GB GPU memory; iTransformer 7.5 GB in the same figure.
 
+## Efficiency in the S-Mamba setting on cpu, 4 threads: parameters / training ms per batch / inference ms per batch / peak memory MB
+
+Batch 16, input 96; ETTm1 horizon 96, ECL horizon 96, Traffic horizon 96, PEMS07 horizon 12 (the efficiency experiment of the S-Mamba paper, Fig. 5); random data; baselines with their official hyper-parameters for each dataset. DLT-dyn (tuned): the recipe selected on the validation loss in the eff_tune rounds (output/efficiency/eff_tune.md), on the basis path as trained and on the equivalent kernel path.
+
+| model | ETTm1 | ECL | Traffic | PEMS07 |
+|---|---|---|---|---|
+| DLT-dyn | 22K / 4 / 8 / 102 | 32K / 82 / 21 / 308 | 49K / 266 / 80 / 565 | 34K / 237 / 74 / 566 |
+| DLT-dyn (tuned) | 22K / 4 / 1 / 102 | 63K / 305 / 71 / 696 | 77K / 444 / 132 / 943 | 62K / 460 / 132 / 926 |
+| DLT-dyn (tuned, kernel path) | 22K / 4 / 1 / 102 | 63K / 136 / 54 / 334 | 77K / 387 / 149 / 694 | 62K / 380 / 154 / 705 |
+| iTransformer | 224K / 16 / 3 / 103 | 4834K / 1226 / 162 / 1320 | 6412K / 8630 / 1187 / 7162 | 3213K / 4499 / 716 / 4025 |
+| PatchTST | 3752K / 137 / 20 / 296 | 6904K / 13924 / 3197 / 7065 | 3755K / 20900 / 5008 / 10643 | – |
+| RLinear | 9K / 1 / 0 / 84 | 10K / 11 / 4 / 115 | 11K / 21 / 8 / 174 | 3K / 11 / 8 / 124 |
+| DLinear | 19K / 1 / 0 / 88 | 19K / 5 / 1 / 108 | 19K / 13 / 4 / 150 | 2K / 4 / 3 / 112 |
+| TiDE | 1185K / 52 / 10 / 166 | 1185K / 1763 / 442 / 2030 | 1185K / 4735 / 1196 / 5294 | 744K / 3259 / 866 / 3075 |
+
+Not measured: PatchTST on PEMS07: killed (SIGKILL, out of memory).
+
 ## Learned kernels on PEMS08 vs the road network (mean over seeds)
 
 | quantity | DLT | DLT-dyn |
@@ -83,5 +100,5 @@ MillGNN (reported, A100, Traffic): 9.7 GB GPU memory; iTransformer 7.5 GB in the
 | Spearman rho(road distance, peak lag) | -0.203 ± 0.046 | -0.045 ± 0.204 |
 | Spearman rho(road distance, lag centroid) | -0.317 ± 0.020 | -0.202 ± 0.170 |
 
-Checkpoints: 6 (DLT and DLT-dyn, PEMS08-96, P0 grid). Figure: `figures/fig_kernels_pems08.pdf` in the DLTpaper repository (written by scripts/p2/kernels.py).
+Checkpoints: 6 (DLT and DLT-dyn, PEMS08-96, P0 grid). Figure: `figures/fig_kernels_pems08.pdf` in the DLTpaper repository (written by scripts/mechanism/kernels.py).
 

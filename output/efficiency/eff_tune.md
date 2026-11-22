@@ -2,7 +2,7 @@
 
 Batch 16, epochs of the official S-Mamba scripts, patience 3, no AMP. * = selected (lowest validation loss).
 s / epoch: wall-clock time of the tuning run on a shared CPU (one thread per run, several runs in parallel);
-it is not an efficiency measurement (see scripts/p2/efficiency.py --setting smamba).
+it is not an efficiency measurement (see scripts/efficiency/run_efficiency.py --setting smamba).
 
 ## ETTm1, horizon 96 (published: S-Mamba 0.333 / 0.368, iTransformer 0.334 / 0.368)
 
@@ -48,11 +48,11 @@ Selected recipe: `r4-k16`: `--dlt_variant dltdyn --dlt_k 16 --dlt_L 48 --dlt_R 4
 
 Selected recipe: `r4-k16`: `--dlt_variant dltdyn --dlt_k 16 --dlt_L 48 --dlt_R 4 --dlt_impl basis`, learning rate 0.003.
 
-`results_eff_tune_superseded.jsonl`: the first run of r1 on ETTm1, on the kernel path; it was repeated on
+`eff_tune_superseded.tsv`: the first run of r1 on ETTm1, on the kernel path; it was repeated on
 the basis path used by all other runs and gave the same validation loss and test MSE to four decimals.
 
 Time and memory of the selected recipes and of the baselines in this setting (one command; the recipes are
 read from the tuning records):
 
-    python scripts/p2/efficiency.py --setting smamba --device gpu --tuned
+    python scripts/efficiency/run_efficiency.py --setting smamba --device gpu --tuned
 
