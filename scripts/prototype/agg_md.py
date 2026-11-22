@@ -1,7 +1,12 @@
-"""Markdown summary of the feasibility runs: mean MSE/MAE over seeds, change vs. CI."""
-import json, sys, collections
+"""Markdown summary of the feasibility runs: mean MSE/MAE over seeds, change vs. CI.
 
-rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+    python scripts/prototype/agg_md.py [output/prototype/runs.jsonl] > output/prototype/summary.md
+"""
+import json, sys, collections
+from pathlib import Path
+
+src = sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2] / "output" / "prototype" / "runs.jsonl"
+rows = [json.loads(l) for l in open(src) if l.strip()]
 order = ["ci", "scalar", "shift", "tap3", "dlt", "full", "scalardyn", "dltdyn"]
 names = {"ci": "CI (no cross)", "scalar": "scalar mixing", "shift": "single-lag shift",
          "tap3": "3-tap kernel", "dlt": "DLT (static)", "full": "free kernel",

@@ -1,40 +1,37 @@
 #!/bin/bash
-# Job lists of every experiment that still needs a GPU (GPU_RUNS.md).
-#   bash scripts/gpu/make_gpu_jobs.sh
-# Datasets are read from dataset/ and the lists are written to work/ (fixed, scripts/paths.py). The records of the
-# finished runs in results/ are merged into work/ first, so run_gpu_queue.sh skips what is already done.
+# Job lists of the experiments that need a GPU (README.md, "GPU runs"), written to temp/jobs/jobs_<list>.txt.
+#   bash scripts/batch/make_gpu_jobs.sh
+# Every job writes its row into the tracked store of its suite (output/<category>/<suite>.tsv), and the queue runner
+# (bash scripts/utils/run_gpu_queue.sh <list> [gpu ids]) runs only the jobs without a row there. The records of a
+# pre-refactor work/ directory are taken over first (scripts/utils/migrate_work.py), so finished runs are not repeated.
 set -e
 REPO=$(cd "$(dirname "$0")/../.." && pwd); cd "$REPO"
-WORK=$(python scripts/paths.py work)
-python scripts/collect_results.py --to-work
+PYTHON_BIN=${PYTHON_BIN:-python}
+JOBS=$("$PYTHON_BIN" -m src.utils.paths temp)/jobs
+[ -d work ] && "$PYTHON_BIN" scripts/utils/migrate_work.py work --apply
 G="--device gpu"
 
-# tier 1: completes the main tables (Traffic, plug-in on large data, PatchTST on PEMS08)
-python scripts/exps.py long_large $G                     # DLT-dyn, Electricity (done on CPU) + Traffic
-python scripts/exps.py ci_long $G                        # CI linear, all long-term datasets (all but Traffic on CPU)
-python scripts/exps.py plugin $G                         # PatchTST -+ DLT-dyn on PEMS08-12 (rest on CPU)
-python scripts/exps.py plugin_large $G                   # DLinear / PatchTST / iTransformer -+ DLT-dyn: ECL, Traffic, PEMS04-12
-cat "$WORK"/jobs_long_large.txt "$WORK"/jobs_ci_long.txt "$WORK"/jobs_plugin.txt "$WORK"/jobs_plugin_large.txt \
-    > "$WORK/jobs_gpu_tier1.txt"
-
-# plug-in diagnosis on Traffic-96 (results/gpu/README.md): six runs
-python scripts/exps.py plugin_probe --seeds 2021 $G
-
-# tier 2: 20-trial validation search on the large / traffic data (the 6 small datasets were searched on CPU)
-python scripts/p1/hpsearch.py make --datasets ECL Traffic $G
-python scripts/p1/hpsearch.py make --datasets PEMS04 PEMS08 --H 12 --tag _pems $G
-cat "$WORK"/jobs_hp.txt "$WORK"/jobs_hp_pems.txt > "$WORK/jobs_gpu_tier2_search.txt"
-# (after the search: hpsearch.py select / tuned, see GPU_RUNS.md, then the list gpu_tier2_tuned)
-
-# tier 3: the baseline check, the six baselines with their official settings and protocol, one seed
-python scripts/exps.py baselines --seeds 2021 $G
-cp "$WORK/jobs_baselines.txt" "$WORK/jobs_gpu_tier3.txt"
-
-# tier 4 (optional): all other variables as neighbours on Electricity / Traffic
-python scripts/exps.py allnb --datasets ECL Traffic $G
-cp "$WORK/jobs_allnb.txt" "$WORK/jobs_gpu_tier4.txt"
+# 1. the baseline check: the six baselines alone (official settings and protocol), 13 datasets, one seed (312 runs)
+"$PYTHON_BIN" scripts/benchmark/make_jobs.py baselines $G --seeds 2021
+# 2. how the branch enters the backbone: five arms on four settings, the six backbones, one seed
+"$PYTHON_BIN" scripts/plugin/make_jobs.py plugin_fusion $G --seeds 2021 --models S_Mamba iTransformer PatchTST RLinear DLinear TiDE
+# 3. the plug-in study: every backbone alone and + DLT-dyn on the 13 datasets, one seed (624 runs)
+"$PYTHON_BIN" scripts/plugin/make_jobs.py plugin_all $G --seeds 2021
+# 4. stand-alone DLT-dyn: Electricity and Traffic; Solar and PEMS03/04/07/08 (seed 2021 ran on the CPU)
+"$PYTHON_BIN" scripts/multivariate_forecasting/make_jobs.py long_large $G
+"$PYTHON_BIN" scripts/multivariate_forecasting/make_jobs.py long_extra $G
+# 5. the linear model without the cross branch on Traffic (the other long-term sets ran on the CPU)
+"$PYTHON_BIN" scripts/ablation/make_jobs.py ci_long $G --datasets Traffic --list ci_long_traffic
+# 6. (optional) 20-trial validation search on Electricity, Traffic (H 96) and PEMS04/08 (H 12, TimeMixer protocol)
+"$PYTHON_BIN" scripts/hyperparam/hpsearch.py make --datasets ECL Traffic $G
+"$PYTHON_BIN" scripts/hyperparam/hpsearch.py make --datasets PEMS04 PEMS08 --H 12 --tag _pems $G
+# 7. (optional) all other variables as neighbours on Electricity and Traffic
+"$PYTHON_BIN" scripts/ablation/make_jobs.py allnb --datasets ECL Traffic $G --list allnb_large
 
 echo
-for t in gpu_tier1 plugin_probe gpu_tier2_search gpu_tier3 gpu_tier4; do
-  echo "$t: $(python scripts/run_missing.py $t | wc -l) of $(wc -l < "$WORK/jobs_$t.txt") jobs without a result"
+for t in baselines plugin_fusion plugin_all long_large long_extra ci_long_traffic hp hp_pems allnb_large; do
+  echo "$t: $("$PYTHON_BIN" scripts/utils/run_missing.py "$t" | wc -l) of $(wc -l < "$JOBS/jobs_$t.txt") jobs without a result"
 done
+echo
+echo "Run a list:   bash scripts/utils/run_gpu_queue.sh <list> [gpu ids]     (0 0 0: three jobs at a time on GPU 0)"
+echo "Efficiency:   python scripts/efficiency/run_efficiency.py --setting smamba --device gpu --tuned"

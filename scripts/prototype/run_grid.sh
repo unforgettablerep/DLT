@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Reproduce the 69 runs of the feasibility study (CPU, P parallel workers x 1 thread).
-#   bash scripts/run_grid.sh [out.jsonl] [workers]      # defaults: results/runs_reproduced.jsonl, 4 workers
-# Then: python code/agg_md.py results/runs_reproduced.jsonl
+#   bash scripts/prototype/run_grid.sh [out.jsonl] [workers]   # defaults: output/prototype/runs_reproduced.jsonl, 4 workers
+# Then: python scripts/prototype/agg_md.py output/prototype/runs_reproduced.jsonl
 set -euo pipefail
-cd "$(dirname "$0")/.."
-OUT=${1:-results/runs_reproduced.jsonl}
+cd "$(dirname "$0")/../.."
+OUT=${1:-output/prototype/runs_reproduced.jsonl}
 P=${2:-4}
-C="python code/proto.py --threads 1 --epochs 6 --patience 2 --out $OUT"      # data: the fixed dataset/ directory
+C="python scripts/prototype/proto.py --threads 1 --epochs 6 --patience 2 --out $OUT"   # data: the data/ directory
 ALL="ci scalar shift tap3 dlt full scalardyn dltdyn"
 
 jobs() {

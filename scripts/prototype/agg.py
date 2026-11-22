@@ -1,5 +1,9 @@
+"""Plain-text summary of the feasibility runs:  python scripts/prototype/agg.py [output/prototype/runs.jsonl]."""
 import json, sys, collections
-rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+from pathlib import Path
+
+src = sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2] / "output" / "prototype" / "runs.jsonl"
+rows = [json.loads(l) for l in open(src) if l.strip()]
 order = ["ci", "scalar", "shift", "tap3", "dlt", "full", "scalardyn", "dltdyn"]
 g = collections.defaultdict(list)
 for r in rows:

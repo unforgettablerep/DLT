@@ -1,40 +1,49 @@
 #!/bin/bash
-# Every CPU-feasible P1 / P2 experiment, in the order of the finished CPU campaign (4 cores, no GPU).
-#   bash scripts/run_p1p2_cpu.sh
-# Fixed locations (scripts/paths.py): datasets in dataset/, job lists, logs, checkpoints and records in work/.
-# Resumable: every queue skips the runs that already have a record, so the same command continues after an
-# interruption. The kernel analysis needs the P0 checkpoints in work/ckpt (bash scripts/p0/run_p0.sh).
-# Order: kernel analysis and CPU efficiency (alone, 4 threads) -> PEMS04/08 horizon 12 -> long-term small datasets
-# -> plug-in -> sensitivity -> neighbour selection -> hyper-parameter search -> Electricity long-term -> re-run of
-# the searched configurations -> CI linear model, all-neighbour runs and the light baselines.
-# Traffic, the large plug-in suite and the heavy baselines need a GPU (GPU_RUNS.md).
+# Every CPU-feasible experiment of the paper, in the order of the finished CPU campaign (4 cores, no GPU).
+#   bash scripts/batch/run_cpu_campaign.sh
+# Resumable: each queue runs only the jobs without a row in their store (output/<category>/<suite>.tsv), so the same
+# command continues after an interruption. With the stores of this repository only the fusion study has runs left
+# (seed 2022 was stopped for time).
+# Order: P0 kernel and gate study -> learned kernels and CPU efficiency (alone, 4 threads) -> PEMS04/08 horizon 12,
+# long-term small datasets, sensitivity, neighbour selection, hyper-parameter search, Electricity -> re-run of the
+# searched configurations -> CI linear model and all-neighbour runs -> fusion study (RLinear, DLinear) -> tables.
+# Traffic, the plug-in study and the baseline check need a GPU (scripts/batch/make_gpu_jobs.sh); the CPU baseline
+# runs with the first protocol are kept in output/benchmark/baselines_v1.tsv.
 set -e
-REPO=$(cd "$(dirname "$0")/.." && pwd); cd "$REPO"
-WORK=$(python scripts/paths.py work)
-mkdir -p results/p1 results/p2
-[ -f results/p2/kernels_pems08.json ] || OMP_NUM_THREADS=4 python scripts/p2/kernels.py > "$WORK/kernels.log" 2>&1 \
-  || echo "kernel analysis failed (see work/kernels.log)"
-[ -f results/p2/efficiency_cpu.jsonl ] || OMP_NUM_THREADS=4 python scripts/p2/efficiency.py --device cpu --threads 4 \
-  > "$WORK/efficiency.log" 2>&1 || echo "efficiency measurement failed (see work/efficiency.log)"
+REPO=$(cd "$(dirname "$0")/../.." && pwd); cd "$REPO"
+PYTHON_BIN=${PYTHON_BIN:-python}
+JOBS=$("$PYTHON_BIN" -m src.utils.paths temp)/jobs
+LOG=$("$PYTHON_BIN" -m src.utils.paths log)
+SMALL="ETTh1 ETTh2 ETTm1 ETTm2 Exchange Weather"
 
-for s in pems12 long_small plugin sensitivity neighbours long_large allnb; do python scripts/exps.py $s; done
-python scripts/exps.py ci_long --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange Weather ECL
-python scripts/p1/hpsearch.py make
-cat "$WORK"/jobs_pems12.txt "$WORK"/jobs_long_small.txt "$WORK"/jobs_plugin.txt "$WORK"/jobs_sensitivity.txt \
-    "$WORK"/jobs_neighbours.txt "$WORK"/jobs_hp.txt > "$WORK/jobs_cpu_all.txt"
-grep -v "traffic.csv" "$WORK/jobs_long_large.txt" >> "$WORK/jobs_cpu_all.txt"     # Electricity only; Traffic on a GPU
-bash scripts/run_queue.sh cpu_all 4 || echo "some jobs of the main queue failed (see work/logs)"
+"$PYTHON_BIN" scripts/ablation/make_jobs.py p0
+bash scripts/utils/run_queue.sh p0 4 || echo "some P0 jobs failed (see log/ablation/p0)"
+[ -f output/mechanism/kernels_pems08.json ] || OMP_NUM_THREADS=4 "$PYTHON_BIN" scripts/mechanism/kernels.py \
+  > "$LOG/kernels.log" 2>&1 || echo "kernel analysis failed (see log/kernels.log)"
+[ -f output/efficiency/efficiency_cpu.jsonl ] || OMP_NUM_THREADS=4 "$PYTHON_BIN" scripts/efficiency/run_efficiency.py \
+  --device cpu --threads 4 --variants > "$LOG/efficiency.log" 2>&1 || echo "efficiency measurement failed (see log/efficiency.log)"
 
-python scripts/p1/hpsearch.py select > "$WORK/hp_select.md"
-python scripts/p1/hpsearch.py tuned
-bash scripts/run_queue.sh tuned 4 || echo "some tuned jobs failed"
+for s in pems12 long_small; do "$PYTHON_BIN" scripts/multivariate_forecasting/make_jobs.py $s; done
+"$PYTHON_BIN" scripts/multivariate_forecasting/make_jobs.py long_large --datasets ECL --list long_large_ecl
+for s in sensitivity neighbours; do "$PYTHON_BIN" scripts/hyperparam/make_jobs.py $s; done
+"$PYTHON_BIN" scripts/hyperparam/hpsearch.py make
+cat "$JOBS"/jobs_pems12.txt "$JOBS"/jobs_long_small.txt "$JOBS"/jobs_sensitivity.txt "$JOBS"/jobs_neighbours.txt \
+    "$JOBS"/jobs_hp.txt "$JOBS"/jobs_long_large_ecl.txt > "$JOBS/jobs_cpu_all.txt"
+bash scripts/utils/run_queue.sh cpu_all 4 || echo "some jobs of the main queue failed (see log/)"
 
-python scripts/exps.py baselines --models RLinear DLinear --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange Weather ECL
-mv "$WORK/jobs_baselines.txt" "$WORK/jobs_baselines_a.txt"
-python scripts/exps.py baselines --models iTransformer TiDE --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange
-mv "$WORK/jobs_baselines.txt" "$WORK/jobs_baselines_b.txt"
-cat "$WORK"/jobs_ci_long.txt "$WORK"/jobs_allnb.txt "$WORK"/jobs_baselines_a.txt "$WORK"/jobs_baselines_b.txt \
-    > "$WORK/jobs_cpu_extra.txt"
-bash scripts/run_queue.sh cpu_extra 4 || echo "some jobs of the extra queue failed"
+"$PYTHON_BIN" scripts/hyperparam/hpsearch.py select > output/hyperparam/hp_select.md
+"$PYTHON_BIN" scripts/hyperparam/hpsearch.py tuned
+bash scripts/utils/run_queue.sh tuned 4 || echo "some tuned jobs failed"
 
-python scripts/collect_results.py
+"$PYTHON_BIN" scripts/ablation/make_jobs.py ci_long --datasets $SMALL ECL
+"$PYTHON_BIN" scripts/ablation/make_jobs.py allnb
+cat "$JOBS"/jobs_ci_long.txt "$JOBS"/jobs_allnb.txt > "$JOBS/jobs_cpu_extra.txt"
+bash scripts/utils/run_queue.sh cpu_extra 4 || echo "some jobs of the extra queue failed"
+
+"$PYTHON_BIN" scripts/plugin/make_jobs.py plugin_fusion --models RLinear DLinear --seeds 2021 2022
+bash scripts/utils/run_queue.sh plugin_fusion 4 || echo "some fusion jobs failed"
+
+"$PYTHON_BIN" scripts/ablation/aggregate.py > /dev/null
+"$PYTHON_BIN" scripts/statistics/aggregate_p1.py > /dev/null
+"$PYTHON_BIN" scripts/statistics/aggregate_p2.py > /dev/null
+echo "tables: output/ablation/summary.md, output/statistics/summary_p1.md, output/statistics/summary_p2.md"

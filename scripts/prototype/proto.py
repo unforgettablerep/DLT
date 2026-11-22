@@ -18,7 +18,7 @@ z_i(t) = sum_{j in N(i)} sum_tau K[i,j,tau] * x_j(t - tau)
 y_hat_i = W_self x_i + W_cross z_i
 
 Example:
-  python code/proto.py --data PEMS08 --pred_len 96 --variant dltdyn --out results/runs.jsonl
+  python scripts/prototype/proto.py --data PEMS08 --pred_len 96 --variant dltdyn --out output/prototype/runs_new.jsonl
 """
 import argparse, json, os, sys, time
 import numpy as np
@@ -29,10 +29,10 @@ import torch.nn.functional as F
 
 # ----------------------------------------------------------------- data
 def load(name, root, seq_len):
-    """root: a directory with the files, or None for the fixed data directory of the repository (scripts/paths.py)"""
+    """root: a directory with the files, or None for the data directory of the repository (src/utils/paths.py)"""
     if root is None:
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
-        import paths
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+        from src.utils import paths
         locate = lambda f: str(paths.path_of(f))
     else:
         locate = lambda f: os.path.join(root, f)
@@ -215,7 +215,7 @@ def evaluate(model, loader):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
-    ap.add_argument("--root", default=None, help="directory of the data files (default: the fixed dataset/ directory)")
+    ap.add_argument("--root", default=None, help="directory of the data files (default: the data directory of the repository)")
     ap.add_argument("--variant", required=True)
     ap.add_argument("--pred_len", type=int, default=96)
     ap.add_argument("--seq_len", type=int, default=96)
