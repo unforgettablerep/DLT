@@ -1,9 +1,9 @@
 """How the DLT branch enters the backbone: the arms of the plugin_fusion suite against the backbone alone.
 
-    python scripts/p1/fusion_table.py [--files F ...] [--metric mse|mae] [--out FILE]
+    python scripts/plugin/fusion_table.py [--files F ...] [--metric mse|mae] [--out FILE]
 
-Reads results_plugin_fusion.jsonl from results/p1 and the work directory (or --files). Arms (scripts/exps.py,
-FUSION_ARMS; models/DLTPlug.py):
+Reads output/plugin/plugin_fusion.tsv (or --files). Arms (scripts/plugin/make_jobs.py, FUSION_ARMS;
+src/model/DLTPlug.py):
   dlt             output fusion (Eq. 2: backbone + sigma * W_c z on the look-back window), joint training
   dlt_out-dec     output fusion, decoupled training, correction kept per variable on validation data
   dlt_refine      refine fusion (distributed-lag correction over the observed past and the backbone forecast), joint
@@ -14,12 +14,12 @@ arm helps. For the decoupled arms, brackets give the change without the per-vari
 corrected) and the change of the backbone part of the same run (trained on its own loss, as the backbone alone).
 Last rows: per arm, the mean change, the settings it helps, and the worst setting.
 """
-import argparse, collections, json, statistics, sys
+import argparse, collections, statistics, sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import paths  # noqa: E402
-import exps  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.utils.paths import OUTPUT  # noqa: E402
+from src.utils.result_io import read_results  # noqa: E402
 
 ARMS = ['dlt', 'dlt_out-dec', 'dlt_refine', 'dlt_refine-dec', 'dlt_input']
 LABEL = {'dlt': 'output (Eq. 2)', 'dlt_out-dec': 'output, decoupled + select', 'dlt_refine': 'refine',
@@ -28,20 +28,13 @@ LABEL = {'dlt': 'output (Eq. 2)', 'dlt_out-dec': 'output, decoupled + select', '
 
 def load(files):
     runs = {}
-    for f in files or [d / 'results_plugin_fusion.jsonl' for d in (paths.REPO / 'results' / 'p1', paths.WORK)]:
-        f = Path(f)
-        if f.exists():
-            for line in open(f):
-                try:
-                    r = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if r.get('model') == 'DLTPlug':
-                    runs[(r['des'], r.get('seed'))] = r
-    ds_of = {v[1]: k for k, v in exps.DATASETS.items()}
+    for f in files or [OUTPUT / 'plugin' / 'plugin_fusion.tsv']:
+        for r in read_results(f):
+            if r.get('model') == 'DLTPlug':
+                runs[(r['des'], r.get('seed'))] = r
     cells = collections.defaultdict(list)                   # (ds, H, base, arm) -> records
     for r in runs.values():
-        ds, H, b = ds_of[r['data_path']], r['pred_len'], r['plug_base']
+        ds, H, b = r['dataset'], r['pred_len'], r['plug_base']
         stem = f'{ds}_{H}_{b}_'
         if r['des'].startswith(stem):
             cells[(ds, H, b, r['des'][len(stem):])].append(r)

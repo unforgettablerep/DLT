@@ -1,9 +1,8 @@
-"""Plug-in study (suite plugin_all of scripts/exps.py): every backbone alone and + DLT-dyn, side by side.
+"""Plug-in study (suite plugin_all of scripts/plugin/make_jobs.py): every backbone alone and + DLT-dyn, side by side.
 
-    python scripts/p1/plugin_table.py [--metric mse|mae] [--arm dlt] [--seeds 2021] [--out FILE] [--files F ...]
+    python scripts/plugin/plugin_table.py [--metric mse|mae] [--arm dlt] [--seeds 2021] [--out FILE] [--files F ...]
 
-Reads results_plugin_all.jsonl from results/p1 and from the work directory (fixed locations; a run present in both
-is taken from work/), or the files given with --files (e.g. copied from another machine). Several seeds are averaged per setting. PEMS: input 96, MSE / MAE on the normalised scale
+Reads output/plugin/plugin_all.tsv, or the files given with --files (later files win for a run in several). Several seeds are averaged per setting. PEMS: input 96, MSE / MAE on the normalised scale
 (protocol of iTransformer and S-Mamba). --arm picks the "+ DLT" arm: dlt is the default recipe; a list written with
 --dlt "<args>" has its own arm name (dlt_<args>), which the script lists when it finds one.
 
@@ -19,42 +18,35 @@ Sections (markdown):
   5. the validation rule: the branch is kept only where it lowers the best validation loss of the backbone alone
      (a decision made on validation data only); mean change and settings made worse by more than 2 %, with and
      without the rule. Settings whose test metric is NaN are left out of every section and counted at the top,
-  6. the backbone alone against its published numbers (scripts/p1/reported.json: long-term sets and Solar, and
+  6. the backbone alone against its published numbers (assets/reported.json: long-term sets and Solar, and
      PEMS with the protocol of iTransformer), and + DLT against the published backbone alone. A backbone more
      than 10 % behind its published numbers is marked: its comparison is not valid until its learning rate has
-     been checked (scripts/exps.py --backbone_lr / --select_lr).
+     been checked (scripts/plugin/make_jobs.py --backbone_lr / --select_lr).
 Where a learning-rate check was run (arms alone@lr<x>), the backbone alone and + DLT are taken at the learning
 rate whose backbone-alone run has the lowest validation loss; the header lists these settings.
 """
 import argparse, collections, json, statistics, sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import paths  # noqa: E402
-import exps  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.configs.baseline_profiles import BASELINES, DISPLAY as NAME  # noqa: E402
+from src.configs.dlt_profiles import DATASET_META, PEMS, get_pred_lens  # noqa: E402
+from src.utils.paths import OUTPUT, REPO  # noqa: E402
+from src.utils.result_io import read_results  # noqa: E402
 
 SUITE = 'plugin_all'
-NAME = {'SMamba': 'S-Mamba'}
-DS_OF_FILE = {v[1]: k for k, v in exps.DATASETS.items()}
-DATASETS = list(exps.PLUGIN_ALL_SETS)
+DATASETS = list(DATASET_META)
 
 
 def load(seeds, files=None):
     runs = {}
-    for f in files or [d / f'results_{SUITE}.jsonl' for d in (paths.REPO / 'results' / 'p1', paths.WORK)]:
-        f = Path(f)                                                     # later files win
-        if not f.exists():
-            continue
-        for line in open(f):
-            try:
-                r = json.loads(line)
-            except json.JSONDecodeError:                                # a record cut off by an interruption
-                continue
+    for f in files or [OUTPUT / 'plugin' / '{}.tsv'.format(SUITE)]:
+        for r in read_results(f):
             if r.get('model') == 'DLTPlug' and (not seeds or r.get('seed') in seeds):
                 runs[(r['des'], r.get('seed'))] = r
     cells = collections.defaultdict(list)                               # (dataset, H, backbone, arm) -> records
     for r in runs.values():
-        ds, H, base = DS_OF_FILE[r['data_path']], r['pred_len'], r['plug_base']
+        ds, H, base = r['dataset'], r['pred_len'], r['plug_base']
         stem = f'{ds}_{H}_{base}_'
         if r['des'].startswith(stem):
             cells[(ds, H, base, r['des'][len(stem):])].append(r)
@@ -96,17 +88,17 @@ def pair_arms(cells, arm, k):
     return pair, nan, pending, chosen, alone_sel
 
 
-REPORTED = json.load(open(Path(__file__).with_name('reported.json')))
+REPORTED = json.load(open(REPO / 'assets' / 'reported.json'))
 
 
 def published(ds, H, base, k='mse'):
     """published result of the backbone alone (H = 'Avg': the mean over the horizons), or None"""
-    v = (REPORTED['pems_96'] if ds in exps.PEMS_SETS else REPORTED['long_term']).get(base, {}).get(ds, {}).get(str(H))
+    v = (REPORTED['pems_96'] if ds in PEMS else REPORTED['long_term']).get(base, {}).get(ds, {}).get(str(H))
     return v[0 if k == 'mse' else 1] if v else None
 
 
 def horizons(ds):
-    return exps.PEMS_HORIZONS if ds in exps.PEMS_SETS else exps.HORIZONS
+    return get_pred_lens(ds)
 
 
 def baseline_gaps(ds, b, alone_sel, pair, k='mse'):
@@ -138,8 +130,8 @@ def main():
     cells = load(a.seeds, a.files)
     k = a.metric
     arms = sorted({key[3].split('@')[0] for key in cells} - {'alone'})
-    bases = [b for b in exps.BASELINES if any(key[2] == b for key in cells)] + \
-        sorted({key[2] for key in cells} - set(exps.BASELINES))
+    bases = [b for b in BASELINES if any(key[2] == b for key in cells)] + \
+        sorted({key[2] for key in cells} - set(BASELINES))
     pair, nan, pending, chosen, alone_sel = pair_arms(cells, a.arm, k)
     seeds = sorted({r.get('seed') for rs in cells.values() for r in rs})
     out = [f'# Plug-in study: backbone alone vs + DLT-dyn (arm `{a.arm}`)', '',
@@ -147,13 +139,13 @@ def main():
            f'Metric: {k.upper()} (PEMS: normalised scale). Change = (+ DLT) / alone - 1; **bold**: the branch helps.']
     if nan:
         out.append(f'Left out, test {k.upper()} is NaN in at least one arm: {", ".join(sorted(nan))} '
-                   f'(python scripts/gpu/diag_nonfinite.py <job> finds where).')
+                   f'(python scripts/utils/diag_nonfinite.py <job> finds where).')
     if chosen:
         out.append(f'Learning rate chosen on the validation loss of the backbone alone: '
                    f'{", ".join(f"{d}-{h} {NAME.get(b, b)} {s[1:]}" for (d, h, b), s in sorted(chosen.items()))}.')
     if pending:
         out.append(f'+ DLT at the chosen learning rate still missing (left out): {", ".join(sorted(pending))} '
-                   f'(python scripts/exps.py plugin_all --select_lr ...).')
+                   f'(python scripts/plugin/make_jobs.py plugin_all --select_lr ...).')
     if arms and arms != [a.arm]:
         out.append(f'"+ DLT" arms found: {", ".join(arms)} (choose one with --arm).')
     fmt = lambda d: f'{100 * d:+.1f} %'

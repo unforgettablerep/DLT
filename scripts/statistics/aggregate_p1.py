@@ -1,33 +1,33 @@
-"""Tables of the P1 experiments (our runs: mean ± std over seeds; published numbers marked as reported).
-
-    python scripts/p1/aggregate.py
-
-Reads the records results/p1/results_*.jsonl and writes results/p1/summary.md (fixed locations). New runs of the
-work directory are merged into results/p1 by scripts/collect_results.py, which also calls this script.
-"""
-import json, os, sys, collections
+"""Tables of the P1 experiments (stand-alone, plug-in pilot, all neighbours, earlier baselines): python scripts/statistics/aggregate_p1.py [out.md]."""
+import collections
+import os
+import json
+import sys
 from pathlib import Path
+
 import numpy as np
 from scipy import stats
 
 REPO = Path(__file__).resolve().parents[2]
-work = sys.argv[1] if len(sys.argv) > 1 else str(REPO / 'results' / 'p1')             # directory of the records
-out = sys.argv[2] if len(sys.argv) > 2 else str(REPO / 'results' / 'p1' / 'summary.md')
-REP = json.load(open(Path(__file__).with_name('reported.json')))
+sys.path.insert(0, str(REPO))
+from src.utils.paths import OUTPUT  # noqa: E402
+from src.utils.result_io import read_results  # noqa: E402
+
+out = sys.argv[1] if len(sys.argv) > 1 else str(OUTPUT / 'statistics' / 'summary_p1.md')
+REP = json.load(open(REPO / 'assets' / 'reported.json'))
 HS = ['96', '192', '336', '720']
-
-
-FILES = {'ETTh1.csv': 'ETTh1', 'ETTh2.csv': 'ETTh2', 'ETTm1.csv': 'ETTm1', 'ETTm2.csv': 'ETTm2', 'weather.csv': 'Weather',
-         'exchange_rate.csv': 'Exchange', 'electricity.csv': 'ECL', 'traffic.csv': 'Traffic', 'PEMS04.npz': 'PEMS04',
-         'PEMS08.npz': 'PEMS08'}
-dsname = lambda r: FILES[r['data_path']]
+STORES = {
+    'pems12': 'long_term_forecast', 'long_small': 'long_term_forecast', 'long_large': 'long_term_forecast',
+    'tuned': 'hyperparam', 'tuned_pems': 'hyperparam', 'ci_long': 'ablation', 'allnb': 'ablation',
+    'plugin': 'plugin', 'plugin_large': 'plugin', 'baselines_v1': 'benchmark',
+}
+dsname = lambda r: r['dataset']
 LONG = ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange', 'Weather', 'ECL', 'Traffic')
-NAME = {'SMamba': 'S-Mamba', 'LagTS': 'LagTS (our re-impl.)'}
+NAME = {'S_Mamba': 'S-Mamba', 'LagTS': 'LagTS (our re-impl.)'}
 
 
 def load(suite):
-    f = os.path.join(work, f'results_{suite}.jsonl')
-    return [json.loads(l) for l in open(f)] if os.path.exists(f) else []
+    return read_results(OUTPUT / STORES[suite] / '{}.tsv'.format(suite))
 
 
 def ms(v, d=3, scale=1.0):
@@ -73,10 +73,10 @@ tuned = load('tuned')
 ci = load('ci_long')
 if lt or tuned:
     P('## Long-term forecasting, input 96 (MSE / MAE)\n')
-    others = ['MillGNN', 'MoVE', 'SMamba', 'TimeMixer', 'iTransformer', 'PatchTST', 'TimesNet', 'DLinear']
+    others = ['MillGNN', 'MoVE', 'S_Mamba', 'TimeMixer', 'iTransformer', 'PatchTST', 'TimesNet', 'DLinear']
     ours = (('DLT-dyn (default)', lt), ('DLT-dyn (tuned)', tuned), ('CI linear (ours)', ci))
     P('| dataset | H | ' + ' | '.join(o[0] for o in ours) + ' | '
-      + ' | '.join(f"{'S-Mamba' if m == 'SMamba' else m} *rep.*" for m in others) + ' |')
+      + ' | '.join(f"{'S-Mamba' if m == 'S_Mamba' else m} *rep.*" for m in others) + ' |')
     P('|---|---|' + '---|' * (len(ours) + len(others)))
     for ds in LONG:
         sets = [[r for r in rows if dsname(r) == ds] for _, rows in ours]
@@ -114,7 +114,7 @@ if plug:
     groups = collections.defaultdict(lambda: {'alone': [], 'dlt': []})
     for r in plug:
         ds = dsname(r)
-        groups[(ds, r['pred_len'], r['plug_base'])]['alone' if r['variant'] == 'ci' else 'dlt'].append(r)
+        groups[(ds, r['pred_len'], r['plug_base'])]['alone' if r['dlt_variant'] == 'ci' else 'dlt'].append(r)
     for (ds, H, base), g in sorted(groups.items()):
         k1, k2 = ('mae', 'rmse') if ds.startswith('PEMS') else ('mse', 'mae')
         a, b = [r[k1] for r in g['alone']], [r[k1] for r in g['dlt']]
@@ -124,9 +124,9 @@ if plug:
         P(f"| {ds} | {H} | {base} | {ms(a, dd)} / {ms([r[k2] for r in g['alone']], dd)} | "
           f"{ms(b, dd)} / {ms([r[k2] for r in g['dlt']], dd)} | {delta} | {p} |")
     P('')
-if os.path.exists(os.path.join(work, 'results_plugin_all.jsonl')):
+if (OUTPUT / 'plugin' / 'plugin_all.tsv').exists():
     P('The plug-in study with every representative backbone on all thirteen datasets (suite plugin_all, GPU) has '
-      'its own table: [plugin_all.md](plugin_all.md) (scripts/p1/plugin_table.py).\n')
+      'its own table: python scripts/plugin/plugin_table.py.\n')
 
 # ---------------------------------------------------------------- all other variables as neighbours
 alln = load('allnb')
@@ -179,7 +179,7 @@ if base:
     P('')
     # averages over the four horizons, every model trained by us with the same pipeline
     models = sorted({m for (_, _, m) in g})
-    order = ['Informer', 'TimesNet', 'DLinear', 'PatchTST', 'iTransformer', 'TimeMixer', 'TimeXer', 'SMamba']
+    order = ['Informer', 'TimesNet', 'DLinear', 'PatchTST', 'iTransformer', 'TimeMixer', 'TimeXer', 'S_Mamba']
     models = [m for m in order if m in models] + [m for m in models if m not in order]       # representative set first
     cols = [('DLT-dyn (default)', lt), ('DLT-dyn (tuned)', tuned), ('CI linear', ci)] + \
            [(NAME.get(m, m), [r for r in base if r['model'] == m]) for m in models]

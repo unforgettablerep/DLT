@@ -77,6 +77,8 @@ Same backbone hyper-parameters and training budget in both columns; the DLT bran
 | Weather | 96 | PatchTST | 0.184 ± 0.002 / 0.226 ± 0.001 | 0.167 ± 0.003 / 0.215 ± 0.003 | -9.1% | 0.002 |
 | Weather | 96 | iTransformer | 0.174 ± 0.002 / 0.215 ± 0.002 | 0.163 ± 0.001 / 0.207 ± 0.001 | -6.7% | 0.004 |
 
+The plug-in study with every representative backbone on all thirteen datasets (suite plugin_all, GPU) has its own table: python scripts/plugin/plugin_table.py.
+
 ## All other variables as neighbours (dense path) vs the CCF top-8 default
 
 Follow-up of the P2 neighbour study. PEMS: horizon 12, TimeMixer protocol, MAE / MAPE (%) / RMSE; otherwise MSE / MAE. ETT / Exchange are not listed: with 7-8 variables the default k = 8 already uses all.

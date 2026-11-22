@@ -1,16 +1,16 @@
 """Plug-in study: which backbones and which datasets gain from the DLT branch, and what the gain goes with.
 
-    python scripts/p1/plugin_gain.py [--arm dlt] [--seeds 2021] [--files F ...] [--diag FILE] [--out FILE]
+    python scripts/plugin/plugin_gain.py [--arm dlt] [--seeds 2021] [--files F ...] [--diag FILE] [--out FILE]
 
 The arms are paired as in plugin_table.py (same records, learning rate chosen on validation, settings whose MSE is
 NaN left out). Every dataset x backbone comparison is classified by its backbone alone against the published numbers
-(scripts/p1/reported.json; as section 6 of plugin_table.py):
+(assets/reported.json; as section 6 of plugin_table.py):
   behind     more than 10 % behind the published result at some horizon (or behind the published average where
              only that is known): left out, the comparison is not valid;
   unchecked  no published result for this backbone and dataset: kept;
   valid      within 10 %: kept.
 A kept comparison is marked "old" when one of its runs used settings other than those plugin_all generates now
-(scripts/exps.py plugin_all_args: e_layers, d_model, d_ff, n_heads, learning rate, batch size, epochs, patience;
+(src/configs/baseline_profiles.py: e_layers, d_model, d_ff, n_heads, learning rate, batch size, epochs, patience;
 on PEMS and Solar the protocol without time marks): it is to be run again.
 Change = (+ DLT) / alone - 1 of the test MSE. Sections (markdown):
   1. dataset x backbone: change of the MSE averaged over the horizons (as plugin_table.py section 1), with the marks;
@@ -22,7 +22,7 @@ Change = (+ DLT) / alone - 1 of the test MSE. Sections (markdown):
         backbone alone of the same dataset and horizon (kept comparisons),
      b. the best + DLT result against the best backbone alone, per dataset and horizon,
      c. the horizon,
-     d. the data (with --diag, the JSON of scripts/p1/leadlag_diag.py): the linear diagnostic per dataset next to
+     d. the data (with --diag, output/plugin/leadlag_diag.json of scripts/plugin/leadlag_diag.py): the linear diagnostic next to
         the change for DLinear and the median change over the backbones.
 """
 import argparse, collections, json, math, re, statistics, sys
@@ -30,23 +30,22 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import exps  # noqa: E402
-import paths  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import plugin_table as pt  # noqa: E402
+from run import parse_args  # noqa: E402
+from src.configs import baseline_profiles  # noqa: E402
+from src.configs.dlt_profiles import NO_MARKS, PEMS  # noqa: E402
 
 NAME = pt.NAME
 FIELDS = {'e_layers': 'e_layers', 'd_model': 'd_model', 'd_ff': 'd_ff', 'n_heads': 'n_heads',
-          'learning_rate': 'lr', 'batch_size': 'batch_size', 'train_epochs': 'train_epochs',
-          'patience': 'patience'}                                       # run.py option -> record field
+          'learning_rate': 'learning_rate', 'batch_size': 'batch_size', 'train_epochs': 'train_epochs',
+          'patience': 'patience'}                                       # option -> result column
 
 
 def run_defaults():
-    src = (paths.REPO / 'run.py').read_text()
-    out = {}
-    for opt in FIELDS:
-        m = re.search(rf"'--{opt}',\s*type=(\w+),\s*default=([^,\)]+)", src)
-        out[opt] = float(m.group(2))
-    return out
+    """defaults of scripts/run.py for the options of FIELDS"""
+    args = parse_args(['--model', 'DLTPlug'])
+    return {opt: float(getattr(args, opt)) for opt in FIELDS}
 
 
 DEFAULTS = run_defaults()
@@ -54,7 +53,7 @@ DEFAULTS = run_defaults()
 
 def expected(base, ds, H):
     """the settings plugin_all generates now for the backbone (run.py defaults where the arguments set none)"""
-    toks = exps.plugin_all_args(base, ds, H)[0].split()
+    toks = baseline_profiles.args(base, ds, H)[0].split()
     d = dict(DEFAULTS)
     for i, t in enumerate(toks[:-1]):
         if t.startswith('--') and t[2:] in FIELDS:
@@ -69,10 +68,12 @@ def is_old(r, base, ds, H, lr_checked):
             continue
         if r.get(field) is not None and abs(float(r[field]) - want[opt]) > 1e-12:
             return True
-    return ds in exps.NO_MARKS_SETS and r.get('time_marks') is not False
+    return ds in NO_MARKS and r.get('time_marks') is not False
 
 
 def spearman(x, y):
+    if len(x) < 2:
+        return float('nan')
     def ranks(v):
         order = sorted(range(len(v)), key=lambda i: v[i])
         r = [0.0] * len(v)
@@ -102,13 +103,13 @@ def main():
     p.add_argument('--arm', default='dlt')
     p.add_argument('--seeds', type=int, nargs='+')
     p.add_argument('--files', nargs='+')
-    p.add_argument('--diag', help='JSON written by scripts/p1/leadlag_diag.py --out')
+    p.add_argument('--diag', help='JSON written by scripts/plugin/leadlag_diag.py --out (e.g. output/plugin/leadlag_diag.json)')
     p.add_argument('--out')
     a = p.parse_args()
     cells = pt.load(a.seeds, a.files)
     pair, nan, pending, chosen, alone_sel = pt.pair_arms(cells, a.arm, 'mse')
     m = pt.mean
-    bases = [b for b in exps.BASELINES if any(k[2] == b for k in pair)]
+    bases = [b for b in baseline_profiles.BASELINES if any(k[2] == b for k in pair)]
     dsets = [d for d in pt.DATASETS if any(k[0] == d for k in pair)]
     cls, old = {}, {}
     for ds in dsets:
@@ -214,14 +215,14 @@ def main():
                        f'{NAME.get(bd["b"], bd["b"])} | {fmt(bd["dlt"] / ba["alone"] - 1)} |')
     out += ['', '**c. Horizon.** Mean change per horizon (kept comparisons):', '']
     for name, group in (('ETT and Exchange', ('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2', 'Exchange')), ('Weather', ('Weather',)),
-                        ('Electricity', ('ECL',)), ('Traffic', ('Traffic',)), ('Solar', ('Solar',)), ('PEMS', exps.PEMS_SETS)):
+                        ('Electricity', ('ECL',)), ('Traffic', ('Traffic',)), ('Solar', ('Solar',)), ('PEMS', PEMS)):
         hs = sorted({s['H'] for s in kept if s['ds'] in group})
         if hs:
             out.append(f'- {name}: ' + ', '.join(
                 f'{H}: {fmt(statistics.mean(s["d"] for s in kept if s["ds"] in group and s["H"] == H))}' for H in hs))
     if a.diag and Path(a.diag).exists():
         diag = {r['dataset']: r for r in json.load(open(a.diag))}
-        out += ['', '**d. Data.** Linear diagnostic (scripts/p1/leadlag_diag.py, mean over the horizons): change of the '
+        out += ['', '**d. Data.** Linear diagnostic (scripts/plugin/leadlag_diag.py, mean over the horizons): change of the '
                 'test MSE of a shared channel-independent ridge forecaster (SHARED, as DLinear) when per-variable '
                 'weights are added (OWN), when the input windows of the 8 DLT neighbours are added (NB, a cross-variable '
                 'branch on a shared backbone, as DLT on DLinear), and what the neighbours add beyond the own past (BOTH '

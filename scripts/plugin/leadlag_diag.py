@@ -1,10 +1,10 @@
 """What can a cross-variable branch add to a channel-independent linear forecaster, and why? A data diagnostic.
 
-    python scripts/p1/leadlag_diag.py [--datasets ETTh1 PEMS08 ...] [--targets 32] [--out results/gpu/leadlag_diag.json]
+    python scripts/plugin/leadlag_diag.py [--datasets ETTh1 PEMS08 ...] [--targets 32] [--out output/plugin/leadlag_diag.json]
 
 On the splits and the scaling of the runs (data_provider, input 96, TSLib PEMS split), per dataset:
   - the k = 8 neighbours of every variable, chosen as the DLT branch chooses them on the training split
-    (models/DLT.py select_neighbours: max over lags 0..48 of |corr(dx_i(t), dx_j(t - lag))|); the mean |CCF| peak
+    (src/layers/DLT_layers.py select_neighbours: max over lags 0..48 of |corr(dx_i(t), dx_j(t - lag))|); the mean |CCF| peak
     of the selected pairs, the share of pairs whose peak is at lag 0 (no lead) and the mean absolute correlation of
     the levels of a variable and its first neighbour (near-copies of a variable have about 1);
   - SHARED: one ridge forecaster from a variable's own input window (96 values) to its next H values, with the
@@ -30,10 +30,11 @@ sys.path.insert(0, str(REPO / 'scripts'))
 os.chdir(REPO)
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
-import exps, paths  # noqa: E402
-from run import get_parser  # noqa: E402
-from data_provider.data_factory import data_provider  # noqa: E402
-from models.DLT import select_neighbours, _diff_standardise, _abs_ccf  # noqa: E402
+from run import parse_args  # noqa: E402
+from src.configs.dlt_profiles import DATASET_META, get_pred_lens  # noqa: E402
+from src.data_provider.data_factory import data_provider  # noqa: E402
+from src.layers.DLT_layers import abs_ccf as _abs_ccf, diff_standardise as _diff_standardise, select_neighbours  # noqa: E402
+from src.utils import paths  # noqa: E402
 
 SEQ, K, L = 96, 8, 48
 MAX_WIN = {'train': 6000, 'val': 2000, 'test': 2000}
@@ -42,12 +43,13 @@ FLAGS = ('train', 'val', 'test')
 
 
 def splits(ds, H):
-    flag, dfile, C, freq, _ = exps.DATASETS[ds]
-    argv = ['--task_name', 'long_term_forecast', '--is_training', '1', '--model_id', 'diag', '--model', 'DLinear',
+    m = DATASET_META[ds]
+    flag, dfile, C, freq = m['data'], m['data_path'], m['enc_in'], m['freq']
+    argv = ['--is_training', '1', '--model_id', 'diag', '--model', 'DLinear',
             '--data', flag, '--root_path', str(paths.root_of(dfile)), '--data_path', dfile, '--features', 'M',
             '--seq_len', str(SEQ), '--label_len', '48', '--pred_len', str(H), '--enc_in', str(C), '--dec_in', str(C),
             '--c_out', str(C), '--freq', freq, '--num_workers', '0']
-    args = get_parser().parse_args(argv)
+    args = parse_args(argv)
     with contextlib.redirect_stdout(io.StringIO()):
         return {f: np.asarray(data_provider(args, f)[0].data_x, dtype=np.float64) for f in FLAGS}
 
@@ -89,7 +91,7 @@ def ridge_eval(F, Y, Fv, Yv, Ft, Yt, horizons):
 
 def run(ds, n_targets, seed=0):
     t0 = time.time()
-    horizons = exps.PEMS_HORIZONS if ds in exps.PEMS_SETS else exps.HORIZONS
+    horizons = get_pred_lens(ds)
     Hm = max(horizons)
     S = splits(ds, Hm)
     C = S['train'].shape[1]
@@ -150,7 +152,7 @@ def run(ds, n_targets, seed=0):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--datasets', nargs='+', default=list(exps.PLUGIN_ALL_SETS))
+    p.add_argument('--datasets', nargs='+', default=list(DATASET_META))
     p.add_argument('--targets', type=int, default=32)
     p.add_argument('--out', default='')
     a = p.parse_args()
@@ -160,7 +162,7 @@ def main():
           f'{"dataset":9s} {"C":>4s} {"CCF peak":>8s} {"lag 0":>6s} {"level r":>7s}  {"OWN":>15s}  {"NB":>15s}  '
           f'{"BOTH vs OWN":>15s}')
     for ds in a.datasets:
-        if not paths.exists(exps.DATASETS[ds][1]):
+        if not paths.exists(DATASET_META[ds]['data_path']):
             print(f'{ds:9s} data file missing, skipped')
             continue
         r = run(ds, a.targets)
