@@ -63,4 +63,6 @@ def add_common_args(parser):
     parser.add_argument("--no_time_marks", action="store_true", help="no time-mark features (x_mark = None), as the iTransformer / S-Mamba code on PEMS and Solar")
     parser.add_argument("--pems_split", type=str, default="tslib", choices=["tslib", "itransformer"], help="PEMS: look-back of val / test windows from the preceding split (tslib) or inside the split (itransformer)")
     parser.add_argument("--vali_inverse", action="store_true", default=False, help="validation loss = MAE on the original scale (TimeMixer PEMS protocol)")
-    parser.add_argument("--no_epoch_test", action="store_true", default=False, help="skip the per-epoch test loss (not used for model selection)")
+    parser.add_argument("--epoch_test", dest="no_epoch_test", action="store_false", help="print the test loss after every epoch (not used for model selection; the extra pass draws from the RNG, so the run differs from one without it)")
+    parser.add_argument("--no_epoch_test", dest="no_epoch_test", action="store_true", help="skip the per-epoch test loss (the default; kept for the job lists)")
+    parser.set_defaults(no_epoch_test=True)

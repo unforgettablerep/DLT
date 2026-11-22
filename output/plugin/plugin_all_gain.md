@@ -1,10 +1,10 @@
 # Plug-in study: which backbones and which datasets gain from the DLT branch (2026-11-15)
 
-**Source.** [`plugin_all.jsonl`](plugin_all.jsonl): seed 2021, RTX 4090, the same records as
+**Source.** [`plugin_all.tsv`](plugin_all.tsv): seed 2021, RTX 4090, the same records as
 [`plugin_all_gate.md`](plugin_all_gate.md); default arm `dlt`. All tables come from
-`python scripts/p1/plugin_gain.py --files results/gpu/plugin_all.jsonl --diag results/gpu/leadlag_diag.json`.
+`python scripts/plugin/plugin_gain.py --files output/plugin/plugin_all.tsv --diag output/plugin/leadlag_diag.json`.
 The data diagnostic [`leadlag_diag.json`](leadlag_diag.json) was computed on the CPU with
-`python scripts/p1/leadlag_diag.py --out results/gpu/leadlag_diag.json`, on all 13 datasets of plugin_all.
+`python scripts/plugin/leadlag_diag.py --out output/plugin/leadlag_diag.json`, on all 13 datasets of plugin_all.
 
 **Which comparisons count.** There are 260 settings with both arms; Traffic is left out because the TimesNet MSE is
 NaN. Of these, 204 settings are kept:
@@ -21,7 +21,7 @@ generates. These are PatchTST everywhere (its paper's settings instead of the TS
 same settings. But they are to be run again.
 
 Change = (+ DLT) / alone − 1 of the test MSE; negative means the branch helps. Single seed: earlier seeds varied by
-less than 0.4 % (backbone alone) and up to 2.5 % (+ DLT) ([README](README.md)), so changes below about 2 % are
+less than 0.4 % (backbone alone) and up to 2.5 % (+ DLT) ([README](README_gpu_tier1.md)), so changes below about 2 % are
 within noise.
 
 ## 1. Backbones
@@ -90,7 +90,7 @@ is 3.0 to 6.3, against 0.3 to 0.8. A gain over it says nothing about DLT on a co
   - Settings made worse by more than 2 % drop from 77 to 16.
   - Exchange stays harmed (+6.6 %): there, validation and test periods disagree ([gate study](plugin_all_gate.md)).
 - **Electricity and Traffic so far.** In this suite, only TimesNet on Electricity has both arms. Earlier tier-1c runs
-  (older code and settings, 2–3 seeds; [README](README.md)) point the same way as the pattern above:
+  (older code and settings, 2–3 seeds; [README](README_gpu_tier1.md)) point the same way as the pattern above:
   - DLinear: −10.3 % on Electricity and −13.0 % on Traffic;
   - PatchTST: −8.2 % on Electricity and +13.6 % on Traffic;
   - iTransformer: −0.9 % on Electricity and +11.5 % on Traffic.

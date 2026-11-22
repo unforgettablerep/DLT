@@ -1,13 +1,13 @@
 # Plug-in study: gate probe, validation rule, first Electricity / Traffic runs (2026-11-15)
 
-**Source.** [`plugin_all.jsonl`](plugin_all.jsonl): 663 records from the RTX 4090 (PyTorch 2.10.0+cu130), seed 2021.
-It contains every record of [`plugin_all_stage1.jsonl`](plugin_all_stage1.jsonl) unchanged, plus 148 new ones:
+**Source.** [`plugin_all.tsv`](plugin_all.tsv): 663 records from the RTX 4090 (PyTorch 2.10.0+cu130), seed 2021.
+It contains every record of [`plugin_all_stage1.tsv`](plugin_all_stage1.tsv) unchanged, plus 148 new ones:
 - 128 runs of the gate probe: the + DLT arm with a static gate (`dlt_gate-static`; the branch starts at 4.7 %
   strength) on ETTh1, ETTh2, Exchange and Weather;
 - 20 runs of stage 3: Electricity and Traffic (TimesNet complete, PatchTST and TimeXer + DLT arms so far).
 
 The new S-Mamba records name the Mamba block: `mamba_ssm` (16 of 16). Tables:
-`python scripts/p1/plugin_table.py --files results/gpu/plugin_all.jsonl [--arm dlt_gate-static]`.
+`python scripts/plugin/plugin_table.py --files output/plugin/plugin_all.tsv [--arm dlt_gate-static]`.
 
 ## 1. The static gate does not remove the harm
 Change of test MSE against the backbone alone, median over 8 backbones × 4 horizons (settings where the branch
@@ -62,7 +62,7 @@ lowers the validation loss and raises the test loss. In a paper the rule is a re
   - a small untrained TimesNet run over the same test windows on the CPU gives finite forecasts.
 
   One difference between the splits: 1224 of the 3509 test windows contain a sensor that is constant over the
-  whole input window; no validation window does. `scripts/gpu/diag_nonfinite.py Traffic_96_TimesNet_alone`
+  whole input window; no validation window does. `scripts/utils/diag_nonfinite.py Traffic_96_TimesNet_alone`
   re-tests the saved checkpoint on the GPU. It finds the windows and the first layer with a non-finite value, and
   re-runs the batch with TF32 off, with cuDNN off and on the CPU. New records count non-finite forecasts
   (`test_nonfinite`), and the run log warns about them.
@@ -96,7 +96,7 @@ Compared with the iTransformer paper (Table 9: input 96, MSE), backbone alone at
   and 0.695 with them, and 0.526 after epoch 2 without them (training continues). plugin_all now passes
   `--no_time_marks` on PEMS and Solar; the PEMS04/08 runs are to be repeated with it.
 - **PatchTST needs a PEMS setting of its own**, for example chosen on the validation loss, before its PEMS numbers
-  can be compared. This is now done by a learning-rate check (GPU_RUNS.md). `plugin_table.py` section 6 marks every
+  can be compared. This is now done by a learning-rate check (README.md (GPU Runs)). `plugin_table.py` section 6 marks every
   backbone more than 10 % behind its published numbers. On the records so far that is PatchTST on ETTm1, Exchange,
   PEMS04 and PEMS08, iTransformer on PEMS04 and PEMS08, S-Mamba on PEMS08 (horizon 96) and TimeMixer on Exchange
   (horizon 96).
@@ -105,4 +105,4 @@ Compared with the iTransformer paper (Table 9: input 96, MSE), backbone alone at
 1. `diag_nonfinite.py` on one Traffic TimesNet run, before the remaining Traffic runs are evaluated.
 2. Learning-rate probe on ETTh2, Exchange and Weather (96 runs, separate list, next to stage 3).
 3. Remaining datasets as planned: the rest of Electricity and Traffic, Solar, PEMS03, PEMS07, and PEMS04/08 again
-   without time marks (all their records removed first; see GPU_RUNS.md).
+   without time marks (all their records removed first; see README.md (GPU Runs)).

@@ -1,4 +1,4 @@
-"""Reference Mamba block for scripts/p0/test_p1p2.py: the MambaBlock of Time-Series-Library's models/MambaSimple.py
+"""Reference Mamba block for tests/test_plugin_protocol.py: the MambaBlock of Time-Series-Library's models/MambaSimple.py
 (github.com/thuml/Time-Series-Library, MIT licence), unchanged. The model file itself was removed with the other
 baselines; the test checks layers/MambaPy.py (the PyTorch block of S-Mamba) against this block."""
 import torch

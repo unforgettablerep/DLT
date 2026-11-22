@@ -156,7 +156,7 @@ if (a.all or a.ablation) and dev.type == 'cuda':
         _, _, note = mamba_block('ssm')                  # environment, else ../mamba and ../causal-conv1d
     except ImportError as e:
         print(f'skipped: mamba_ssm cannot be imported ({e}).\n'
-              'S-Mamba runs use the pure-PyTorch block (slower, same model); python scripts/gpu/check_mamba.py says why.')
+              'S-Mamba runs use the pure-PyTorch block (slower, same model); python scripts/utils/check_mamba.py says why.')
     else:
         print(f'mamba_ssm: {note}')
         name, c, m = next(x for x in models if x[0].startswith('S-Mamba'))
@@ -187,7 +187,7 @@ def load_values(path):
         import pandas as pd
         d = pd.read_csv(path).iloc[:, 1:].values
         return d[:int(0.7 * len(d))].astype(np.float64), f'{os.path.basename(path)} (first 70 %)'
-    return Xtr, 'synthetic data (no dataset found in dataset/)'
+    return Xtr, 'synthetic data (no dataset found in the data directory)'
 
 
 found = next((str(paths.path_of(f)) for f in ('weather.csv', 'PEMS08.npz', 'PEMS04.npz', 'electricity.csv', 'ETTh1.csv')

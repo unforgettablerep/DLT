@@ -6,8 +6,8 @@ DLTPlug so far adds the branch to the backbone's forecast (Eq. 2):
 
     y_hat = Backbone(X) + sigma_i * W_c z_i,   z_i(t) = sum_{j in N(i)} sum_l K_ij(l) x~_j(t - l),  t = 1..T
 
-Three weaknesses showed in the plug-in study ([plugin_all_gain.md](../gpu/plugin_all_gain.md),
-[plugin_all_gate.md](../gpu/plugin_all_gate.md)):
+Three weaknesses showed in the plug-in study ([plugin_all_gain.md](plugin_all_gain.md),
+[plugin_all_gate.md](plugin_all_gate.md)):
 1. **The lag structure stops at the window.** z is computed over the look-back window only; a free linear head W_c
    (T -> H, shared by the variables) maps it to the horizon. Kernel and head together are an unconstrained linear map
    from the neighbours' windows to the future, so the distributed-lag form says nothing about the forecast itself.
@@ -18,7 +18,7 @@ Three weaknesses showed in the plug-in study ([plugin_all_gain.md](../gpu/plugin
 3. **No use of what the backbone already predicts, and no way to decline.** The branch never sees the backbone's
    forecast, and it acts on every variable even where it only adds noise.
 
-## Alternatives (models/DLTPlug.py)
+## Alternatives (src/model/DLTPlug.py)
 
 | option | what changes |
 |---|---|
@@ -31,9 +31,9 @@ The same run also scores the backbone part alone and the uncorrected sum (`mse_b
 
 ## CPU comparison (RLinear and DLinear; ETTh2-96, Exchange-96, Weather-96, PEMS08-12)
 
-Suite `plugin_fusion` of `scripts/exps.py`, run here on the CPU with the settings and protocol of the baseline check
+Suite `plugin_fusion` of `scripts/plugin/make_jobs.py`, run here on the CPU with the settings and protocol of the baseline check
 and the default branch recipe (DLT-dyn, k 8, L 48, R 4, branch learning rate 3e-3). Seeds averaged where both ran
-(2021, partly 2022). Table: `python scripts/p1/fusion_table.py --files results/p1/results_plugin_fusion.jsonl`.
+(2021, partly 2022). Table: `python scripts/plugin/fusion_table.py --files output/plugin/plugin_fusion.tsv`.
 
 Change of the test MSE against the backbone alone; brackets for the decoupled arms: without the per-variable selection / the backbone part of the same run.
 
@@ -88,7 +88,7 @@ Change of the test MSE against the backbone alone; brackets for the decoupled ar
   always one of the candidates, so the plug-in rarely hurts, and one run gives both the backbone alone and
   backbone + DLT (`mse_backbone`, `mse_full` in the record).
 - **Next, on the GPU:** `plugin_fusion` with all six backbones (the strong backbones are where joint training hurt
-  most), then `plugin_all` with the chosen recipe (GPU_RUNS.md).
+  most), then `plugin_all` with the chosen recipe (README.md (GPU Runs)).
 
 ## Limits
 

@@ -387,7 +387,10 @@ def migrate_record(rec):
     row["model"] = MODEL_ALIASES.get(row.get("model"), row.get("model"))
     if row.get("plug_base") is not None:
         row["plug_base"] = MODEL_ALIASES.get(row["plug_base"], row["plug_base"])
-    row["dataset"] = canonical_dataset(os.path.basename(str(rec.get("data_path", "")))) if rec.get("data_path") else rec.get("data")
+    if rec.get("data_path"):
+        row["dataset"] = canonical_dataset(os.path.basename(str(rec["data_path"])))
+    else:
+        row["dataset"] = canonical_dataset(rec["dataset"]) if rec.get("dataset") else rec.get("data")
     for key, col in LEGACY_SETTING_FIELDS.items():
         m = re.search(r"_{}(-?\d+)_".format(key), "_" + str(rec.get("setting", "")) + "_")
         if m and col not in row:

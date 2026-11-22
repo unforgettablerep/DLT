@@ -114,8 +114,10 @@ def figure(path_pdf, examples, idx, K, h, d, centroid):
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    ink, ink2, grid = '#0b0b0b', '#52514e', '#e4e3df'
-    col = {1: '#2a78d6', 2: '#eb6834', 3: '#1baf7a'}               # categorical slots 1-3 (validated, all pairs)
+    sys.path.insert(0, str(REPO / 'scripts'))
+    from color import categorical, neutral_dict
+    ink, ink2, grid = neutral_dict['ink'], neutral_dict['ink2'], neutral_dict['grid']
+    col = dict(zip((1, 2, 3), categorical))                       # categorical slots 1-3 (validated, all pairs)
     style = {1: '-', 2: '--', 3: ':'}
     plt.rcParams.update({'font.size': 8, 'axes.edgecolor': ink2, 'axes.labelcolor': ink, 'xtick.color': ink2,
                          'ytick.color': ink2, 'axes.spines.top': False, 'axes.spines.right': False,
@@ -136,11 +138,11 @@ def figure(path_pdf, examples, idx, K, h, d, centroid):
                loc='upper center', ncol=3, bbox_to_anchor=(0.4, 1.02))
     ax = axes[-1]
     ok = np.isfinite(d)
-    ax.scatter(d[ok], centroid[ok], s=6, color='#8c8c8c', alpha=0.45, linewidths=0)
+    ax.scatter(d[ok], centroid[ok], s=6, color=neutral_dict['muted'], alpha=0.45, linewidths=0)
     bins = np.quantile(d[ok], np.linspace(0, 1, 9))
     mid = [(bins[b] + bins[b + 1]) / 2 for b in range(8)]
     med = [np.median(centroid[ok][(d[ok] >= bins[b]) & (d[ok] <= bins[b + 1])]) for b in range(8)]
-    ax.plot(mid, med, color='#2a78d6', lw=2, marker='o', ms=4)
+    ax.plot(mid, med, color=col[1], lw=2, marker='o', ms=4)
     ax.set_xlabel('road-graph distance (edge cost / 1000)')
     ax.set_ylabel('kernel lag centroid (steps)')
     ax.grid(axis='y', color=grid, lw=0.6)

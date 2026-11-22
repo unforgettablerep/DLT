@@ -1,0 +1,118 @@
+[project]
+name = "dlt"
+version = "1.0.0"
+description = "DLT: Distributed-Lag Transfer for Multivariate Time Series Forecasting"
+requires-python = ">=3.10,<3.14"
+# PyTorch is installed separately (README.md, Installation): the CUDA build must match the host driver.
+dependencies = [
+    "matplotlib (>=3.8)",
+    "numpy (>=1.26)",
+    "pandas (>=2.1)",
+    "scikit-learn (>=1.3)",
+    "scipy (>=1.11)",
+]
+
+[project.optional-dependencies]
+test = ["einops (>=0.8)"]
+
+[tool.poetry]
+package-mode = false
+
+[build-system]
+requires      = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = ["poethepoet (>=0.37.0,<0.38.0)"]
+
+[tool.poe.tasks]
+
+[tool.poe.tasks.check-data]
+cmd  = "python scripts/utils/check_data.py"
+help = "Which dataset files are in the data directory, checked against their published sizes"
+
+[tool.poe.tasks.check-gpu]
+cmd  = "python scripts/utils/check_gpu.py ${flags}"
+help = "GPU against CPU: outputs and gradients of DLT-dyn (--all: the representative configurations, --ablation: every variant)"
+[[tool.poe.tasks.check-gpu.args]]
+name    = "flags"
+help    = "--all or --ablation"
+default = ""
+
+[tool.poe.tasks.check-mamba]
+cmd  = "python scripts/utils/check_mamba.py"
+help = "Which Mamba block S-Mamba will use (mamba_ssm or the pure-PyTorch fallback), with install hints"
+
+[tool.poe.tasks.clean]
+cmd  = "bash scripts/clean.sh ${dataset}"
+help = "Clean temp files and caches. Use --dataset to clean only a specific dataset's checkpoints and predictions."
+[[tool.poe.tasks.clean.args]]
+name    = "dataset"
+help    = "Dataset name (e.g. ETTh1). Cleans all if omitted."
+default = ""
+
+[tool.poe.tasks.cuda]
+cmd  = "python -c \"import torch; print('PyTorch Version:', torch.__version__); print('CUDA Available:', torch.cuda.is_available()); print('CUDA Version:', torch.version.cuda); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A'); print('GPU Count:', torch.cuda.device_count() if torch.cuda.is_available() else 0)\""
+help = "Check CUDA and PyTorch setup"
+
+[tool.poe.tasks.download]
+cmd  = "bash scripts/download_data.sh ${flags}"
+help = "Download every forecasting dataset into data/ and check the files"
+[[tool.poe.tasks.download.args]]
+name    = "flags"
+help    = "Dataset groups and/or --mirror (hf-mirror.com and jsDelivr first)"
+default = ""
+
+[tool.poe.tasks.forecasts]
+cmd  = "bash scripts/multivariate_forecasting/run_all_forecasts.sh --model ${model} --gpu ${gpu} --para ${para}"
+help = "Run the per-dataset scripts of one model on all 13 datasets over the given GPUs"
+[[tool.poe.tasks.forecasts.args]]
+name    = "model"
+help    = "DLT (default) or a baseline: S_Mamba, iTransformer, PatchTST, RLinear, DLinear, TiDE"
+default = "DLT"
+[[tool.poe.tasks.forecasts.args]]
+name    = "gpu"
+help    = "Comma-separated GPU ids (default: 0)"
+default = "0"
+[[tool.poe.tasks.forecasts.args]]
+name    = "para"
+help    = "Scripts at a time per GPU (default: 1)"
+default = "1"
+
+[tool.poe.tasks.gpu-jobs]
+cmd  = "bash scripts/batch/make_gpu_jobs.sh"
+help = "Write the job lists of the experiments that need a GPU (temp/jobs/) and count the runs left"
+
+[tool.poe.tasks.migrate-work]
+cmd  = "python scripts/utils/migrate_work.py work --apply"
+help = "Take over the run records of a pre-refactor work/ directory into output/"
+
+[tool.poe.tasks.missing]
+cmd  = "python scripts/utils/run_missing.py ${list}"
+help = "Print the jobs of a list that have no result yet"
+[[tool.poe.tasks.missing.args]]
+name = "list"
+help = "Job list name (temp/jobs/jobs_<list>.txt)"
+
+[tool.poe.tasks.queue]
+cmd  = "bash scripts/utils/run_gpu_queue.sh ${list} ${gpus}"
+help = "Run the jobs of a list without a result on GPUs, one worker per listed GPU id"
+[[tool.poe.tasks.queue.args]]
+name = "list"
+help = "Job list name (temp/jobs/jobs_<list>.txt)"
+[[tool.poe.tasks.queue.args]]
+name    = "gpus"
+help    = "GPU ids, space-separated; '0 0 0' runs three jobs at a time on GPU 0 (default: 0)"
+default = "0"
+
+[tool.poe.tasks.scripts]
+cmd  = "python scripts/multivariate_forecasting/make_scripts.py"
+help = "Regenerate the per-dataset run scripts from src/configs/dlt_profiles.py and baseline_profiles.py"
+
+[tool.poe.tasks.tables]
+shell = "python scripts/ablation/aggregate.py > /dev/null && python scripts/statistics/aggregate_p1.py > /dev/null && python scripts/statistics/aggregate_p2.py > /dev/null && python scripts/efficiency/eff_tune.py > /dev/null && echo 'output/ablation/summary.md output/statistics/summary_p1.md output/statistics/summary_p2.md output/efficiency/eff_tune.md'"
+help = "Rebuild the summary tables from the result stores"
+
+[tool.poe.tasks.test]
+cmd  = "python -m unittest discover -s tests -v"
+help = "Run the unit tests"

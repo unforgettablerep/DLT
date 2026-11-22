@@ -2,7 +2,7 @@
 
 The study now uses six baselines, those of the S-Mamba paper (Wang et al., Neurocomputing 2025): S-Mamba,
 iTransformer, PatchTST, RLinear, DLinear and TiDE. The reference is the paper's Tables 2-4 (input 96; 13 datasets,
-four horizons each; `scripts/p1/reported.json`, block `smamba_paper`). Its baseline columns equal the iTransformer
+four horizons each; `assets/reported.json`, block `smamba_paper`). Its baseline columns equal the iTransformer
 paper, which reproduced the baselines in Time-Series-Library "built on the configurations provided by each model's
 original paper or official code" (its Appendix A.2).
 
@@ -16,11 +16,11 @@ official scripts, and the forecasts against the published numbers.
 | DLinear, PatchTST, TiDE | Time-Series-Library (latest, `4e938a1`) | `models/*.py` identical |
 | iTransformer | github.com/thuml/iTransformer | same model; embedding, encoder layers and attention identical (AST); here a `--use_norm` switch, default on as there |
 | S-Mamba | github.com/wzhwzhwzh0921/S-D-Mamba | same forward pass; the official encoder layer also builds two Mamba blocks and an attention layer that never run, left out here (they only change the random initial weights) |
-| RLinear | github.com/plumprc/RTSF | ported (`models/RLinear.py`): RevIN with learnable affine parameters, dropout, one linear map shared by the variates; a unit test checks it against the written-out formula |
+| RLinear | github.com/plumprc/RTSF | ported (`src/model/RLinear.py`): RevIN with learnable affine parameters, dropout, one linear map shared by the variates; a unit test checks it against the written-out formula |
 
 ## 2. Settings and protocol
 
-`scripts/baselines.py` reads every setting from copies of the official scripts (`scripts/official/`). Differences
+`src/configs/baseline_profiles.py` reads every setting from copies of the official scripts (`scripts/benchmark/official/`). Differences
 to the earlier settings that this fixed:
 - iTransformer ETTh1 at horizons 336 / 720: d_model / d_ff 512 (one setting of 256 was used for every horizon);
 - PatchTST: the Time-Series-Library scripts (the earlier study used the PatchTST paper's settings);
@@ -35,7 +35,7 @@ Official lines are missing for: PatchTST on Solar and PEMS (the Electricity line
 but ETTh1 (the ETTh1 line is taken), RLinear on Exchange, Traffic, Solar and PEMS (ETTh1's or Electricity's line),
 DLinear on most datasets (library defaults; DLinear has no settings of its own besides training).
 
-**Pre-flight.** `scripts/smoke_jobs.py` built every configuration of the check on the CPU (batch 2, the shortest and the longest horizon of each) and trained it for one step: 134 checks passed, 0 failed. S-Mamba ran on ETTh1/h2/m1/m2, PEMS03 and PEMS04-12 only; its PyTorch block needs about 18 minutes for one step on PEMS04 on this CPU, and on the GPU it runs mamba_ssm.
+**Pre-flight.** `scripts/utils/smoke_jobs.py` built every configuration of the check on the CPU (batch 2, the shortest and the longest horizon of each) and trained it for one step: 134 checks passed, 0 failed. S-Mamba ran on ETTh1/h2/m1/m2, PEMS03 and PEMS04-12 only; its PyTorch block needs about 18 minutes for one step on PEMS04 on this CPU, and on the GPU it runs mamba_ssm.
 
 ## 3. Forecasts against the published numbers
 
@@ -79,7 +79,7 @@ DLinear on most datasets (library defaults; DLinear has no settings of its own b
 | PatchTST | 2 | 2 | 5.2 % | 0 |
 | TiDE | 2 | 2 | 18.9 % | 0 |
 
-### Earlier GPU runs, previous protocol (RTX 4090, seed 2021; `results/gpu/plugin_all.jsonl`, backbone alone)
+### Earlier GPU runs, previous protocol (RTX 4090, seed 2021; `output/plugin/plugin_all.tsv`, backbone alone)
 
 These ran before the protocol was aligned (five time features on 10/15-minute data, no dropped batches; PEMS with
 time marks and the TSLib split; PatchTST with its paper's settings). They show where the baselines stood:
@@ -159,7 +159,7 @@ ETTh1-96, CPU, seed 2021, protocol of the check (published: 0.479 / 0.464):
 
 | configuration | MSE / MAE | against published |
 |---|---|---:|
-| Time-Series-Library script (`scripts/official/TSLib/ETT_script/TiDE_ETTh1.sh`: lr 0.1, batch 512, d_model 256, decoder output 8) | 0.385 / 0.393 | -19.6 % |
+| Time-Series-Library script (`scripts/benchmark/official/TSLib/ETT_script/TiDE_ETTh1.sh`: lr 0.1, batch 512, d_model 256, decoder output 8) | 0.385 / 0.393 | -19.6 % |
 | TiDE paper, Table 8 (ETTh1, lookback 720 there: lr 3.82e-5, batch 512, hidden 256, temporal decoder 128) | 0.880 / 0.626 | +83.7 % |
 | library defaults (lr 1e-4, batch 32, d_model 512): stopped after 8 of 10 epochs, validation MSE 0.753 against 0.69 with the script | – | – |
 
@@ -180,5 +180,5 @@ and say so, rather than the published column.
 | DLinear | Time-Series-Library | TSLib scripts / defaults | 32 settings: 30 within 5 %, none worse by more than 10 % (earlier protocol; DLinear ignores time marks) |
 | TiDE | Time-Series-Library | TSLib script (ETTh1 line everywhere) | at horizon 96 better than published by 20 % (ETTh1), 28 % (ETTh2) and 10 % (Exchange); the published column is not reproducible (section 4) |
 
-Still to run on the GPU (GPU_RUNS.md, "Baseline check"): every baseline on every dataset with the protocol of the
-check; then `python scripts/p1/baseline_check.py`.
+Still to run on the GPU (README.md (GPU Runs), "Baseline check"): every baseline on every dataset with the protocol of the
+check; then `python scripts/benchmark/baseline_check.py`.

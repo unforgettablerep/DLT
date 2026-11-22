@@ -1,6 +1,6 @@
 # Plug-in study (suite plugin_all), stage 1 and PEMS04/08: evaluation (2026-11-14)
 
-**Source.** [`plugin_all_stage1.jsonl`](plugin_all_stage1.jsonl): 515 records from the RTX 4090 (PyTorch
+**Source.** [`plugin_all_stage1.tsv`](plugin_all_stage1.tsv): 515 records from the RTX 4090 (PyTorch
 2.10.0+cu130), seed 2021, no failed run:
 - all 384 runs of stage 1: ETTh1, ETTh2, ETTm1, ETTm2, Exchange and Weather, horizons 96 to 720;
 - all 128 runs on PEMS04/08, horizons 12 to 96, with the protocol of iTransformer and S-Mamba;
@@ -8,11 +8,11 @@
 
 Every setting has both arms: 8 backbones alone and with the DLT-dyn branch (default recipe: k 8, L 48, R 4, branch
 learning rate 3e-3). The tables below are from
-`python scripts/p1/plugin_table.py --files results/gpu/plugin_all_stage1.jsonl`; add `--metric mae` for MAE.
+`python scripts/plugin/plugin_table.py --files output/plugin/plugin_all_stage1.tsv`; add `--metric mae` for MAE.
 One seed: changes below about 2 % are within the seed spread of the earlier three-seed CPU runs.
 
 ## The set-up is sound
-- **Backbones alone reproduce the published numbers** (input 96, MSE, `scripts/p1/reported.json`):
+- **Backbones alone reproduce the published numbers** (input 96, MSE, `assets/reported.json`):
 
   | backbone | mean gap | within 5 % | largest gap |
   |---|---:|---:|---|

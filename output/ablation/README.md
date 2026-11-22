@@ -3,7 +3,7 @@
 Setting: Time-Series-Library, look-back 96, the same linear self branch and training set-up for every row
 (k = 8 CCF-selected neighbours, L = 48, R = 4, top-K = 5, Adam 3e-3 halved every epoch, batch 32,
 10 epochs, early stopping patience 3, seeds 2021/2022/2023). 13 configurations × 5 settings × 3 seeds =
-195 runs, all complete. Tables: [`summary.md`](summary.md); raw records: [`results_p0.jsonl`](results_p0.jsonl).
+195 runs, all complete. Tables: [`summary.md`](summary.md); raw records: [`p0.tsv`](p0.tsv).
 Rows "MillGNN-static / -dyn" re-implement MillGNN's lag-kernel parameterisation (top-K CCF lags, signed
 excitation–inhibition decay, attention over sources) inside the same linear model. MillGNN has no public
 code, so this isolates the kernel, not the full MillGNN architecture (its reported numbers are compared in P1).

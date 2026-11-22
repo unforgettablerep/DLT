@@ -2,7 +2,7 @@
 
     python scripts/utils/check_mamba.py
 
-Reference GPU environment (GPU_RUNS.md): host CUDA 13.0, PyTorch 2.10.0+cu130, and mamba_ssm 2.3.2.post1 and
+Reference GPU environment (README.md, Installation): host CUDA 13.0, PyTorch 2.10.0+cu130, and mamba_ssm 2.3.2.post1 and
 causal_conv1d 1.7.0 from their prebuilt wheels for CUDA 13 + torch 2.10.
 
 S-Mamba (src/model/S_Mamba.py) imports mamba_ssm from the environment, else from the source checkouts next to the
@@ -30,7 +30,7 @@ from src.layers.Mamba_EncDec import mamba_block  # noqa: E402
 from src.layers.MambaPy import Mamba as TorchMamba  # noqa: E402
 
 issues = []
-REF_TORCH, REF_INDEX = '2.10.0', 'https://download.pytorch.org/whl/cu130'     # reference environment (GPU_RUNS.md)
+REF_TORCH, REF_INDEX = '2.10.0', 'https://download.pytorch.org/whl/cu130'     # reference environment (README.md, Installation)
 
 
 def version_of(init_py):

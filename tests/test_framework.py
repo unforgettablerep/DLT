@@ -54,6 +54,12 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual((args.model, args.plug_base, args.d_state), ("DLTPlug", "S_Mamba", 4))
         self.assertEqual(parse_args(["--model", "DLT", "--fix_seed", "2022"]).seed, 2022)
 
+    def test_no_epoch_test_by_default(self):
+        # every recorded run skipped the per-epoch test pass, which draws from the RNG and so changes the run
+        self.assertTrue(parse_args(["--model", "DLT"]).no_epoch_test)
+        self.assertTrue(parse_args(["--model", "DLT", "--no_epoch_test"]).no_epoch_test)
+        self.assertFalse(parse_args(["--model", "DLT", "--epoch_test"]).no_epoch_test)
+
 
 class ResultStoreTests(unittest.TestCase):
     def args(self, **kw):
@@ -92,11 +98,40 @@ class ResultStoreTests(unittest.TestCase):
         self.assertEqual((row["dataset"], row["plug_base"], row["learning_rate"], row["dlt_variant"], row["dlt_k"], row["dlt_fusion"]), ("Weather", "S_Mamba", 0.001, "dltdyn", 8, "output"))
         self.assertEqual((row["label_len"], row["d_layers"], row["factor"], row["status"]), (48, 1, 3, "ok"))
         self.assertNotIn("setting", row)
+        self.assertEqual(result_io.migrate_record({"dataset": "Traffic", "model": "DLT", "pred_len": 96, "mse": 0.5, "mae": 0.3})["dataset"], "Traffic")
 
     def test_checkpoint_prefix_keeps_runs_apart(self):
         a = self.args()
         self.assertNotEqual(ckpt_prefix(a), ckpt_prefix(self.args(seed=2022)))
         self.assertNotEqual(ckpt_prefix(a), ckpt_prefix(self.args(des="v")))
+
+
+class GeneratedScriptTests(unittest.TestCase):
+    def test_per_dataset_scripts_are_current(self):
+        res = subprocess.run([sys.executable, str(REPO / "scripts" / "multivariate_forecasting" / "make_scripts.py"), "--check"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+
+    def test_registry_matches_the_p0_grid(self):
+        from src.ablation.registry import P0_CONFIGS, P0_LABELS, p0_args
+
+        self.assertEqual(len(P0_CONFIGS), 13)
+        self.assertEqual(set(P0_LABELS), set(P0_CONFIGS))
+        self.assertEqual(p0_args("dltdyn", "static")["dlt_impl"], "basis")
+        self.assertEqual(p0_args("dlt", "none")["dlt_impl"], "kernel")
+
+
+class MigrationTests(unittest.TestCase):
+    def test_legacy_record_is_recognised_in_its_store(self):
+        sys.path.insert(0, str(REPO / "scripts" / "utils"))
+        import migrate_work
+
+        rec = {"model": "DLT", "model_id": "long_small_Weather_96", "data": "custom", "data_path": "weather.csv", "seq_len": 96, "pred_len": 96, "seed": 2021, "mse": 0.1641, "mae": 0.2117, "variant": "dltdyn", "des": "Exp"}
+        row = result_io.migrate_record(rec)
+        stored = dict(row, des="Weather_96_dltdyn", dlt_variant="dltdyn")
+        self.assertEqual(migrate_work.key(row), migrate_work.key(stored))
+        self.assertNotEqual(migrate_work.key(row), migrate_work.key(dict(stored, seed=2022)))
+        self.assertEqual((migrate_work.category("long_small"), migrate_work.category("hp_pems"), migrate_work.category("plugin_all")), ("long_term_forecast", "hyperparam", "plugin"))
+        self.assertIsNone(migrate_work.category("quickstart"))
 
 
 class ResumeTests(unittest.TestCase):

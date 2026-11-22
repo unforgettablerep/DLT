@@ -15,11 +15,7 @@ P0_SETTINGS = {
     "PEMS08_96": ("PEMS08", 96, "PEMS08_96"),
     "ECL_96": ("ECL", 96, "ECL"),
 }
-P0_CONFIGS = [(v, "none") for v in ("ci", "scalar", "shift", "tap3", "dlt", "full", "scalardyn", "dltdyn", "topk", "mill", "milldyn")] + [("dltdyn", "moe"), ("dltdyn", "static")]
-
-
-def p0_impl(variant):
-    return "basis" if variant == "dltdyn" else "kernel"
+from src.ablation.registry import P0_CONFIGS, p0_args, p0_impl  # noqa: E402
 
 
 def bench_costs():
@@ -46,7 +42,7 @@ def main():
             if a.datasets and ds not in a.datasets:
                 continue
             for (v, gate), seed in itertools.product(P0_CONFIGS, S):
-                args = "--dlt_variant {} --dlt_gate {} --dlt_impl {} --dlt_k 8 --dlt_L 48 --dlt_R 4 --dlt_topk 5 {}".format(v, gate, p0_impl(v), jobs.DLT_TRAIN)
+                args = "{} {}".format(" ".join("--{} {}".format(k, x) for k, x in p0_args(v, gate).items()), jobs.DLT_TRAIN)
                 c = cost.get((bkey, v, gate, p0_impl(v)), cost.get((bkey, v, gate, "kernel"), jobs.cost(ds)))
                 g.add("{}_{}_{}".format(s, v, gate), "DLT", ds, H, seed, args, c, label=48)
     elif a.suite == "ci_long":

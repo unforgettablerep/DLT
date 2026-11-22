@@ -6,10 +6,10 @@
   batch 32, 10 epochs, early stopping patience 3.
 
 **Sources.**
-- Tables: [`p1/summary.md`](p1/summary.md) and [`p2/summary.md`](p2/summary.md).
-- P0 (kernel and gate study): [`p0/README.md`](p0/README.md).
-- Experiments that still need a GPU: [`../GPU_RUNS.md`](../GPU_RUNS.md). First GPU results (Traffic stand-alone,
-  plug-in on Electricity and Traffic): [`gpu/README.md`](gpu/README.md).
+- Tables: [`statistics/summary_p1.md`](statistics/summary_p1.md) and [`statistics/summary_p2.md`](statistics/summary_p2.md).
+- P0 (kernel and gate study): [`ablation/README.md`](ablation/README.md).
+- Experiments that still need a GPU: [README.md, GPU Runs](../README.md#gpu-runs). First GPU results (Traffic stand-alone,
+  plug-in on Electricity and Traffic): [`plugin/README_gpu_tier1.md`](plugin/README_gpu_tier1.md).
 - Numbers marked *reported* are copied from the papers, never re-computed.
 
 ## 1. Stand-alone accuracy under the standard protocols
@@ -79,7 +79,7 @@ Test MSE of DLT-dyn relative to the same model without the cross branch (CI line
 
 - On these three datasets the branch improves every backbone where the data is coupled. On ETTh1 it costs
   2–3 %, consistent with point 2.
-- **Large data (GPU, two seeds, [`gpu/README.md`](gpu/README.md)) qualifies this.** Averaged over four horizons:
+- **Large data (GPU, two seeds, [`plugin/README_gpu_tier1.md`](plugin/README_gpu_tier1.md)) qualifies this.** Averaged over four horizons:
 
   | | DLinear | PatchTST | iTransformer |
   |---|---:|---:|---:|
@@ -144,13 +144,13 @@ Test MSE of DLT-dyn relative to the same model without the cross branch (CI line
 
 ## 8. Baselines re-run on CPU (official hyper-parameters, 277 runs)
 
-**The representative set.** Every comparison now uses eight baselines, one per model family: Informer, TimesNet,
-DLinear, PatchTST, iTransformer, TimeMixer, TimeXer and S-Mamba (`BASELINES` in
-[`../scripts/exps.py`](../scripts/exps.py)). The CPU covered DLinear, iTransformer and TimeMixer on the small
+**The representative set.** At the time every comparison used eight baselines, one per model family: Informer,
+TimesNet, DLinear, PatchTST, iTransformer, TimeMixer, TimeXer and S-Mamba (`BASELINES` of `scripts/baselines.py` then;
+the six baselines of today are in [`../src/configs/baseline_profiles.py`](../src/configs/baseline_profiles.py)). The CPU covered DLinear, iTransformer and TimeMixer on the small
 datasets and S-Mamba on ETTh1, ETTh2, Exchange and Weather-96; the rest is GPU tier 3. LagTS stays available but is
 no longer part of the default set.
 
-**S-Mamba port.** `models/SMamba.py` re-implements S-Mamba (not part of Time-Series-Library) after the official
+**S-Mamba port.** `src/model/S_Mamba.py` re-implements S-Mamba (not part of Time-Series-Library) after the official
 code; these runs use its pure-PyTorch Mamba block. With the official hyper-parameters it reproduces the published
 numbers (MSE, one seed):
 
@@ -178,7 +178,7 @@ Change against the S-Mamba paper (Wang et al., Neurocomputing 2025, Tables 3 and
   cells. The exceptions are DLinear on ECL and TimeMixer on ETTh2 (about 6 %).
 - **LagTS re-implementation.** No code is available, and we fix λ at 0.1 where the paper tunes it. It stays 5–24 % behind the LagTS paper. On
   ETTm1 / ETTm2, which the paper does not cover, it is still improving at the last epoch on ETTm1. Compare with LagTS through its reported
-  numbers (now in [`../scripts/p1/reported.json`](../scripts/p1/reported.json)). The re-implementation is
+  numbers (now in [`../assets/reported.json`](../assets/reported.json)). The re-implementation is
   supplementary at most.
 
 **Horizon-averaged MSE of the models trained in this pipeline:**
@@ -203,7 +203,7 @@ result among re-run models there.
    - the efficiency (point 6).
 
    The plug-in can be a lead claim only for linear and channel-independent backbones, and only after the Traffic
-   result of point 3 is understood ([`gpu/README.md`](gpu/README.md), section 4).
+   result of point 3 is understood ([`plugin/README_gpu_tier1.md`](plugin/README_gpu_tier1.md), section 4).
 2. **State the scope:** the branch helps coupled data and must be switched off or regularised for weakly
    coupled data (point 2). Report the Exchange and ETTh results honestly.
 3. **Do not claim** CCF neighbour selection as an accuracy contribution (point 4) or travel-time
@@ -211,4 +211,4 @@ result among re-run models there.
 4. **Next steps:**
    - a validation-driven gate or regulariser for weakly coupled data;
    - k and R in the search space;
-   - the GPU tiers of [`../GPU_RUNS.md`](../GPU_RUNS.md).
+   - the GPU tiers of [README.md, GPU Runs](../README.md#gpu-runs).

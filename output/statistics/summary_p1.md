@@ -60,7 +60,7 @@ MAE / MAPE (%) / RMSE on the original scale; MAPE as in TimeMixer (ratios > 5 co
 | ECL | 720 | 0.238 ± 0.000 / 0.320 ± 0.000 | – | 0.253 ± 0.000 / 0.324 ± 0.000 | 0.223 / 0.298 | 0.190 / 0.290 | 0.204 / 0.298 | 0.225 / 0.310 | 0.225 / 0.317 | 0.246 / 0.324 | 0.220 / 0.320 | 0.245 / 0.333 |
 | ECL | Avg | 0.197 / 0.284 | – | 0.215 / 0.292 | 0.170 / 0.262 | 0.158 / 0.256 | 0.170 / 0.265 | 0.182 / 0.272 | 0.178 / 0.270 | 0.205 / 0.290 | 0.192 / 0.295 | 0.212 / 0.300 |
 
-DLT-dyn (tuned): configuration chosen by the validation search (scripts/p1/hpsearch.py, see tuned.json). CI linear: the same model without the cross-variable branch (RevIN + one linear map per variable). Informer and TimeXer, the other two representative baselines, have no reported numbers here; they are re-run (table below).
+DLT-dyn (tuned): configuration chosen by the validation search (scripts/hyperparam/hpsearch.py, see output/hyperparam/tuned.json). CI linear: the same model without the cross-variable branch (RevIN + one linear map per variable). Informer and TimeXer, the other two representative baselines, have no reported numbers here; they are re-run (table below).
 
 ## Plug-in: backbone alone vs backbone + DLT-dyn branch
 

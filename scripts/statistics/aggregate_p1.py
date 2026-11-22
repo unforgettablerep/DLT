@@ -98,7 +98,7 @@ if lt or tuned:
                 v = REP['long_term'].get(m, {}).get(ds, {}).get(H)
                 rep.append(f'{v[0]:.3f} / {v[1]:.3f}' if v else '–')
             P(f'| {ds} | {H} | ' + ' | '.join(cells) + ' | ' + ' | '.join(rep) + ' |')
-    P('\nDLT-dyn (tuned): configuration chosen by the validation search (scripts/p1/hpsearch.py, see tuned.json). '
+    P('\nDLT-dyn (tuned): configuration chosen by the validation search (scripts/hyperparam/hpsearch.py, see output/hyperparam/tuned.json). '
       'CI linear: the same model without the cross-variable branch (RevIN + one linear map per variable). '
       'Informer and TimeXer, the other two representative baselines, have no reported numbers here; they are re-run (table below).\n')
 

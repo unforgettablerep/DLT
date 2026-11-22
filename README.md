@@ -1,45 +1,114 @@
 # DLT: Distributed-Lag Transfer for Multivariate Time Series Forecasting
 
-> **中文简介**：本仓库是 DLT（跨变量分布滞后传递）的代码仓库：一份 Time-Series-Library 快照加上 DLT 模型（`--model DLT`），以及全部实验脚本和结果表。核心思想是为每对相关变量学习一条**多时滞核** K_ij(τ)，用共享的时滞基降低参数量，并让核系数随输入窗口自适应（DLT-dyn）。
-> 论文稿、相关论文 PDF 和所有图片在 `DLTpaper` 仓库；本仓库只保留代码、实验记录和结果表。
+Cross-variable effects in multivariate series are often **lagged and spread over several lags** (e.g. upstream →
+downstream traffic sensors). Channel-dependent models usually mix whole series with one scalar per pair
+(iTransformer-style), shift a source by one estimated lag (LIFT-style) or use very short static kernels
+(CrossLinear-style). **DLT** gives every target–source pair its own multi-lag kernel built from a small bank of shared
+basis kernels, at a cost linear in the number of variables:
 
-## Quick start: one GPU, one dataset, stand-alone DLT-dyn
+$$z_i(t)=\sum_{j\in N(i)}\sum_{\tau=0}^{L}K_{ij}(\tau)\,\tilde x_j(t-\tau),\qquad K_{ij}(\tau)=\sum_{r=1}^{R}\alpha_{ijr}\,\phi_r(\tau)$$
 
-Reference environment: one RTX 4090, host CUDA 13.0, PyTorch 2.10.0+cu130 (since 2026-11-13; before: PyTorch
-2.5.1+cu124). Run everything from the repository root.
+**DLT-dyn** makes the coefficients input-adaptive, α_ijr(X) = α_ijr · (1 + tanh(MLP([s_i ‖ s_j]))). The forecast is
+y_i = W_self x̃_i + W_cross z_i on RevIN-normalised inputs; the neighbours N(i) are the k sources with the largest
+|CCF| on the training split. `--model DLTPlug` adds the same branch to another forecaster.
+
+The paper (LaTeX, figures, tables) lives in the `DLTpaper` repository; this repository holds the code, the run
+records and the result tables.
+
+## Installation
+
+### Environment Requirements
+
+- Python 3.12 (3.10–3.13 work)
+- PyTorch 2.10.0+cu130 on the reference GPU machine (one RTX 4090, host CUDA 13.0); on the CPU any PyTorch ≥ 2.5
+  (tested with 2.5.1 and 2.15, identical DLT-dyn results)
+
+### Step 1: Create Conda Environment
 
 ```bash
-# 1. environment (Python 3.10-3.13; the Mamba packages of S-Mamba: GPU_RUNS.md, section 0)
-pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu130
-pip install -r requirements.txt
-
-# 2. data: fixed directory ./dataset (Time-Series-Library layout, e.g. dataset/weather/weather.csv)
-bash scripts/download_data.sh             # all datasets (--mirror where huggingface.co / GitHub are blocked)
-python scripts/check_data.py              # which files are there, with their published sizes
-
-# 3. the GPU computes what the CPU computes (stand-alone DLT-dyn, under a minute)
-python scripts/gpu/check_gpu.py           # must end with "all checks passed"
-
-# 4. one training run: DLT-dyn, Weather, horizon 96, GPU 0, seed 2021
-bash scripts/train_dltdyn.sh
+conda env create -f environment.yml && conda activate dlt
 ```
 
-There is nothing to configure: every script reads the datasets from `dataset/` (or from `../data` next to the
-repository when `dataset/` does not exist) and writes job lists, logs, checkpoints and result records to `work/`
-([`scripts/paths.py`](scripts/paths.py)). Both are ignored by git; if the data or an earlier work directory is
-elsewhere, make `dataset` or `work` a symbolic link to it. S-Mamba finds `mamba_ssm` in the environment or in the
-source checkouts `../mamba` and `../causal-conv1d`; `python scripts/gpu/check_mamba.py` checks that.
+### Step 2: Install PyTorch
 
-The script ends with one line, for example (CPU, PyTorch 2.5.1, this exact command):
-
-```
-Weather_96_96 seed 2021: MSE 0.1642  MAE 0.2117  | best epoch 7 of 10, 26.2 s per epoch, 22232 parameters
+```bash
+pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu130 &&
+pip install poetry
 ```
 
-On the GPU expect the same metrics to about three decimals: cuDNN and TensorFloat-32 are not bit-identical to the
-CPU. Other datasets and horizons: `bash scripts/train_dltdyn.sh PEMS08 12` (dataset, horizon, then optionally the
-seed and further `run.py` arguments; see the script header). CPU reference values of the default configuration,
-mean ± std over seeds 2021–2023:
+### Step 3: Install Additional Dependencies
+
+```bash
+poetry install                      # or: pip install numpy pandas scipy scikit-learn matplotlib
+```
+
+S-Mamba uses the CUDA kernels of `mamba_ssm` when they import, else a pure-PyTorch block (same model, one Python step
+per variate token, slow on Electricity and Traffic). For CUDA 13 + torch 2.10 + Python 3.12 the prebuilt pair is
+installed with `--no-deps` (S-Mamba needs neither `transformers` nor the other dependencies of `mamba_ssm`):
+
+```bash
+pip install --no-deps https://github.com/state-spaces/mamba/releases/download/v2.3.2.post1/mamba_ssm-2.3.2.post1+cu13torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+pip install --no-deps https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.7.0/causal_conv1d-1.7.0+cu13torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+```
+
+Without these wheels S-Mamba also finds the source checkouts `../mamba` and `../causal-conv1d` next to the
+repository.
+
+### Verify Setup
+
+```bash
+poetry run poe cuda             # PyTorch, CUDA and the GPU
+poetry run poe check-mamba      # must end with "S-Mamba will use mamba_ssm ... Nothing to do." before S-Mamba runs
+poetry run poe check-gpu        # GPU against CPU for DLT-dyn; must end with "all checks passed"
+python scripts/utils/check_gpu.py --all     # the ten representative configurations (DLT, plug-in, S-Mamba)
+poetry run poe test             # unit tests (CPU)
+```
+
+## Data
+
+`bash scripts/download_data.sh [groups] [--mirror]` fetches every dataset into `./data/` and checks each file
+against its published size (`python scripts/utils/check_data.py` repeats the check; `--mirror` takes hf-mirror.com
+and jsDelivr first where huggingface.co or GitHub are blocked):
+
+- ETT (ETTh1/h2/m1/m2), Exchange, Weather, Electricity and Traffic: the Time-Series-Library copy on
+  [Hugging Face](https://huggingface.co/datasets/thuml/Time-Series-Library);
+- PEMS03/04/07/08 (`PEMS0x.npz`, flow in channel 0) with their road networks (`PEMS0x_edges.csv`): the repository
+  of the dataset's authors, else a Hugging Face mirror;
+- Solar-Energy (`Solar/solar_AL.txt`): the LSTNet data repository.
+
+Files can sit in the Time-Series-Library layout (`data/ETT-small/ETTh1.csv`, `data/weather/weather.csv`,
+`data/PEMS/PEMS08.npz`, `data/Solar/solar_AL.txt`, …) or directly in `data/`. When `./data` (or the older
+`./dataset`) does not exist, `../data` next to the repository is used (`src/utils/paths.py`). Data, `temp/` and
+`log/` are ignored by git.
+
+## Quick Start
+
+Stand-alone DLT-dyn on Weather, horizon 96, seed 2021 (about 25 s per epoch on one CPU thread):
+
+```bash
+python -u scripts/run.py --is_training 1 --model DLT --des quickstart --seed 2021 \
+    $(python -m src.configs.dlt_cli Weather 96 --with-meta)
+```
+
+Append `--no_use_gpu --num_workers 0` for the CPU. The run trains, tests the best checkpoint and appends one row to
+`output/long_term_forecast/Weather.tsv`; the checkpoint goes to `temp/checkpoints/Weather/`. On the CPU it gives
+MSE 0.1642 / MAE 0.2117 (best epoch 7 of 10); on a GPU expect the same to about three decimals (cuDNN and
+TensorFloat-32 are not bit-identical to the CPU). `--is_training 2` tests the latest checkpoint again
+(`--checkpoint N` a given one).
+
+The recipe of every dataset lives in `src/configs/dlt_profiles.py` and is emitted by `python -m
+src.configs.dlt_cli <dataset> <horizon> [--with-meta] [--profile efficiency]`; the six baselines are emitted the same
+way from their official scripts by `python -m src.configs.baseline_cli <model> <dataset> <horizon> --with-meta`. Do
+not copy these settings into commands. Per-dataset scripts for all horizons and seeds, generated from the same
+profiles:
+
+```bash
+bash scripts/multivariate_forecasting/Weather/DLT.sh                      # DLT-dyn, horizons 96-720, seeds 2021-2023
+SEEDS="2021" bash scripts/multivariate_forecasting/PEMS/iTransformer_PEMS08.sh
+bash scripts/multivariate_forecasting/run_all_forecasts.sh --model DLT --gpu 0,1 --para 2   # all 13 datasets
+```
+
+CPU reference values of the default recipe, mean ± std over seeds 2021–2023:
 
 | dataset / horizon | DLT-dyn | same model without the cross branch (CI) | CPU s / epoch (1 thread) |
 |---|---|---|---:|
@@ -50,207 +119,142 @@ mean ± std over seeds 2021–2023:
 | PEMS04 / 12 (MAE, MAPE, RMSE; TimeMixer protocol) | 22.31 ± 0.06, 13.85 %, 35.10 | 27.36, 16.34 %, 43.54 | 100 |
 | ETTh1 / 96 (MSE, MAE) | 0.4102 ± 0.0055, 0.4140 ± 0.0028 | 0.3887, 0.3957 | 2 |
 
-ETTh1 is listed on purpose: on weakly coupled data the cross-variable branch does not help (see
-[`results/README.md`](results/README.md)).
+ETTh1 is listed on purpose: on weakly coupled data the cross-variable branch does not help (`output/README.md`).
 
-Datasets: `bash scripts/download_data.sh [groups] [--mirror]` fetches them into `dataset/` and checks every file
-against its published size (`scripts/check_data.py`):
-- ETT (ETTh1/h2/m1/m2), Exchange, Weather, ECL (electricity), Traffic and ILI: the THUML copy on
-  [Hugging Face](https://huggingface.co/datasets/thuml/Time-Series-Library) (also on
-  [Google Drive](https://drive.google.com/drive/folders/13Cg1KYOlzM5C7K8gK8NfC-F3EYxkM3D2?usp=sharing) and
-  [Baidu Drive](https://pan.baidu.com/s/1r3KhGd0Q9PJIUZdfEYoymg?pwd=i9iy));
-- PEMS03/04/07/08 (`PEMS0x.npz`, flow in channel 0) with their road networks: the repository of the dataset's
-  authors (ASTGNN), else a Hugging Face mirror;
-- Solar-Energy (`Solar/solar_AL.txt`, read with `--data Solar`): the LSTNet data repository.
+## Architecture
 
-`--mirror` takes hf-mirror.com and jsDelivr first, for networks where huggingface.co or GitHub are blocked.
+| Component | File |
+| --- | --- |
+| Lag kernels (11 variants), neighbour and lag-set selection, basis, computation paths | `src/layers/DLT_layers.py` |
+| Stand-alone model (`--model DLT`): RevIN, self head, cross branch, gates | `src/model/DLT.py` |
+| Plug-in (`--model DLTPlug --plug_base <model>`): the branch added to a backbone | `src/model/DLTPlug.py` |
+| Baselines: S-Mamba, iTransformer, PatchTST, RLinear, DLinear, TiDE | `src/model/*.py` |
+| CLI parsers | `src/configs/common.py`, `custom_<model>.py`, `model_parser_dict.py` |
+| Recipes and emitters | `src/configs/dlt_profiles.py`, `dlt_cli.py`, `baseline_profiles.py`, `baseline_cli.py` |
+| Ablation registry (P0 kernels and gates) | `src/ablation/registry.py` |
 
-## Idea
-Cross-variable effects in multivariate series are often **lagged and spread over several lags**
-(e.g. upstream → downstream traffic sensors). Existing channel-dependent models either mix whole
-series with one scalar per pair (iTransformer/VCformer-style), shift a source by a single estimated
-lag (LIFT / TLGNN / DTLGSL-style), or use very short static kernels (CrossLinear-style).
-**DLT** gives every target–source pair its own multi-lag kernel
+`--dlt_impl kernel | basis | dense` are three computation paths with identical forecasts; `basis` is the path of all
+reported DLT-dyn runs (the recipes set it), `dense` is the cheapest when k is close to C − 1.
 
-$$z_i(t)=\sum_{j\in N(i)}\sum_{\tau=0}^{L}K_{ij}(\tau)\,\tilde x_j(t-\tau),\qquad K_{ij}(\tau)=\sum_{r=1}^{R}\alpha_{ijr}\,\phi_r(\tau)$$
+## Supported Datasets
 
-with a small bank of shared basis kernels φ_r (cost linear in the number of variables), and
-**DLT-dyn** makes α input-adaptive: α_ijr(X) = α_ijr · (1 + tanh(MLP([s_i ‖ s_j]))).
+| Dataset | `--data` | `--data_path` | `enc_in` | `seq_len` | pred_lens |
+| --- | --- | --- | --- | --- | --- |
+| ETTh1, ETTh2 | ETTh1, ETTh2 | ETTh1.csv, ETTh2.csv | 7 | 96 | 96, 192, 336, 720 |
+| ETTm1, ETTm2 | ETTm1, ETTm2 | ETTm1.csv, ETTm2.csv | 7 | 96 | 96, 192, 336, 720 |
+| Exchange | custom | exchange_rate.csv | 8 | 96 | 96, 192, 336, 720 |
+| Weather | custom | weather.csv | 21 | 96 | 96, 192, 336, 720 |
+| ECL | custom | electricity.csv | 321 | 96 | 96, 192, 336, 720 |
+| Traffic | custom | traffic.csv | 862 | 96 | 96, 192, 336, 720 |
+| Solar | Solar | solar_AL.txt | 137 | 96 | 96, 192, 336, 720 |
+| PEMS03 / 04 / 07 / 08 | PEMS | PEMS0x.npz | 358 / 307 / 883 / 170 | 96 | 12, 24, 48, 96 |
 
+Solar and PEMS follow the protocol of the official iTransformer / S-Mamba loaders in every run (no time marks,
+`--drop_last`, test batch 1, PEMS with `--pems_split itransformer`); the baselines use that protocol on every dataset.
+The suite `pems12` instead uses the TimeMixer / MillGNN protocol at horizon 12 (L1 loss, validation MAE and test
+metrics on the original scale).
 
-## Repository layout
+## Key Parameters
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `--dlt_variant` | `dltdyn` | Kernel: `dltdyn`, `dlt`, `ci` (no cross branch), `scalar`, `scalardyn`, `shift`, `tap3`, `full`, `topk`, `mill`, `milldyn` |
+| `--dlt_k` | 8 | Source neighbours per variable |
+| `--dlt_L` | 48 | Maximum lag of the kernels |
+| `--dlt_R` | 4 | Shared basis kernels |
+| `--dlt_dyn_dim` | 16 | Summary dimension of the input-adaptive coefficients |
+| `--dlt_impl` | `kernel` | Computation path (`kernel`, `basis`, `dense`); the recipes use `basis` |
+| `--dlt_neighbours` | `ccf` | Neighbour selection: CCF top-k, `random`, `all` |
+| `--dlt_gate` | `none` | Branch combination: `none`, `moe` (MoVE-style), `static` (sigmoid, init `--dlt_gate_init` −3) |
+| `--dlt_topk` | 5 | Lags per pair of `topk` / `mill` / `milldyn` |
+| `--plug_base` | `DLinear` | `DLTPlug`: backbone the branch is added to |
+| `--dlt_fusion` | `output` | `DLTPlug`: `output` (sum of forecasts), `refine`, `input` |
+| `--dlt_train` / `--dlt_select` | `joint` / `none` | `DLTPlug`: `decoupled` two-stage training; `variable` keeps the correction per variable on validation data |
+| `--dlt_lr` | 0 | `DLTPlug`: learning rate of the branch (0 = `--learning_rate`) |
+| `--seed` | 2021 | Seed of every run (alias `--fix_seed`); results and checkpoints depend on it |
+
+The DLT-dyn recipe of the paper: learning rate 3e-3 halved every epoch, batch 32, 10 epochs, patience 3.
+
+## Repository Layout
+
 ```
-run.py  exp/  data_provider/  layers/  models/  utils/     Time-Series-Library, reduced to DLT and the six
-                                     baselines; ours: models/DLT.py, DLTPlug.py, SMamba.py and RLinear.py (ports of
-                                     the official code) and layers/MambaPy.py
-scripts/paths.py                     the fixed data and work directories (dataset/, work/)
-scripts/train_dltdyn.sh              quick start: one GPU, one dataset, stand-alone DLT-dyn
-scripts/gpu/                         GPU-vs-CPU check, job lists and queue of the remaining GPU experiments
-scripts/long_term_forecast/DLT_script/   DLT per dataset at four horizons; the other scripts there are those
-                                     of the kept baselines
-scripts/baselines.py  scripts/official/  the six baselines and their official settings (copies of the official
-                                     scripts of S-Mamba, iTransformer, Time-Series-Library and RLinear)
-scripts/exps.py  scripts/p0 p1 p2/   experiment suites, validation search, aggregation, unit tests
-scripts/run_queue.sh  run_missing.py  run_p1p2_cpu.sh     resumable CPU queues
-scripts/collect_results.py           merges the records of work/ into results/ and rebuilds the tables
-results/                             conclusions (README.md), tables and raw records of P0 / P1 / P2
-code/                                first feasibility prototype (proto.py) with results/runs.jsonl, results/summary.md
-DLT_CHANGES.md                       every change to the upstream snapshot
-GPU_RUNS.md                          experiments that still need a GPU, for one RTX 4090
-requirements.txt                     DLT and the classic models; requirements_tslib_full.txt = upstream list
+src/            model/ layers/ configs/ data_provider/ experiments/ utils/ ablation/
+scripts/run.py  the only training entry point
+scripts/<category>/   multivariate_forecasting  benchmark  plugin  ablation  hyperparam  efficiency  mechanism
+                statistics  prototype  batch  utils  (job generators, analyses, queues)
+output/<category>/    tracked result stores (one TSV row per run), tables and conclusions
+assets/reported.json  numbers copied from the papers (never re-computed)
+tests/          unit tests (python -m unittest discover -s tests)
+data/  temp/  log/    datasets; checkpoints, job lists, raw predictions; logs (all ignored by git)
 ```
-Run-time output of `run.py` (`checkpoints/`, `results/<setting>/`, `test_results/`, `result_long_term_forecast.txt`)
-is ignored by git; `results/p0`, `p1`, `p2` are the tracked experiment records.
 
-## Experiments and results
-* **Conclusions:** [`results/README.md`](results/README.md) (P1 / P2) and [`results/p0/README.md`](results/p0/README.md) (P0).
-* P0 kernel / gate study, 195 runs: [`results/p0/summary.md`](results/p0/summary.md)
-* P1 protocol comparisons, plug-in, validation search, baselines: [`results/p1/summary.md`](results/p1/summary.md)
-* P2 sensitivity, neighbour selection, efficiency, learned kernels vs the PEMS08 road graph: [`results/p2/summary.md`](results/p2/summary.md)
-* Still to run on the GPU (Traffic, plug-in on large data, search on ECL / Traffic / PEMS, baseline re-runs,
-  GPU efficiency): [`GPU_RUNS.md`](GPU_RUNS.md)
+## Experiment Workflows
 
-All of these ran on a 4-core CPU with the code of this repository; the unit tests are
-`python scripts/p0/test_variants.py` and `python scripts/p0/test_p1p2.py`.
-
-**Baselines.** Every comparison (accuracy and efficiency) uses six baselines, those of the S-Mamba paper
-(Neurocomputing 2025): S-Mamba, iTransformer, PatchTST, RLinear, DLinear and TiDE (`BASELINES` in
-[`scripts/baselines.py`](scripts/baselines.py)). Their settings are read from the official scripts, copied to
-[`scripts/official/`](scripts/official/README.md), and they run with the protocol of the official data loaders. The
-baseline check (`python scripts/exps.py baselines`, then `python scripts/p1/baseline_check.py`) compares every
-baseline with the numbers of the S-Mamba paper (`scripts/p1/reported.json`, block `smamba_paper`). S-Mamba and
-RLinear are not in Time-Series-Library; `models/SMamba.py` and `models/RLinear.py` follow the official code
-(S-Mamba: `mamba_ssm` block if installed, a pure-PyTorch block otherwise). The other models of the library were
-removed.
-
-## DLT in Time-Series-Library
-The repository root is a snapshot of [thuml/Time-Series-Library](https://github.com/thuml/Time-Series-Library)
-(commit `4e938a1`, MIT, see `LICENSE`) with DLT added as `--model DLT`; every change to upstream is listed in
-[`DLT_CHANGES.md`](DLT_CHANGES.md). The model is a vectorised re-implementation of `code/proto.py` (no Python
-loop over neighbours) and is device-agnostic.
+Every experiment is a **suite**. Its job generator writes one shell command per run to `temp/jobs/jobs_<list>.txt`;
+every run appends one row to the tracked store `output/<category>/<suite>.tsv`; the queue runners run only the jobs
+whose job name (`--des`) and seed have no row there yet, so an interrupted queue continues where it stopped:
 
 ```bash
-bash scripts/long_term_forecast/DLT_script/DLT_PEMS08.sh                 # GPU 0, DLT-dyn, H = 12/24/48/96
-VARIANT=dlt bash scripts/long_term_forecast/DLT_script/DLT_Weather.sh    # another kernel variant
-bash scripts/long_term_forecast/DLT_script/DLT_ablation.sh               # all variants (PEMS08 + Weather)
-EXTRA_ARGS="--no_use_gpu --num_workers 0" bash scripts/long_term_forecast/DLT_script/DLT_ETTh1.sh   # CPU
+python scripts/multivariate_forecasting/make_jobs.py long_small [--device gpu] [--seeds 2021] [--datasets ...]
+bash scripts/utils/run_queue.sh long_small 4            # CPU, 4 jobs at a time
+bash scripts/utils/run_gpu_queue.sh long_small 0 0      # two jobs at a time on GPU 0
+python scripts/utils/run_missing.py long_small          # the jobs without a result
+python scripts/utils/smoke_jobs.py long_small           # pre-flight: one training step per configuration, peak memory
 ```
-Main flags (all in `run.py --help`, details in `models/DLT.py`):
-* `--dlt_variant` `dltdyn` (default) | `dlt` | `ci` | `scalar` | `shift` | `tap3` | `full` | `scalardyn` | `topk` | `mill` | `milldyn`
-* `--dlt_k` neighbours (8), `--dlt_L` maximum lag (48), `--dlt_R` basis kernels (4), `--dlt_dyn_dim` (16)
-* `--dlt_impl` `kernel` | `basis` | `dense`: identical results; `basis` is the path of all reported DLT-dyn runs
-* `--dlt_neighbours` `ccf` | `random` | `all`, `--dlt_gate` `none` | `moe` | `static`
-* `--model DLTPlug --plug_base <model>` adds the DLT branch to another forecaster; `--dlt_fusion`
-  `output` (default, Eq. 2) | `refine` (distributed-lag correction over the observed past and the backbone's
-  forecast) | `input` (neighbour signal added to the backbone input), `--dlt_train` `joint` | `decoupled`
-  (the backbone trains on its own loss, the branch on its error), `--dlt_select variable` (correction kept per
-  variable on validation data); see `models/DLTPlug.py`
-* `--result_jsonl <file>` appends one JSON record per run; `--no_save_preds` streams the test metrics
 
-**GPU memory.** DLT itself is small (≤ 0.36 M parameters even at Traffic scale; DLT-dyn needs about 1 GB per
-training step at batch 32 on Traffic), so the 24 GB of an RTX 4090 are needed only by the baselines (e.g.
-iTransformer on Traffic: 12.4 GB at batch 32 on the CPU).
+| Experiment | Entry point | Datasets / grid | Output |
+| --- | --- | --- | --- |
+| Stand-alone DLT-dyn | `scripts/multivariate_forecasting/make_jobs.py long_small \| long_large \| long_extra \| pems12` | ETT, Exchange, Weather; ECL, Traffic; Solar and PEMS (official protocol); PEMS04/08-12 (TimeMixer protocol); 3 seeds | `output/long_term_forecast/<suite>.tsv` |
+| Baseline check | `scripts/benchmark/make_jobs.py baselines`, then `scripts/benchmark/baseline_check.py` | six baselines, official settings, 13 datasets | `output/benchmark/baselines*.tsv`, `baseline_check.md` |
+| Plug-in | `scripts/plugin/make_jobs.py plugin_all \| plugin_fusion`; `plugin_table.py`, `plugin_gain.py`, `fusion_table.py`, `plugin_diag.py`, `leadlag_diag.py` | every backbone alone and + DLT-dyn on 13 datasets; five fusion arms | `output/plugin/` |
+| Kernel and gate ablation (P0) | `scripts/ablation/make_jobs.py p0 \| ci_long \| allnb`; `aggregate.py` | 13 configurations × 5 settings × 3 seeds; CI linear; all neighbours | `output/ablation/` |
+| Hyper-parameters | `scripts/hyperparam/make_jobs.py sensitivity \| neighbours`; `hpsearch.py make \| select \| tuned` | L, R, k one at a time; neighbour selection; 20-trial validation search | `output/hyperparam/` |
+| Efficiency | `scripts/efficiency/run_efficiency.py [--setting smamba] [--tuned]`; `make_jobs.py eff_tune`, `eff_tune.py` | parameters, ms per batch, peak memory; S-Mamba setting (batch 16) | `output/efficiency/` |
+| Mechanism | `scripts/mechanism/kernels.py`, `pems_lag.py` | learned kernels against the PEMS08 road graph | `output/mechanism/kernels_pems08.json` |
+| Summary tables | `scripts/statistics/aggregate_p1.py`, `aggregate_p2.py` (or `poe tables`) | all of the above | `output/statistics/summary_p1.md`, `summary_p2.md` |
+| Feasibility prototype | `scripts/prototype/proto.py`, `run_grid.sh`, `agg_md.py` | the first linear study, 69 runs | `output/prototype/` |
 
-### Verification of the port
-* **Equivalence with `code/proto.py`:** with identical parameters and neighbours, all 8 prototype variants (and both
-  computation paths) give the same outputs (max |Δ| ≤ 1.1e-6) and gradients (≤ 1.2e-7).
-* **Device-agnostic:** every variant runs forward + backward on PyTorch's `meta` device, i.e. no tensor is
-  pinned to the CPU inside the model. On a physical GPU (RTX 4090; first check with PyTorch 2.5.1+cu124): see the status note in
-  [`GPU_RUNS.md`](GPU_RUNS.md).
-* **End-to-end in TSLib (CPU):** all variants train and test; without CUDA the run falls back to the CPU;
-  test-only mode (`--is_training 0`) reloads the checkpoint (incl. neighbours) and reproduces the metric.
-* **Same results as the prototype** (MSE, H = 96 unless noted; prototype = mean over its seeds, TSLib = one
-  run with TSLib's seed and data pipeline, prototype hyper-parameters: lr 3e-3, ≤ 6 epochs, patience 2):
+`scripts/batch/run_cpu_campaign.sh` replays the whole CPU campaign; `scripts/batch/make_gpu_jobs.sh` writes the lists
+of everything that needs a GPU. Conclusions and tables: [`output/README.md`](output/README.md).
 
-| setting | ci | scalar | dlt | scalardyn | dltdyn |
-|---|---|---|---|---|---|
-| PEMS08 – prototype | 1.168 | 1.017 | 0.863 | 0.721 | 0.552 |
-| PEMS08 – TSLib | 1.169 | 1.040 | 0.858 | 0.674 | **0.526** |
-| PEMS08 H=24 – prototype / TSLib | | | 0.179 / 0.180 | | 0.133 / **0.133** |
-| Weather – prototype | 0.193 | | 0.167 | 0.172 | 0.164 |
-| Weather – TSLib | 0.193 | | 0.167 | 0.176 | **0.165** |
-| ETTh1 – prototype | **0.390** | | 0.393 | | 0.408 |
-| ETTh1 – TSLib | **0.389** | | 0.396 | | 0.405 |
+## GPU Runs
 
-  (These TSLib runs used `--dlt_impl basis`; repeating ETTh1 dlt/dltdyn, Weather dltdyn and PEMS08 H=24
-  dltdyn with the default `kernel` path gives the same MSE to four decimals.)
+The reference machine is one RTX 4090 (24 GB) with the environment above. Before a long queue run `poe check-mamba`
+and `poe check-gpu`; records carry `device` and `torch`. A pre-refactor checkout keeps its records in `work/`:
+`python scripts/utils/migrate_work.py work --apply` (also run by `make_gpu_jobs.sh`) appends them to the stores so
+finished runs are not repeated.
 
-* **Speed / memory** of one training step (CPU, 4 threads, batch 32, T = H = 96, k = 8, L = 48, R = 4):
-
-| variables | dlt (kernel) | dlt (basis) | dltdyn (kernel) | dltdyn (basis) | full | prototype loop: dlt / dltdyn |
-|---|---|---|---|---|---|---|
-| 862 (Traffic) | 0.77 s, 527 MB | 1.03 s, 904 MB | 0.85 s, 734 MB | 0.89 s, 1028 MB | 0.59 s, 552 MB | 1.79 s / 1.17 s |
-| 321 (Electricity) | 0.20 s, 271 MB | 0.36 s, 398 MB | 0.25 s, 360 MB | 0.30 s, 445 MB | 0.28 s, 262 MB | 0.35 s / 0.27 s |
-| 170 (PEMS08) | 0.13 s, 203 MB | 0.20 s, 290 MB | 0.19 s, 243 MB | 0.16 s, 310 MB | 0.13 s, 202 MB | – |
-
-  Parameters at Traffic scale: dlt 46 K, dltdyn 49 K vs. free kernel 357 K.
-
-
-## Feasibility prototype (`code/`)
-The first study of the idea, before the Time-Series-Library integration: a linear prototype, 69 runs.
-
-All variants share RevIN, the same top-k neighbour sets N(i) (selected offline by |CCF| on the
-training split), the same intra-variable head W_self and cross head W_cross. **They differ only in
-how K_ij(τ) is parameterised:**
-
-| variant | K_ij(τ) | resembles |
-|---|---|---|
-| `ci` | no cross branch | RLinear |
-| `scalar` | a_ij at τ = 0 | iTransformer / VCformer-style mixing |
-| `shift` | a_ij at τ = d_ij (CCF peak lag) | LIFT / TLGNN / DTLGSL-style |
-| `tap3` | free, τ = 0..2 | CrossLinear-style |
-| `dlt` | Σ_r α_ijr φ_r(τ), shared basis | **proposed** |
-| `full` | free, τ = 0..L | unconstrained upper bound |
-| `scalardyn` | `scalar` with input-adaptive a_ij | control: dynamics without a lag kernel |
-| `dltdyn` | `dlt` with input-adaptive α | **proposed (dynamic)** |
-
-Settings: lookback T = 96, horizon H ∈ {24, 96}; k = 8 neighbours, L = 48 lags, R = 4 basis kernels;
-Adam (lr 3e-3, ×0.5 per epoch from epoch 2), ≤ 6 epochs, early stopping on validation MSE
-(patience 2); Time-Series-Library splits (PEMS08 6:2:2), z-score on train; CPU only.
-
-
-### Results (69 runs)
-MSE on the z-scored test set, mean over seeds (¹ = single seed); % = change vs. `ci`; bold = best per column.
-
-| variant | ETTh1 H=96 | Weather H=96 | Electricity H=96 | PEMS08 H=24 | PEMS08 H=96 |
-|---|---|---|---|---|---|
-| CI (no cross) | **0.3895 (+0.0%)** | 0.1932 (+0.0%) | 0.1975 (+0.0%)¹ | 0.2326 (+0.0%) | 1.1678 (+0.0%) |
-| scalar mixing | 0.3900 (+0.1%) | 0.1747 (-9.5%) | 0.1902 (-3.7%)¹ | 0.1904 (-18.1%) | 1.0170 (-12.9%) |
-| single-lag shift | 0.3899 (+0.1%) | 0.1750 (-9.4%) | 0.1895 (-4.0%)¹ | 0.1944 (-16.4%) | 1.0375 (-11.2%)¹ |
-| 3-tap kernel | 0.3897 (+0.0%) | 0.1730 (-10.5%) | 0.1875 (-5.1%)¹ | 0.1853 (-20.3%) | 0.9295 (-20.4%) |
-| DLT (static) | 0.3927 (+0.8%) | 0.1665 (-13.8%) | 0.1866 (-5.5%)¹ | 0.1794 (-22.9%) | 0.8634 (-26.1%) |
-| free kernel | 0.3934 (+1.0%) | 0.1694 (-12.3%) | – | 0.1805 (-22.4%) | 0.8568 (-26.6%)¹ |
-| scalar + dynamic (control) | 0.3933 (+1.0%) | 0.1717 (-11.1%) | 0.1826 (-7.5%)¹ | 0.1495 (-35.7%) | 0.7205 (-38.3%) |
-| DLT-dyn | 0.4083 (+4.8%) | **0.1637 (-15.3%)** | **0.1725 (-12.7%)¹** | **0.1328 (-42.9%)** | **0.5522 (-52.7%)** |
-
-Key observations:
-1. **Multi-lag kernels beat single-lag shifts and scalar mixing** on every coupled dataset
-   (static DLT vs. `shift`: −4.9 / −1.5 / −7.7 / −16.8 % on Weather / Electricity / PEMS08-24 / PEMS08-96).
-2. **The shared basis matches the free kernel** (better on Weather and PEMS08-24, 0.8 % worse on PEMS08-96)
-   with ~12× fewer cross-kernel parameters (PEMS08: 5.6 K vs. 66.6 K).
-3. **Input-adaptive kernels give the largest gain and need the lag kernel**: DLT-dyn beats the
-   dynamic scalar control by 4.7 / 5.5 / 11.2 / 23.4 % and is more stable across seeds
-   (PEMS08-96: 0.555 / 0.549 vs. 0.681 / 0.760).
-4. **Weakly coupled data (ETTh1) does not benefit**; DLT-dyn overfits there (+4.8 %) — a gate /
-   regulariser is needed before full benchmarking.
-
-Premise check (`code/pems_lag.py`): on PEMS08 road edges, 52 % of upstream→downstream pairs peak at
-a one-step (5 min) lead, and 65 % spread their response over ≥ 2 lags.
-
-Caveats: linear prototype, ≤ 6 epochs, no tuning, 1–2 seeds, lookback 96 only; absolute errors are far
-from deep state-of-the-art models — only the relative comparison between variants is meaningful.
-
-
-### Reproduce the prototype
 ```bash
-bash scripts/download_data.sh                 # into the fixed dataset/ directory
-python code/proto.py --data PEMS08 --pred_len 96 --variant dltdyn --out results/my_runs.jsonl
-bash scripts/run_grid.sh                      # the full grid (CPU; ~1–2 h with 4 workers)
-python code/agg_md.py results/runs_reproduced.jsonl
-python code/pems_lag.py                       # lag premise check
+bash scripts/batch/make_gpu_jobs.sh                          # lists in temp/jobs/, with the number of runs left
+for m in DLinear RLinear iTransformer S_Mamba PatchTST TiDE; do  # 1. baseline check, the cheap baselines first
+  python scripts/benchmark/make_jobs.py baselines --device gpu --seeds 2021 --models $m --list baselines_$m &&
+  bash scripts/utils/run_gpu_queue.sh baselines_$m 0 0 && python scripts/benchmark/baseline_check.py --models $m
+done
+bash scripts/utils/run_gpu_queue.sh plugin_fusion 0 0 0       # 2. how the branch enters the six backbones
+python scripts/plugin/fusion_table.py
+bash scripts/utils/run_gpu_queue.sh plugin_all 0 0            # 3. plug-in study (624 runs per seed)
+python scripts/plugin/plugin_table.py                        #    and plugin_gain.py, see output/plugin/
+bash scripts/utils/run_gpu_queue.sh long_extra 0              # 4. DLT-dyn on Solar and PEMS, seeds 2022-2023
+python scripts/efficiency/run_efficiency.py --setting smamba --device gpu --tuned   # 5. efficiency, about 10 min
 ```
-The architecture figure and its generator moved to the `DLTpaper` repository (`figures/`, `figures/src/`).
 
-## Next steps
-A validation-driven gate or regulariser for weakly coupled data; k and R in the search space; the GPU experiments
-of [`GPU_RUNS.md`](GPU_RUNS.md).
+- **Learning-rate check.** Where a backbone alone stays more than 10 % behind its published numbers, run it at the
+  other learning rates (`--backbone_lr 0.0001 0.0005 0.001`, jobs `<name>@lr<x>`); `baseline_check.py` and
+  `plugin_table.py` then take the learning rate with the lowest validation loss, and `plugin_all --select_lr` runs
+  + DLT-dyn at that rate.
+- **Memory.** DLT is small (≤ 0.36 M parameters; about 1 GB per step on Traffic at batch 32). The heavy runs are the
+  baselines on Traffic (iTransformer 12.4 GB at batch 32) and TiDE, which runs one pass per variable: on data with
+  more than 100 variables its jobs carry `--tide_checkpoint` (recomputation in the backward pass, same results).
+  DLT-dyn with all neighbours on Traffic (`allnb`) may need 15–20 GB; use `--batch_size 16` if it does not fit.
+- **Branch recipes.** `--dlt "<args>"` gives a changed recipe its own job names (e.g. `--dlt "--dlt_gate static"` →
+  `..._dlt_gate-static`), compared with `plugin_table.py --arm dlt_gate-static`.
+- **Devices.** CPU and GPU runs differ slightly (TF32, non-deterministic kernels): each table row comes from one
+  device, and both arms of a plug-in pair run on the same device.
+- **Non-finite forecasts.** `python scripts/utils/diag_nonfinite.py <job name> --list <list>` locates the NaN / inf
+  forecasts of a job (it needs the job in its list and its checkpoint in `temp/checkpoints/`).
+
+## Upstream Code and License
+
+The data pipeline, the experiment loop and the baselines DLinear, PatchTST, TiDE and iTransformer derive from
+[thuml/Time-Series-Library](https://github.com/thuml/Time-Series-Library) (commit `4e938a1`, MIT, see `LICENSE`);
+S-Mamba and RLinear follow their official code. The changes to that code are listed in `AGENTS.md`.

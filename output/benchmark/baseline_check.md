@@ -1,11 +1,11 @@
 # Baseline check on the GPU: Weather and PEMS04 (2026-11-18)
 
-**Source.** [`baselines.jsonl`](baselines.jsonl): 45 runs from the RTX 4090 (PyTorch 2.10.0+cu130), seed 2021, suite
-`baselines` of `scripts/exps.py`. Every run uses the settings of the official scripts (`scripts/baselines.py`) and
+**Source.** [`baselines_gpu.tsv`](baselines_gpu.tsv): 45 runs from the RTX 4090 (PyTorch 2.10.0+cu130), seed 2021, suite
+`baselines` of `scripts/benchmark/make_jobs.py`. Every run uses the settings of the official scripts (`src/configs/baseline_profiles.py`) and
 the protocol of the official loaders: four time features, dropped last training / validation batch, test batch 1;
 on PEMS no time marks and the split of the iTransformer loader. S-Mamba ran with `mamba_ssm`. No forecast was NaN.
 Coverage: Weather complete (6 baselines × 4 horizons); PEMS04 complete for five baselines, TiDE 1 of 4 horizons.
-Tables: `python scripts/p1/baseline_check.py --files results/gpu/baselines.jsonl`.
+Tables: `python scripts/benchmark/baseline_check.py --files output/benchmark/baselines_gpu.tsv`.
 
 ## Weather: all six baselines reproduce the S-Mamba paper
 
@@ -21,7 +21,7 @@ Tables: `python scripts/p1/baseline_check.py --files results/gpu/baselines.jsonl
 - **RLinear on the GPU equals the CPU run to 1e-4** (Weather-96: 0.19308 against 0.19306), even where the best
   epoch differs: the pipeline does not depend on the device.
 - **TiDE matches the paper on Weather.** At horizon 96 on ETTh1, ETTh2 and Exchange ours was 10–28 % better
-  ([CPU check](../p1/baseline_check_cpu.md)). On Weather its MAE is 9 % better than published.
+  ([CPU check](baseline_check_cpu.md)). On Weather its MAE is 9 % better than published.
 
 ## PEMS04: four baselines match or beat the paper; iTransformer at 48 / 96 and PatchTST do not
 
@@ -45,23 +45,23 @@ Tables: `python scripts/p1/baseline_check.py --files results/gpu/baselines.jsonl
    which fit). The jobs now carry `--tide_checkpoint`, which recomputes each pass in the backward pass: the same
    settings and the same outputs and gradients (unit test), 0.06 GB kept for backward. Write the list again:
    ```bash
-   python scripts/exps.py baselines --device gpu --seeds 2021 --models TiDE --datasets PEMS04 --list bl_tide
-   bash scripts/gpu/run_gpu_queue.sh bl_tide 0              # horizon 12 is done and skipped
+   python scripts/benchmark/make_jobs.py baselines --device gpu --seeds 2021 --models TiDE --datasets PEMS04 --list bl_tide
+   bash scripts/utils/run_gpu_queue.sh bl_tide 0              # horizon 12 is done and skipped
    ```
 2. Learning-rate check for iTransformer and PatchTST on PEMS04: the same settings at the other learning rates of
    {1e-4, 5e-4, 1e-3}, 16 runs. `baseline_check.py` then takes, per setting, the learning rate with the lowest
    validation loss and names it in the table:
    ```bash
-   python scripts/exps.py baselines --device gpu --seeds 2021 --models iTransformer PatchTST --datasets PEMS04 \
+   python scripts/benchmark/make_jobs.py baselines --device gpu --seeds 2021 --models iTransformer PatchTST --datasets PEMS04 \
        --backbone_lr 0.0001 0.0005 0.001 --list bl_lrcheck
-   bash scripts/gpu/run_gpu_queue.sh bl_lrcheck 0 0
+   bash scripts/utils/run_gpu_queue.sh bl_lrcheck 0 0
    ```
 3. A second seed for iTransformer on PEMS04, to see how much of its gap is seed spread (4 runs):
    ```bash
-   python scripts/exps.py baselines --device gpu --seeds 2022 --models iTransformer --datasets PEMS04 --list bl_seed
-   bash scripts/gpu/run_gpu_queue.sh bl_seed 0
+   python scripts/benchmark/make_jobs.py baselines --device gpu --seeds 2022 --models iTransformer --datasets PEMS04 --list bl_seed
+   bash scripts/utils/run_gpu_queue.sh bl_seed 0
    ```
-4. The other datasets of the check, as in GPU_RUNS.md ("Baseline check").
+4. The other datasets of the check, as in README.md (GPU Runs) ("Baseline check").
 
 ## Tables
 

@@ -7,6 +7,7 @@ import numpy as np
 from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.ablation.registry import P0_GROUP_BREAK, P0_LABELS, P0_TABLE_ORDER  # noqa: E402
 from src.utils.paths import OUTPUT  # noqa: E402
 from src.utils.result_io import read_results  # noqa: E402
 
@@ -15,16 +16,7 @@ path = sys.argv[1] if len(sys.argv) > 1 else str(P0 / 'p0.tsv')
 out = sys.argv[2] if len(sys.argv) > 2 else str(P0 / 'summary.md')
 rows = read_results(path)
 SETTINGS = ['ETTh1_96', 'Weather_96', 'ECL_96', 'PEMS08_24', 'PEMS08_96']
-CONFIGS = [('ci', 'none'), ('scalar', 'none'), ('shift', 'none'), ('tap3', 'none'), ('full', 'none'),
-           ('topk', 'none'), ('mill', 'none'), ('milldyn', 'none'), ('scalardyn', 'none'),
-           ('dlt', 'none'), ('dltdyn', 'none'), ('dltdyn', 'moe'), ('dltdyn', 'static')]
-LABEL = {('ci', 'none'): 'CI (no cross branch)', ('scalar', 'none'): 'scalar (lag 0)',
-         ('shift', 'none'): 'shift (CCF peak lag, LIFT-style)', ('tap3', 'none'): 'tap3 (CrossLinear-style)',
-         ('full', 'none'): 'full (free, lags 0..48)', ('topk', 'none'): 'top-5 lags, free weights',
-         ('mill', 'none'): 'MillGNN-static (top-5 + decay)', ('milldyn', 'none'): 'MillGNN-dyn (top-5 + decay + attention)',
-         ('scalardyn', 'none'): 'scalar-dyn', ('dlt', 'none'): '**DLT**', ('dltdyn', 'none'): '**DLT-dyn**',
-         ('dltdyn', 'moe'): 'DLT-dyn + MoVE softmax gate', ('dltdyn', 'static'): 'DLT-dyn + static gate (init 0.047)'}
-GROUP_BREAK = {('full', 'none'), ('milldyn', 'none'), ('dltdyn', 'none')}   # horizontal separators after these
+CONFIGS, LABEL, GROUP_BREAK = P0_TABLE_ORDER, P0_LABELS, P0_GROUP_BREAK
 
 R = collections.defaultdict(list)
 for r in rows:

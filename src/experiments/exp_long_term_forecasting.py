@@ -128,7 +128,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         criterion = self._select_criterion()
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
-        no_epoch_test = getattr(self.args, "no_epoch_test", False)
+        no_epoch_test = getattr(self.args, "no_epoch_test", True)
         extra_loss = getattr(net, "extra_loss", None)
         # decoupled plug-in: stage 1 stops on the backbone part's validation loss, stage 2 trains the branch on the frozen backbone
         two_stage = getattr(net, "use_dlt", False) and getattr(net, "training_mode", "joint") == "decoupled"
@@ -186,7 +186,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 self.train_info["best_epoch"] = epoch + 1
             print(
                 "Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4}".format(
-                    epoch + 1, train_steps, train_loss, vali_loss, "skipped (--no_epoch_test)" if no_epoch_test else "{:.7f}".format(test_loss)
+                    epoch + 1, train_steps, train_loss, vali_loss, "skipped (--epoch_test to compute it)" if no_epoch_test else "{:.7f}".format(test_loss)
                 )
             )
             early_stopping(vali_loss, self.model, best_model_path)

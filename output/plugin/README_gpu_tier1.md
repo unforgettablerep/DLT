@@ -4,10 +4,10 @@ Newer: the plug-in study with all eight backbones, stage 1 and PEMS04/08 (2026-1
 [`plugin_all_stage1.md`](plugin_all_stage1.md); gate probe, validation rule and first Electricity / Traffic runs
 (2026-11-15): [`plugin_all_gate.md`](plugin_all_gate.md); which backbones and datasets gain, and why
 (2026-11-15): [`plugin_all_gain.md`](plugin_all_gain.md); the baseline check of the six baselines against the S-Mamba paper,
-Weather and PEMS04 (2026-11-18): [`baseline_check.md`](baseline_check.md).
+Weather and PEMS04 (2026-11-18): [`../benchmark/baseline_check.md`](../benchmark/baseline_check.md).
 
 **Source.** 136 result lines of `result_long_term_forecast.txt` from the RTX 4090 run (PyTorch 2.5.1+cu124, code
-version before the `tslib/` folder was merged into the root), parsed into [`tier1_partial.jsonl`](tier1_partial.jsonl). These lines
+version before the `tslib/` folder was merged into the root), parsed into [`../long_term_forecast/tier1_partial.tsv`](../long_term_forecast/tier1_partial.tsv). These lines
 hold test MSE and MAE only. Epochs, best epoch and validation loss are in the `results_*.jsonl` files of the work
 directory of that run; they are needed for the diagnosis below.
 
@@ -89,7 +89,7 @@ Not established yet; the lines above carry no training information.
 - A branch that fits fast and then overfits stops the improvement of the validation loss, so early stopping
   (patience 3) ends the run before the backbone has converged.
 
-**What the CPU runs already show** (`python scripts/p1/plugin_diag.py`). Where the plug-in hurt, the
+**What the CPU runs already show** (`python scripts/plugin/plugin_diag.py`). Where the plug-in hurt, the
 + DLT-dyn arm stopped earlier and its best validation loss was worse than that of the backbone alone:
 
 | | best epoch, alone → + DLT-dyn | best validation loss, alone → + DLT-dyn | Δ test |
@@ -104,15 +104,12 @@ In these cases the harm is visible on the validation split. Choosing between "ba
 DLT-dyn" by validation loss would have avoided it.
 
 **Checks, in this order.**
-1. `python scripts/p1/plugin_diag.py` with the GPU records in `work/`: epochs, best epoch and best validation loss
+1. `python scripts/plugin/plugin_diag.py` with the GPU records (then in `work/`, now in `output/`): epochs, best epoch and best validation loss
    of the Traffic arms. No new runs.
 2. Six runs, Traffic at horizon 96, seed 2021, PatchTST and iTransformer: the branch with the learning rate of
    the backbone, with a static gate (it starts at 4.7 % strength), and with both.
-   ```bash
-   python scripts/exps.py plugin_probe --seeds 2021 --device gpu
-   bash scripts/gpu/run_gpu_queue.sh plugin_probe
-   python scripts/p1/plugin_diag.py
-   ```
+   (The suite `plugin_probe` of the job generator of that time was later replaced by the arms of `plugin_all`:
+   `python scripts/plugin/make_jobs.py plugin_all --dlt "--dlt_gate static"` or `--dlt "--dlt_lr 0"`.)
 3. If a variant removes the loss on Traffic, re-run the + DLT-dyn arms with it (ECL and Weather too, to see that
    their gains stay). If none does, the plug-in claim has to be limited to channel-independent or linear
    backbones, or the branch has to be selected by validation loss.
