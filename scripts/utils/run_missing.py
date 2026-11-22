@@ -22,13 +22,15 @@ def finished(path):
 
 def missing(job_list):
     out = []
-    for line in open(jobs_file(job_list)):
+    with open(jobs_file(job_list)) as f:
+        lines = f.read().splitlines()
+    for line in lines:
         if not line.strip():
             continue
         arg = lambda k, d=None: (re.search(r"--{} (\S+)".format(k), line) or [None, d])[1]
         key = (arg("des"), int(arg("seed", 2021)))
         if key not in finished(arg("result_file")):
-            out.append(line.rstrip("\n"))
+            out.append(line)
     return out
 
 

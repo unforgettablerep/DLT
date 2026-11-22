@@ -93,8 +93,9 @@ python -u scripts/run.py --is_training 1 --model DLT --des quickstart --seed 202
 Append `--no_use_gpu --num_workers 0` for the CPU. The run trains, tests the best checkpoint and appends one row to
 `output/long_term_forecast/Weather.tsv`; the checkpoint goes to `temp/checkpoints/Weather/`. On the CPU it gives
 MSE 0.1642 / MAE 0.2117 (best epoch 7 of 10); on a GPU expect the same to about three decimals (cuDNN and
-TensorFloat-32 are not bit-identical to the CPU). `--is_training 2` tests the latest checkpoint again
-(`--checkpoint N` a given one).
+TensorFloat-32 are not bit-identical to the CPU). As in every recorded run there is no per-epoch test pass;
+`--epoch_test` adds it, and because that pass draws from the random number generator, such a run differs slightly.
+`--is_training 2` tests the latest checkpoint again (`--checkpoint N` a given one).
 
 The recipe of every dataset lives in `src/configs/dlt_profiles.py` and is emitted by `python -m
 src.configs.dlt_cli <dataset> <horizon> [--with-meta] [--profile efficiency]`; the six baselines are emitted the same
