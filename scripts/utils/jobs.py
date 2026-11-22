@@ -77,6 +77,8 @@ class JobList:
         if label is None:
             label = 0 if ds in PEMS_SETS else 48
         meta = resolve_meta(ds, H, label_len=label, model_id="{}_{}_{}".format(self.suite, ds, H))
+        if "--freq " in args:
+            meta.pop("freq")
         dev = "--no_use_gpu --num_workers 0" if self.device == "cpu" else "--num_workers 4"
         cmd = "python -u scripts/run.py --is_training 1 --model {} {} --des {} --seed {} {} {} --no_epoch_test --save_tmp 0 --result_file {} > {} 2>&1".format(
             model,

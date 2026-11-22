@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Download the forecasting datasets into the fixed data directory (dataset/, or ../data next to the repository;
-# scripts/paths.py) in the Time-Series-Library layout, then check every file against its published size
-# (scripts/check_data.py).
+# Download the forecasting datasets into data/ (or ../data next to the repository; src/utils/paths.py) in the
+# Time-Series-Library layout, then check every file against its published size (scripts/utils/check_data.py).
 #
 #   bash scripts/download_data.sh                  all groups (about 560 MB on disk, 380 MB to download)
 #   bash scripts/download_data.sh PEMS Solar       only these groups
@@ -24,7 +23,7 @@
 #
 # A file that is already there, in this layout or directly in the data directory, is kept. PEMS04 and PEMS08 of ASTGNN are byte-identical to the copies used for
 # P0-P2. Without network access, copy the files to the same places by hand (e.g. from the dataset archive of
-# iTransformer or Time-Series-Library) and run python scripts/check_data.py.
+# iTransformer or Time-Series-Library) and run python scripts/utils/check_data.py.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ALL="ETT Exchange Weather ECL Traffic ILI PEMS Solar"
@@ -37,7 +36,7 @@ for a in "$@"; do
   esac
 done
 [ ${#SEL[@]} -gt 0 ] || read -r -a SEL <<< "$ALL"
-D=$(python scripts/paths.py data)
+D=$(python -m src.utils.paths data)
 HF=$([ $MIRROR = 1 ] && echo https://hf-mirror.com || echo https://huggingface.co)
 TSL=$HF/datasets/thuml/Time-Series-Library/resolve/main
 echo "data directory: $D"
@@ -91,4 +90,4 @@ done
 
 echo
 [ ${#FAILED[@]} -eq 0 ] || echo "not downloaded: ${FAILED[*]} (try again, with --mirror, or copy the files by hand)"
-python scripts/check_data.py "${SEL[@]}"
+python scripts/utils/check_data.py "${SEL[@]}"

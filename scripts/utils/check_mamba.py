@@ -1,13 +1,13 @@
 """Can S-Mamba use mamba_ssm on this machine?
 
-    python scripts/gpu/check_mamba.py
+    python scripts/utils/check_mamba.py
 
 Reference GPU environment (GPU_RUNS.md): host CUDA 13.0, PyTorch 2.10.0+cu130, and mamba_ssm 2.3.2.post1 and
 causal_conv1d 1.7.0 from their prebuilt wheels for CUDA 13 + torch 2.10.
 
-S-Mamba (models/SMamba.py) imports mamba_ssm from the environment, else from the source checkouts next to the
-repository (scripts/paths.py: ../mamba and ../causal-conv1d), else it falls back to the pure-PyTorch Mamba block
-of layers/MambaPy.py (same model, much slower). This script shows
+S-Mamba (src/model/S_Mamba.py) imports mamba_ssm from the environment, else from the source checkouts next to the
+repository (src/utils/paths.py: ../mamba and ../causal-conv1d), else it falls back to the pure-PyTorch Mamba block
+of src/layers/MambaPy.py (same model, much slower). This script shows
   1. Python, PyTorch, the CUDA version and C++ ABI PyTorch was built with, the NVIDIA driver and the nvcc on the PATH,
   2. the version of the two source checkouts,
   3. whether the compiled extensions (selective_scan_cuda, causal_conv1d_cuda) and the Mamba block of mamba_ssm
@@ -23,12 +23,11 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / 'scripts'))
 os.chdir(REPO)
 import torch  # noqa: E402
-import paths  # noqa: E402
-from models import SMamba  # noqa: E402
-from layers.MambaPy import Mamba as TorchMamba  # noqa: E402
+from src.utils import paths  # noqa: E402
+from src.layers.Mamba_EncDec import mamba_block  # noqa: E402
+from src.layers.MambaPy import Mamba as TorchMamba  # noqa: E402
 
 issues = []
 REF_TORCH, REF_INDEX = '2.10.0', 'https://download.pytorch.org/whl/cu130'     # reference environment (GPU_RUNS.md)
@@ -68,7 +67,7 @@ elif not cuda and smi:
                   f'CUDA {torch.version.cuda} (nvidia-smi shows the highest CUDA version it supports)')
 
 # ---- 2. source checkouts
-print('\n== source checkouts next to the repository (scripts/paths.py)')
+print('\n== source checkouts next to the repository (src/utils/paths.py)')
 versions = {}
 for src, pkg in ((paths.MAMBA_SRC, 'mamba_ssm'), (paths.CAUSAL_CONV1D_SRC, 'causal_conv1d')):
     if src.is_dir():
@@ -101,7 +100,7 @@ for ext, what in (('selective_scan_cuda', 'selective scan of mamba_ssm (required
             elif ext == 'selective_scan_cuda':
                 issues.append('the CUDA kernel of mamba_ssm (selective_scan_cuda) is not built or not installed')
 try:
-    Mamba, impl, note = SMamba.mamba_block('ssm')
+    Mamba, impl, note = mamba_block('ssm')
     print(f'Mamba block: OK ({note})')
 except ImportError as e:
     Mamba, err = None, str(e)

@@ -1,13 +1,13 @@
 """Check the GPU code paths against the CPU (the CPU runs are the reference of all reported results).
 
-    python scripts/gpu/check_gpu.py [--all] [--ablation] [--device cuda]
+    python scripts/utils/check_gpu.py [--all] [--ablation] [--device cuda]
 
 Default     the stand-alone DLT-dyn model (both implementation paths).
 --all       the ten representative configurations of our code: DLT-dyn (kernel / basis / dense path), static DLT,
             the CI linear model, DLT-dyn with the static gate, DLTPlug with DLinear / PatchTST / iTransformer,
             and the S-Mamba baseline.
 --ablation  also the other kernel variants of the P0 study, the MoVE-style gate and all-neighbour models.
-The dataset of the selection check is read from the fixed data directory (scripts/paths.py).
+The dataset of the selection check is read from the fixed data directory (src/utils/paths.py).
 
 1. Each model is built and prepared on the CPU, copied to the GPU, and the forward output and the gradient of
    every parameter are compared in three settings:
@@ -21,7 +21,7 @@ The dataset of the selection check is read from the fixed data directory (script
 2. Neighbour selection (prepare) on the GPU picks the same sources as on the CPU. Ties (e.g. a dead sensor,
    whose correlation with every source is 0) may be broken differently and are accepted if the scores agree.
 3. With --all on a GPU where mamba-ssm is installed: S-Mamba with the mamba_ssm block equals S-Mamba with the
-   pure-PyTorch block (same parameters), i.e. the fallback of layers/MambaPy.py is the same function.
+   pure-PyTorch block (same parameters), i.e. the fallback of src/layers/MambaPy.py is the same function.
 
 Exit code 1 if a float64 or float32/TF32-off check fails. --device cpu compares the CPU with itself (dry run).
 """
@@ -31,10 +31,10 @@ import numpy as np, torch
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / 'scripts'))
 os.chdir(REPO)
-from models import DLT  # noqa: E402
-import paths  # noqa: E402
+from src.model.DLT import Model as DLTModel  # noqa: E402
+from src.layers import DLT_layers  # noqa: E402
+from src.utils import paths  # noqa: E402
 
 p = argparse.ArgumentParser()
 p.add_argument('--device', default='cuda')
@@ -54,7 +54,7 @@ FLOOR, ZERO = 1e-3, 1e-6
 def cfg(**kw):
     c = dict(task_name='long_term_forecast', seq_len=96, label_len=48, pred_len=24, enc_in=21, dec_in=21, c_out=21,
              dlt_variant='dltdyn', dlt_k=8, dlt_L=48, dlt_R=4, dlt_dyn_dim=16, dlt_ccf_len=8000, dlt_impl='kernel',
-             dlt_topk=5, dlt_gate='none', dlt_gate_init=-3.0, dlt_neighbours='ccf', fix_seed=2021, moving_avg=25,
+             dlt_topk=5, dlt_gate='none', dlt_gate_init=-3.0, dlt_neighbours='ccf', seed=2021, moving_avg=25,
              individual=False, d_model=64, d_ff=64, n_heads=4, e_layers=2, d_layers=1, factor=3, dropout=0.0,
              activation='gelu', embed='timeF', freq='h', output_attention=False, use_norm=1, patch_len=16, stride=8,
              plug_base='DLinear', top_k=5, d_state=8, mamba_impl='torch')
@@ -62,23 +62,25 @@ def cfg(**kw):
     return types.SimpleNamespace(**c)
 
 
-SPECS = [(f'DLT dltdyn impl={i}', DLT.Model, dict(dlt_variant='dltdyn', dlt_impl=i)) for i in ('kernel', 'basis')]
+SPECS = [(f'DLT dltdyn impl={i}', DLTModel, dict(dlt_variant='dltdyn', dlt_impl=i)) for i in ('kernel', 'basis')]
 if a.all or a.ablation:
-    from models import DLTPlug, SMamba  # noqa: E402
-    SPECS += [('DLT dltdyn impl=dense', DLT.Model, dict(dlt_variant='dltdyn', dlt_impl='dense')),
-              ('DLT dlt', DLT.Model, dict(dlt_variant='dlt')),
-              ('DLT ci', DLT.Model, dict(dlt_variant='ci')),
-              ('DLT dltdyn gate=static', DLT.Model, dict(dlt_gate='static'))]
-    SPECS += [(f'DLTPlug {b} + dltdyn', DLTPlug.Model, dict(plug_base=b, dlt_impl='basis'))
+    from src.model.DLTPlug import Model as PlugModel  # noqa: E402
+    from src.model.S_Mamba import Model as SMambaModel  # noqa: E402
+    from src.layers.Mamba_EncDec import mamba_block  # noqa: E402
+    SPECS += [('DLT dltdyn impl=dense', DLTModel, dict(dlt_variant='dltdyn', dlt_impl='dense')),
+              ('DLT dlt', DLTModel, dict(dlt_variant='dlt')),
+              ('DLT ci', DLTModel, dict(dlt_variant='ci')),
+              ('DLT dltdyn gate=static', DLTModel, dict(dlt_gate='static'))]
+    SPECS += [(f'DLTPlug {b} + dltdyn', PlugModel, dict(plug_base=b, dlt_impl='basis'))
               for b in ('DLinear', 'RLinear', 'PatchTST', 'iTransformer', 'TiDE')]
-    SPECS += [('S-Mamba (PyTorch block)', SMamba.Model, dict())]
+    SPECS += [('S-Mamba (PyTorch block)', SMambaModel, dict())]
 if a.ablation:
-    SPECS += [(f'DLT {v}', DLT.Model, dict(dlt_variant=v)) for v in
+    SPECS += [(f'DLT {v}', DLTModel, dict(dlt_variant=v)) for v in
               ('scalar', 'shift', 'tap3', 'full', 'topk', 'mill', 'milldyn', 'scalardyn')]
-    SPECS += [('DLT dlt impl=basis', DLT.Model, dict(dlt_variant='dlt', dlt_impl='basis')),
-              ('DLT dlt impl=dense', DLT.Model, dict(dlt_variant='dlt', dlt_impl='dense')),
-              ('DLT dltdyn gate=moe', DLT.Model, dict(dlt_gate='moe'))]
-    SPECS += [(f'DLT {v} all neighbours (dense)', DLT.Model, dict(dlt_variant=v, dlt_impl='dense', dlt_neighbours='all'))
+    SPECS += [('DLT dlt impl=basis', DLTModel, dict(dlt_variant='dlt', dlt_impl='basis')),
+              ('DLT dlt impl=dense', DLTModel, dict(dlt_variant='dlt', dlt_impl='dense')),
+              ('DLT dltdyn gate=moe', DLTModel, dict(dlt_gate='moe'))]
+    SPECS += [(f'DLT {v} all neighbours (dense)', DLTModel, dict(dlt_variant=v, dlt_impl='dense', dlt_neighbours='all'))
               for v in ('dlt', 'dltdyn')]
 
 MODES = [('float64', torch.float64, None, 1e-9, True),
@@ -151,7 +153,7 @@ if zero_note:
 if (a.all or a.ablation) and dev.type == 'cuda':
     print('\n== S-Mamba: mamba_ssm block vs pure-PyTorch block (float32, same parameters)')
     try:
-        _, _, note = SMamba.mamba_block('ssm')                  # environment, else ../mamba and ../causal-conv1d
+        _, _, note = mamba_block('ssm')                  # environment, else ../mamba and ../causal-conv1d
     except ImportError as e:
         print(f'skipped: mamba_ssm cannot be imported ({e}).\n'
               'S-Mamba runs use the pure-PyTorch block (slower, same model); python scripts/gpu/check_mamba.py says why.')
@@ -159,7 +161,7 @@ if (a.all or a.ablation) and dev.type == 'cuda':
         print(f'mamba_ssm: {note}')
         name, c, m = next(x for x in models if x[0].startswith('S-Mamba'))
         with contextlib.redirect_stdout(io.StringIO()):
-            ms = SMamba.Model(cfg(mamba_impl='ssm')).float()
+            ms = SMambaModel(cfg(mamba_impl='ssm')).float()
         ms.load_state_dict(m.state_dict())
         ms = ms.to(dev).eval()
         yc, gc = run(copy.deepcopy(m), c, name, torch.device('cpu'), torch.float32)
@@ -192,11 +194,11 @@ found = next((str(paths.path_of(f)) for f in ('weather.csv', 'PEMS08.npz', 'PEMS
               if paths.exists(f)), '')
 values, src = load_values(found)
 print(f'\n== neighbour selection on {dev} vs cpu: {src}, {values.shape[1]} variables')
-x = DLT._diff_standardise(values, 8000, 'cpu')
-score = torch.stack([DLT._abs_ccf(x, tau) for tau in range(49)]).max(0).values       # (target, source)
+x = DLT_layers.diff_standardise(values, 8000, 'cpu')
+score = torch.stack([DLT_layers.abs_ccf(x, tau) for tau in range(49)]).max(0).values       # (target, source)
 for mode in ('ccf', 'random'):
-    ic, lc = DLT.select_neighbours(values, 8, 48, device='cpu', mode=mode, seed=2021)
-    ig, lg = DLT.select_neighbours(values, 8, 48, device=dev, mode=mode, seed=2021)
+    ic, lc = DLT_layers.select_neighbours(values, 8, 48, device='cpu', mode=mode, seed=2021)
+    ig, lg = DLT_layers.select_neighbours(values, 8, 48, device=dev, mode=mode, seed=2021)
     ic, ig, lc, lg = ic.cpu(), ig.cpu(), lc.cpu(), lg.cpu()
     same = (ic == ig).all(1)
     sc, sg = score.gather(1, ic).sort(1).values, score.gather(1, ig).sort(1).values
@@ -207,9 +209,9 @@ for mode in ('ccf', 'random'):
     if not ok:
         fails.append(f'neighbour selection ({mode})')
 if a.ablation:
-    ic = DLT.select_neighbours(values, 8, 48, device='cpu')[0]
-    tc = DLT.select_lags(values, ic, 5, 48, device='cpu').cpu()
-    tg = DLT.select_lags(values, ic.to(dev), 5, 48, device=dev).cpu()
+    ic = DLT_layers.select_neighbours(values, 8, 48, device='cpu')[0]
+    tc = DLT_layers.select_lags(values, ic, 5, 48, device='cpu').cpu()
+    tg = DLT_layers.select_lags(values, ic.to(dev), 5, 48, device=dev).cpu()
     share = (tc == tg).all(-1).float().mean().item()
     ok = share > 0.999
     print(f"{'PASS' if ok else 'FAIL'}  top-5 lag sets (MillGNN-style variants): identical for {share:.2%} of the pairs")

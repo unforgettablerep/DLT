@@ -1,37 +1,37 @@
 """Pre-flight check of a job list: every configuration builds and trains one step.
 
-    python scripts/smoke_jobs.py <list> [--device cpu|gpu] [--horizons ends|all] [--batch N] [--match TEXT]
+    python scripts/utils/smoke_jobs.py <list> [--device cpu|gpu] [--horizons ends|all] [--batch N] [--match TEXT]
 
-<list> is a suite name (work/jobs_<name>.txt, e.g. plugin_all) or a file. A long queue should not find out after
+<list> is a suite name (temp/jobs/jobs_<name>.txt, e.g. plugin_all) or a file. A long queue should not find out after
 hours that a configuration fails (an option the model does not know, a shape that does not fit, a missing data
 file). For every distinct configuration of the list (model, backbone, dataset and arm; with --horizons ends at the
-shortest and the longest horizon of each, with all at every horizon) the script parses the run.py arguments of
+shortest and the longest horizon of each, with all at every horizon) the script parses the scripts/run.py arguments of
 the job, builds the model as run.py does, prepares a DLT branch on the training split, and trains it for one step
 (forward, backward, optimizer step) on one batch of the training split. On the GPU (the default when there is one)
 the batch has the job's own size, and the peak GPU memory of the step is printed: what the job will need, and the
 sum to keep below the card's memory when several jobs share it. On the CPU the batch has 2 samples, so that the
 check stays quick; --batch N sets another size (at most the job's). --match keeps the jobs whose
---des matches the regular expression TEXT (e.g. 'ETTh1_' or '_(PatchTST|iTransformer)_'). Nothing is written to work/ or results/. One line per configuration, then the number of
+--des matches the regular expression TEXT (e.g. 'ETTh1_' or '_(PatchTST|iTransformer)_'). Nothing is written to output/. One line per configuration, then the number of
 failures; exit code 1 if there is one.
 """
 import argparse, collections, contextlib, gc, io, os, re, shlex, sys, tempfile, time, traceback
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / 'scripts'))
-os.chdir(REPO)                                        # TSLib finds models/ relative to the working directory
+os.chdir(REPO)
 import torch  # noqa: E402
 import torch.nn as nn  # noqa: E402
 from torch.utils.data import DataLoader  # noqa: E402
-import paths  # noqa: E402
-from run import get_parser  # noqa: E402
-from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast  # noqa: E402
+from run import parse_args  # noqa: E402
+from src.experiments.exp_long_term_forecasting import Exp_Long_Term_Forecast  # noqa: E402
+from src.utils import paths  # noqa: E402
 
 
 def job_argv(line):
     toks = shlex.split(line.split(' > ')[0])
-    return toks[toks.index('run.py') + 1:]
+    return toks[toks.index('scripts/run.py') + 1:]
 
 
 def main():
@@ -42,14 +42,13 @@ def main():
     p.add_argument('--batch', type=int, help="batch size (default: the job's own on the GPU, 2 on the CPU)")
     p.add_argument('--match', default='')
     a = p.parse_args()
-    parser = get_parser()
 
     groups = collections.defaultdict(dict)            # configuration -> {horizon: argv}
     for line in open(paths.jobs_file(a.list)):
         if 'run.py' not in line:
             continue
         argv = job_argv(line)
-        args = parser.parse_args(argv)
+        args = parse_args(argv)
         if not re.search(a.match, args.des):
             continue
         H = args.pred_len
@@ -71,17 +70,17 @@ def main():
     dev = torch.device('cuda:0' if gpu else 'cpu')
     cache, fails, peaks, tmp = {}, [], [], tempfile.mkdtemp(prefix='smoke_')
     for (model, base, data_path, name), H, argv in todo:
-        args = parser.parse_args(argv)
-        args.use_gpu, args.gpu_type, args.device = gpu, 'cuda', dev
+        args = parse_args(argv)
+        args.use_gpu, args.gpu_type = gpu, 'cuda'
         args.batch_size, args.num_workers = min(args.batch_size, batch or args.batch_size), 0
-        args.result_jsonl, args.checkpoints = '', tmp
+        args.result_file, args.checkpoints = os.path.join(tmp, 'smoke.tsv'), tmp
         label = f'{name} H={H}'
         t0, out, mem = time.time(), io.StringIO(), ''
         if gpu:
             torch.cuda.reset_peak_memory_stats()
         try:
             with contextlib.redirect_stdout(out):
-                torch.manual_seed(args.fix_seed)
+                torch.manual_seed(args.seed)
                 exp = Exp_Long_Term_Forecast(args)
                 dkey = (args.data, args.root_path, args.data_path, args.seq_len, args.label_len, args.pred_len,
                         args.features, args.target, args.freq, args.embed)

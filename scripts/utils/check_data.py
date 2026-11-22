@@ -1,19 +1,11 @@
-"""Are the forecasting datasets in the data directory, and complete?
-
-    python scripts/check_data.py [group ...]       groups: ETT Exchange Weather ECL Traffic ILI PEMS Solar (default: all)
-
-For every file of the groups it prints where the file is (scripts/paths.py: dataset/, or ../data next to the
-repository) and its size against the size of the published file: rows x columns of a CSV (the date column
-included; solar_AL.txt has no header and no date), time steps x sensors x features of a PEMS .npz. Exit code 1 if a
-file is missing or has another size. scripts/download_data.sh fetches the files and runs this check.
-"""
+"""Check that every dataset is in data/ (or ../data) with the published size: python scripts/utils/check_data.py [group ...]."""
 import sys
 from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import paths  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.utils import paths  # noqa: E402
 
 GROUPS = {
     'ETT': {'ETTh1.csv': (17420, 8), 'ETTh2.csv': (17420, 8), 'ETTm1.csv': (69680, 8), 'ETTm2.csv': (69680, 8)},

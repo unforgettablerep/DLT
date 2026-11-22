@@ -1,10 +1,10 @@
 """Where do NaN / inf forecasts come from? Re-tests a finished run from its saved checkpoint.
 
-    python scripts/gpu/diag_nonfinite.py <job name> [--list plugin_all] [--seed 2021] [--split test]
+    python scripts/utils/diag_nonfinite.py <job name> [--list plugin_all] [--seed 2021] [--split test]
 
 <job name> is the --des of the job (e.g. Traffic_96_TimesNet_alone); the job line is taken from the job list
-(work/jobs_<list>.txt) and the checkpoint from work/ckpt (kept after every run). The script runs the split
-batch by batch as the test of run.py does and reports
+(temp/jobs/jobs_<list>.txt) and the checkpoint from temp/checkpoints (kept after every run). The script runs the
+split batch by batch as the test of scripts/run.py does and reports
   - the batches and windows with non-finite forecasts, and the variables affected,
   - what is special about their input windows (variables that are constant over the window, largest value),
   - whether the same batch is finite on the GPU with TensorFloat-32 off and on the CPU (float32): finite there
@@ -12,7 +12,7 @@ batch by batch as the test of run.py does and reports
   - the layer where the first non-finite value appears (forward hooks), on the device of the run.
 Nothing is written.
 """
-import argparse, contextlib, glob, io, os, re, shlex, sys
+import argparse, contextlib, io, os, shlex, sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -21,9 +21,10 @@ sys.path.insert(0, str(REPO / 'scripts'))
 os.chdir(REPO)
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
-import paths  # noqa: E402
-from run import get_parser  # noqa: E402
-from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast  # noqa: E402
+from run import parse_args  # noqa: E402
+from src.experiments.exp_long_term_forecasting import Exp_Long_Term_Forecast  # noqa: E402
+from src.utils import paths  # noqa: E402
+from src.utils.checkpoint import checkpoint_path, find_latest_checkpoint_seq  # noqa: E402
 
 
 def forward(model, batch, args, dev):
@@ -63,20 +64,18 @@ def main():
     p.add_argument('--split', default='test', choices=['test', 'val', 'train'])
     a = p.parse_args()
 
-    line = next((l for l in open(paths.jobs_file(a.list)) if f'--des {a.des} ' in l and f'--fix_seed {a.seed} ' in l), None)
+    line = next((l for l in open(paths.jobs_file(a.list)) if f'--des {a.des} ' in l and f'--seed {a.seed} ' in l), None)
     if line is None:
         raise SystemExit(f'no job {a.des} (seed {a.seed}) in {paths.jobs_file(a.list)}')
     toks = shlex.split(line.split(' > ')[0])
-    args = get_parser().parse_args(toks[toks.index('run.py') + 1:])
-    ckpts = sorted(glob.glob(os.path.join(args.checkpoints, f'*_{a.des}_0*', 'checkpoint.pth')))
-    if not ckpts:
-        raise SystemExit(f'no checkpoint of {a.des} under {args.checkpoints}')
-    if len(ckpts) > 1:
-        print(f'note: {len(ckpts)} checkpoints match, using the newest')
-        ckpts.sort(key=os.path.getmtime)
+    args = parse_args(toks[toks.index('scripts/run.py') + 1:])
+    seq = find_latest_checkpoint_seq(args)
+    if seq <= 0:
+        raise SystemExit(f'no checkpoint of {a.des} (seed {a.seed}) under {args.checkpoints}')
+    ckpts = [checkpoint_path(args, seq)]
     gpu = torch.cuda.is_available()
     dev = torch.device('cuda:0' if gpu else 'cpu')
-    args.use_gpu, args.gpu_type, args.device, args.num_workers = gpu, 'cuda', dev, 0
+    args.use_gpu, args.gpu_type, args.num_workers = gpu, 'cuda', 0
     with contextlib.redirect_stdout(io.StringIO()):
         exp = Exp_Long_Term_Forecast(args)
         data, loader = exp._get_data(flag=a.split)
