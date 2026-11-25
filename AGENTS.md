@@ -74,12 +74,16 @@ official baseline settings reproduce.
   `--des <job name> --seed <s> --result_file output/<category>/<suite>.tsv`, log in `log/<category>/<suite>/`.
 - `scripts/utils/run_queue.sh <list> [n]` (CPU) and `run_gpu_queue.sh <list> [gpu ids]` (one worker per id,
   `CUDA_VISIBLE_DEVICES` per job) run the lines that `run_missing.py` reports as missing: no row with the job's
-  `--des` and `--seed` in its `--result_file`. `smoke_jobs.py <list>` trains every configuration for one step first.
+  `--des` and `--seed` in its `--result_file` from the job's device (`--no_use_gpu`: CPU, else GPU; a row without a
+  device counts for both). `smoke_jobs.py <list>` trains every configuration for one step first.
 - `scripts/multivariate_forecasting/run_all_forecasts.sh [--model M] [--gpu 0,1] [--para N]` dispatches the
   per-dataset scripts with least-loaded GPU placement; log `log/multivariate_forecasting/scheduler.log`, lock
   `temp/forecasts/run.lock`. `scripts/utils/gpu_queue.sh` offers round-robin GPU slots to shell runners.
 - `scripts/batch/make_gpu_jobs.sh` writes every list that needs a GPU; `run_cpu_campaign.sh` replays the CPU
   campaign. `scripts/utils/migrate_work.py` takes over the records of a pre-refactor `work/` directory.
+- GPU study: tables use GPU records only (`--device gpu`; default of `baseline_check.py`). Plug-in lists run the
+  + DLT-dyn arms only (`scripts/plugin/make_jobs.py --skip_alone`); the backbone alone is the baseline-check run
+  (`src/utils/baseline_runs.py`, tables with `--alone baselines`), and `--select_lr` reads its learning-rate check.
 
 ## Results and Output
 

@@ -1,6 +1,6 @@
 """How the DLT branch enters the backbone: the arms of the plugin_fusion suite against the backbone alone.
 
-    python scripts/plugin/fusion_table.py [--files F ...] [--metric mse|mae] [--out FILE]
+    python scripts/plugin/fusion_table.py [--files F ...] [--metric mse|mae] [--out FILE] [--alone plugin|baselines] [--device all|gpu|cpu]
 
 Reads output/plugin/plugin_fusion.tsv (or --files). Arms (scripts/plugin/make_jobs.py, FUSION_ARMS;
 src/model/DLTPlug.py):
@@ -13,31 +13,42 @@ Cells: change of the test metric against the backbone alone, (+ DLT) / alone - 1
 arm helps. For the decoupled arms, brackets give the change without the per-variable selection (all variables
 corrected) and the change of the backbone part of the same run (trained on its own loss, as the backbone alone).
 Last rows: per arm, the mean change, the settings it helps, and the worst setting.
+--device keeps the records of one device; --alone baselines takes the backbone alone from the baseline check (the GPU
+lists run the + DLT-dyn arms only: make_jobs.py --skip_alone) and needs --device gpu or cpu.
 """
 import argparse, collections, statistics, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.utils.paths import OUTPUT  # noqa: E402
-from src.utils.result_io import read_results  # noqa: E402
+from src.utils.baseline_runs import alone_cells, check_protocol  # noqa: E402
+from src.utils.result_io import device_class, read_results  # noqa: E402
 
 ARMS = ['dlt', 'dlt_out-dec', 'dlt_refine', 'dlt_refine-dec', 'dlt_input']
 LABEL = {'dlt': 'output (Eq. 2)', 'dlt_out-dec': 'output, decoupled + select', 'dlt_refine': 'refine',
          'dlt_refine-dec': 'refine, decoupled + select', 'dlt_input': 'input'}
 
 
-def load(files):
+def load(files, alone='plugin', device='all'):
     runs = {}
     for f in files or [OUTPUT / 'plugin' / 'plugin_fusion.tsv']:
         for r in read_results(f):
-            if r.get('model') == 'DLTPlug':
-                runs[(r['des'], r.get('seed'))] = r
+            if r.get('model') != 'DLTPlug':
+                continue
+            if (device != 'all' and device_class(r) != device) or (alone == 'baselines' and not check_protocol(r)):
+                continue
+            runs[(r['des'], r.get('seed'))] = r
     cells = collections.defaultdict(list)                   # (ds, H, base, arm) -> records
     for r in runs.values():
         ds, H, b = r['dataset'], r['pred_len'], r['plug_base']
         stem = f'{ds}_{H}_{b}_'
         if r['des'].startswith(stem):
             cells[(ds, H, b, r['des'][len(stem):])].append(r)
+    if alone == 'baselines':                                # the backbone alone: the baseline check, official rate
+        for key in [key for key in cells if key[3] == 'alone']:
+            del cells[key]
+        fused = {key[:3] for key in cells}
+        cells.update({key: rs for key, rs in alone_cells(device).items() if key[3] == 'alone' and key[:3] in fused})
     return cells
 
 
@@ -46,9 +57,13 @@ def main():
     p.add_argument('--files', nargs='+')
     p.add_argument('--metric', default='mse', choices=['mse', 'mae'])
     p.add_argument('--out')
+    p.add_argument('--alone', default='plugin', choices=['plugin', 'baselines'], help='where the backbone alone comes from')
+    p.add_argument('--device', default='all', choices=['all', 'gpu', 'cpu'], help='only the records of this device')
     a = p.parse_args()
+    if a.alone == 'baselines' and a.device == 'all':
+        p.error('--alone baselines needs --device gpu or cpu (both arms from one device)')
     k = a.metric
-    cells = load(a.files)
+    cells = load(a.files, a.alone, a.device)
     mean = lambda rs, key: statistics.mean(r[key] for r in rs if r.get(key) is not None) \
         if any(r.get(key) is not None for r in rs) else None
     rows = sorted({key[:3] for key in cells if key[3] == 'alone'})

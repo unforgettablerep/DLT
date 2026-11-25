@@ -137,6 +137,14 @@ def is_valid_result(row):
     return str(row.get("status", "")).startswith("ok") and isinstance(mse, (int, float)) and math.isfinite(mse)
 
 
+def device_class(row):
+    """"gpu", "cpu", or None for a record written before the device was recorded."""
+    device = str(row.get("device") or "").strip().lower()
+    if not device:
+        return None
+    return "cpu" if device == "cpu" else "gpu"
+
+
 @contextmanager
 def _locked(filepath):
     os.makedirs(os.path.dirname(os.path.abspath(filepath)) or ".", exist_ok=True)
