@@ -44,12 +44,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
     def _select_optimizer(self):
         model = self._model_ref
         dlt_lr = getattr(self.args, "dlt_lr", 0.0)
-        if dlt_lr > 0 and hasattr(model, "dlt"):
-            # the DLT branch of a plug-in gets its own learning rate; the schedule scales both groups alike
-            dlt_ids = {id(p) for p in model.dlt.parameters()}
+        branch = list(model.branch_parameters()) if dlt_lr > 0 and hasattr(model, "branch_parameters") else []
+        if branch:
+            # the cross-variable branch (of DLT or of a plug-in) gets its own learning rate; the schedule scales both groups alike
+            dlt_ids = {id(p) for p in branch}
             groups = [
                 {"params": [p for p in model.parameters() if id(p) not in dlt_ids], "lr_scale": 1.0},
-                {"params": list(model.dlt.parameters()), "lr_scale": dlt_lr / self.args.learning_rate},
+                {"params": branch, "lr_scale": dlt_lr / self.args.learning_rate},
             ]
             for g in groups:
                 g["lr"] = self.args.learning_rate * g["lr_scale"]
@@ -73,7 +74,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return batch_x, batch_y, batch_x_mark, batch_y_mark, dec_inp
 
     def vali(self, vali_data, vali_loader, criterion, part=None):
-        """Validation loss; part="backbone": of the backbone part of DLTPlug (--dlt_train decoupled, stage 1)."""
+        """Validation loss; part="backbone": of the backbone part (DLTPlug; DLT: the self head) under --dlt_train decoupled, stage 1."""
         total_loss = []
         net = self._model_ref
         self.model.eval()
@@ -130,8 +131,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             scaler = torch.cuda.amp.GradScaler()
         no_epoch_test = getattr(self.args, "no_epoch_test", True)
         extra_loss = getattr(net, "extra_loss", None)
-        # decoupled plug-in: stage 1 stops on the backbone part's validation loss, stage 2 trains the branch on the frozen backbone
-        two_stage = getattr(net, "use_dlt", False) and getattr(net, "training_mode", "joint") == "decoupled"
+        # decoupled training (plug-in, or DLT with its self head as the backbone): stage 1 stops on the backbone part's
+        # validation loss, stage 2 trains the branch on the frozen backbone
+        two_stage = getattr(net, "split_output", False) and getattr(net, "training_mode", "joint") == "decoupled"
         self.train_info = {"epochs": 0, "best_epoch": 0, "best_vali": None, "train_secs": 0.0, "epoch_secs": []}
         train_start = time.time()
         for epoch in range(self.args.train_epochs):
@@ -204,11 +206,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return self.model
 
     def _train_branch(self, net, path, train_loader, vali_data, vali_loader, criterion):
-        """Decoupled plug-in, stage 2: the backbone is frozen (eval mode); the branch trains on its error with its own early stopping."""
-        for q in net.base.parameters():
+        """Decoupled training, stage 2: the backbone is frozen (eval mode); the branch trains on its error with its own early stopping."""
+        for q in net.backbone_parameters():
             q.requires_grad_(False)
+        base = getattr(net, "base", None)                   # DLT: the self head, a linear layer without train / eval modes
         lr = getattr(self.args, "dlt_lr", 0.0) or self.args.learning_rate
-        opt = optim.Adam([{"params": [q for q in net.dlt.parameters()], "lr": lr, "lr_scale": lr / self.args.learning_rate}])
+        opt = optim.Adam([{"params": list(net.branch_parameters()), "lr": lr, "lr_scale": lr / self.args.learning_rate}])
         es = EarlyStopping(patience=self.args.patience, verbose=True)
         start = self.vali(vali_data, vali_loader, criterion)
         es(start, self.model, path)
@@ -217,7 +220,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         )
         for epoch in range(self.args.train_epochs):
             self.model.train()
-            net.base.eval()
+            if base is not None:
+                base.eval()
             losses = []
             for batch in train_loader:
                 opt.zero_grad()
@@ -239,7 +243,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 print("Early stopping (branch)")
                 break
             adjust_learning_rate(opt, epoch + 1, self.args)
-        for q in net.base.parameters():
+        for q in net.backbone_parameters():
             q.requires_grad_(True)
 
     def _variable_mask(self, net):
@@ -269,7 +273,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         if save_tmp:
             os.makedirs(folder_path, exist_ok=True)
         net = self._model_ref
-        plug = getattr(net, "use_dlt", False) and getattr(net, "fusion", "input") != "input"
+        plug = getattr(net, "split_output", False)          # forecast = backbone (DLT: self head) + correction
         self.dlt_kept = None
         if plug and getattr(self.args, "dlt_select", "none") == "variable":
             net.select_mask = None

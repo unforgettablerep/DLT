@@ -67,7 +67,8 @@ Test MSE of DLT-dyn relative to the same model without the cross branch (CI line
   Exchange failure is therefore caused by the cross branch fitting spurious lagged correlations; the validation
   search reduces it but does not remove it.
 - A gate or regulariser that can switch the branch off for such data is the open method problem. The MoVE-style
-  softmax gate and a static gate did not solve it in P0.
+  softmax gate and a static gate did not solve it in P0; the per-variable selection on validation data does for the
+  most part (point 9).
 
 ## 3. Plug-in: backbone alone vs backbone + DLT-dyn (same budget, 3 seeds)
 
@@ -195,6 +196,37 @@ Change against the S-Mamba paper (Wang et al., Neurocomputing 2025, Tables 3 and
 On Weather and ECL only CI and DLinear were re-run here. The GPU runs are needed before claiming the best
 result among re-run models there.
 
+## 9. Guards of the stand-alone model (CPU, 3 seeds)
+
+The guards of the plug-in, applied to the stand-alone DLT-dyn (`--dlt_select variable`, `--dlt_train decoupled`,
+`--dlt_lr`; suite `guard`, table [`ablation/guard.md`](ablation/guard.md)). Test MSE against the self head alone (CI):
+
+| | ETTh1-96 | ETTh2-96 | ETTh2-720 | Exchange-96 | Exchange-720 | Weather-96 | PEMS08-96 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| DLT-dyn (paper) | +5.5 % | +17.0 % | +11.1 % | +34.0 % | +69.7 % | −15.7 % | −55.3 % |
+| + per-variable selection | +3.1 % | +2.8 % | +0.3 % | +4.2 % | +30.1 % | −14.2 % | −55.4 % |
+| branch at 1/10 learning rate | +4.3 % | +25.5 % | +6.1 % | +8.1 % | +24.5 % | −15.1 % | −42.2 % |
+| 1/10 learning rate + selection | +3.5 % | +1.4 % | +4.0 % | +4.7 % | +9.4 % | −14.0 % | −42.0 % |
+| two-stage training | +5.7 % | +13.4 % | +10.6 % | +46.0 % | +85.5 % | −14.0 % | −58.5 % |
+| two-stage + selection | +1.0 % | −0.3 % | +4.5 % | +2.0 % | +31.6 % | −14.0 % | −58.5 % |
+
+- **The per-variable selection removes most of the harm and keeps the gains.** Over the five weakly coupled
+  settings the mean harm falls from +27.5 % to +8.1 % (joint training) and +7.8 % (two-stage), against DLT-dyn
+  significant in ETTh2-96, ETTh2-720 and Exchange-720 (p ≤ 0.031; Exchange-96 p 0.053). The selection keeps the
+  correction for 0–21 % of the variables of ETTh1, ETTh2 and Exchange-96 and for 84–100 % of Weather and PEMS08,
+  where the gains stay (PEMS08 −55.4 %, Weather −14.2 % against −15.7 %, p 0.15).
+- **Two-stage training helps only together with the selection.** Alone it is as harmful as joint training
+  (+32.2 % on the weak settings); with the selection it is the best guard at H = 96 (ETTh1 +1.0 %, ETTh2 −0.3 %,
+  Exchange +2.0 %) and improves PEMS08 by 7.2 % over DLT-dyn (p 0.014), at +2.0 % on Weather (p 0.03).
+- **A slower branch is not a fix.** At a tenth of the learning rate the branch is worse on ETTh2-96 (+25.5 %) and
+  loses a quarter of the PEMS08 gain (−42.2 % instead of −55.3 %, p < 0.001); with the selection it has the
+  smallest worst case on the weak settings (+9.4 %) at that cost.
+- **Exchange-720 stays a failure.** The selection keeps the correction for half of its variables (validation
+  data favour it) and the test error is still +30 % above CI: validation and test periods disagree, which no
+  rule on validation data repairs (point 2; the lead-lag diagnostic of the paper flags Exchange before training).
+- The arms `dyn` and `ci` reproduce the earlier stand-alone runs to the last digit (ETTh1 0.4102 / 0.3887, Weather
+  0.1637); the guards leave the default path of the model unchanged.
+
 ## Consequences for the paper
 
 1. **Lead with:**
@@ -209,6 +241,7 @@ result among re-run models there.
 3. **Do not claim** CCF neighbour selection as an accuracy contribution (point 4) or travel-time
    interpretability (point 7).
 4. **Next steps:**
-   - a validation-driven gate or regulariser for weakly coupled data;
+   - the stand-alone DLT-dyn with two-stage training and per-variable selection as the default recipe (point 9),
+     to be confirmed on all datasets and horizons; a guard for the validation / test mismatch of Exchange;
    - k and R in the search space;
    - the GPU tiers of [README.md, GPU Runs](../README.md#gpu-runs).

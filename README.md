@@ -170,8 +170,8 @@ metrics on the original scale).
 | `--dlt_topk` | 5 | Lags per pair of `topk` / `mill` / `milldyn` |
 | `--plug_base` | `DLinear` | `DLTPlug`: backbone the branch is added to |
 | `--dlt_fusion` | `output` | `DLTPlug`: `output` (sum of forecasts), `refine`, `input` |
-| `--dlt_train` / `--dlt_select` | `joint` / `none` | `DLTPlug`: `decoupled` two-stage training; `variable` keeps the correction per variable on validation data |
-| `--dlt_lr` | 0 | `DLTPlug`: learning rate of the branch (0 = `--learning_rate`) |
+| `--dlt_train` / `--dlt_select` | `joint` / `none` | `DLT` and `DLTPlug`: `decoupled` trains the self head (backbone) first and the branch on its error; `variable` keeps the correction per variable on validation data |
+| `--dlt_lr` | 0 | `DLT` and `DLTPlug`: learning rate of the cross-variable branch (0 = `--learning_rate`) |
 | `--seed` | 2021 | Seed of every run (alias `--fix_seed`); results and checkpoints depend on it |
 
 The DLT-dyn recipe of the paper: learning rate 3e-3 halved every epoch, batch 32, 10 epochs, patience 3.
@@ -209,6 +209,7 @@ python scripts/utils/smoke_jobs.py long_small           # pre-flight: one traini
 | Baseline check | `scripts/benchmark/make_jobs.py baselines`, then `scripts/benchmark/baseline_check.py` | six baselines, official settings, 13 datasets | `output/benchmark/baselines*.tsv`, `baseline_check.md` |
 | Plug-in | `scripts/plugin/make_jobs.py plugin_all \| plugin_fusion`; `plugin_table.py`, `plugin_gain.py`, `fusion_table.py`, `plugin_diag.py`, `leadlag_diag.py` | every backbone alone and + DLT-dyn on 13 datasets; five fusion arms | `output/plugin/` |
 | Kernel and gate ablation (P0) | `scripts/ablation/make_jobs.py p0 \| ci_long \| allnb`; `aggregate.py` | 13 configurations × 5 settings × 3 seeds; CI linear; all neighbours | `output/ablation/` |
+| Guards of the stand-alone model | `scripts/ablation/make_jobs.py guard`, then `scripts/ablation/guard_table.py` | DLT-dyn with per-variable selection, a slower branch, two-stage training; ETTh1/2, Exchange, Weather, PEMS08; 3 seeds | `output/ablation/guard.*` |
 | Hyper-parameters | `scripts/hyperparam/make_jobs.py sensitivity \| neighbours`; `hpsearch.py make \| select \| tuned` | L, R, k one at a time; neighbour selection; 20-trial validation search | `output/hyperparam/` |
 | Efficiency | `scripts/efficiency/run_efficiency.py [--setting smamba] [--tuned]`; `make_jobs.py eff_tune`, `eff_tune.py` | parameters, ms per batch, peak memory; S-Mamba setting (batch 16) | `output/efficiency/` |
 | Mechanism | `scripts/mechanism/kernels.py`, `pems_lag.py` | learned kernels against the PEMS08 road graph | `output/mechanism/kernels_pems08.json` |

@@ -14,3 +14,8 @@ def add_dlt_parser(parser):
     parser.add_argument("--dlt_gate", type=str, default="none", choices=list(GATES), help="combination of the two branches: none, moe (MoVE-style), static (per-variable sigmoid)")
     parser.add_argument("--dlt_gate_init", type=float, default=-3.0, help="initial logit of the static gate")
     parser.add_argument("--dlt_hp_trial", type=int, default=-1, help="bookkeeping: index of a search trial")
+    parser.add_argument("--dlt_lr", type=float, default=0.0, help="learning rate of the cross-variable branch (0 = --learning_rate)")
+    parser.add_argument("--dlt_train", type=str, default="joint", choices=["joint", "decoupled"],
+                        help="joint loss, or the backbone (DLT: the self head) first and the branch on its error")
+    parser.add_argument("--dlt_select", type=str, default="none", choices=["none", "variable"],
+                        help="keep the cross-variable correction only for the variables whose validation MSE it lowers")

@@ -113,7 +113,7 @@ resume checks.
 | Component | File |
 | --- | --- |
 | `VARIANTS`, `GATES`, `NEIGHBOUR_MODES`, `IMPLS`; CCF neighbour and lag-set selection, lag basis, pair convolutions | `src/layers/DLT_layers.py` |
-| Stand-alone model, `prepare(train_data)` hook (neighbours from the training split), gates | `src/model/DLT.py` |
+| Stand-alone model, `prepare(train_data)` hook (neighbours from the training split), gates; guards `--dlt_train`, `--dlt_select`, `--dlt_lr` (self head + correction via `parts()`, as the plug-in) | `src/model/DLT.py` |
 | Plug-in: backbone + branch, `--dlt_fusion`, `--dlt_train`, `--dlt_select`, `--dlt_lr` | `src/model/DLTPlug.py` |
 | S-Mamba (`mamba_ssm` block or `src/layers/MambaPy.py`), RLinear (official code) | `src/model/S_Mamba.py`, `src/model/RLinear.py` |
 | Experiment loop (calls `prepare`, per-group learning rates, streaming test metrics, result rows) | `src/experiments/exp_long_term_forecasting.py` |

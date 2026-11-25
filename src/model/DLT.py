@@ -18,7 +18,13 @@ from src.layers.DLT_layers import (
 
 
 class Model(nn.Module):
-    """DLT: RLinear-style self head plus a distributed-lag cross-variable branch (kernel family --dlt_variant, combination --dlt_gate)."""
+    """DLT: RLinear-style self head plus a distributed-lag cross-variable branch (kernel family --dlt_variant, combination --dlt_gate).
+
+    Stand-alone guards, as for the plug-in (src/model/DLTPlug.py): --dlt_train decoupled trains the self head on its own
+    loss first and the branch on its error (stage 2 in exp_long_term_forecasting), --dlt_select variable keeps the
+    correction only for the variables whose validation MSE it lowers, --dlt_lr sets the branch's learning rate. Without
+    them the forecast takes the unchanged path of forecast().
+    """
 
     def __init__(self, configs, cross_only=False):
         super().__init__()
@@ -52,6 +58,17 @@ class Model(nn.Module):
             self.variant = "ci"
         if cross_only and self.variant == "ci":
             raise ValueError("cross_only=True needs a cross-variable variant (not 'ci')")
+        # stand-alone guards (as the plug-in): self head and cross-variable correction as two parts of the forecast
+        self.training_mode = getattr(configs, "dlt_train", "joint")
+        self.select = getattr(configs, "dlt_select", "none")
+        self.mae = getattr(configs, "loss", "MSE").upper() == "MAE"
+        self.select_mask = None                      # (C,) per-variable keep mask, set by --dlt_select variable
+        self._y_backbone = None
+        guarded = not cross_only and (self.training_mode == "decoupled" or self.select != "none")
+        if guarded and (self.variant == "ci" or self.gate == "moe"):
+            raise ValueError("--dlt_train decoupled / --dlt_select variable need a cross-variable branch added to the self head "
+                             "(not --dlt_variant ci, not --dlt_gate moe)")
+        self.split_output = guarded
         if not cross_only:
             self.self_head = nn.Linear(T, H)
         if self.variant == "ci":
@@ -220,5 +237,43 @@ class Model(nn.Module):
                 y = y + torch.sigmoid(self.gate_logit)[:, None] * y_cross
         return (y * sd + mu).permute(0, 2, 1)
 
+    def parts(self, x_enc, x_mark_enc=None, x_dec=None, x_mark_dec=None):
+        """(self forecast, cross-variable correction), both [B, H, C] on the data scale; their sum is forecast(x_enc)."""
+        x = x_enc.permute(0, 2, 1)
+        mu = x.mean(-1, keepdim=True)
+        sd = x.std(-1, keepdim=True) + 1e-5
+        xn = (x - mu) / sd
+        y = self.self_head(xn) * sd + mu
+        self._check_ready()
+        c = self.cross_head(self.cross(xn))
+        if self.gate == "static":
+            c = torch.sigmoid(self.gate_logit)[:, None] * c
+        return y.permute(0, 2, 1), (c * sd).permute(0, 2, 1)
+
+    def backbone_parameters(self):
+        """the self head: the part trained first by --dlt_train decoupled"""
+        return self.self_head.parameters()
+
+    def branch_parameters(self):
+        """the cross-variable branch: every parameter but the self head (its learning rate: --dlt_lr)"""
+        own = {id(p) for p in self.self_head.parameters()} if hasattr(self, "self_head") else set()
+        return [p for p in self.parameters() if id(p) not in own]
+
+    def extra_loss(self, batch_x, outputs, batch_y):
+        """--dlt_train decoupled: the self head's own loss (exp_long_term_forecasting adds it to the loss of the forecast)"""
+        if not (self.split_output and self.training_mode == "decoupled" and self.training) or self._y_backbone is None:
+            return outputs.new_zeros(())
+        y = self._y_backbone[:, -batch_y.shape[1]:, -batch_y.shape[2]:]
+        self._y_backbone = None
+        return F.l1_loss(y, batch_y) if self.mae else F.mse_loss(y, batch_y)
+
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
-        return self.forecast(x_enc)[:, -self.pred_len:, :]
+        if not self.split_output:
+            return self.forecast(x_enc)[:, -self.pred_len:, :]
+        y, c = self.parts(x_enc)
+        if self.select_mask is not None:
+            c = c * self.select_mask.to(c.dtype)
+        if self.training_mode == "decoupled" and self.training:
+            self._y_backbone = y
+            return y.detach() + c
+        return y + c

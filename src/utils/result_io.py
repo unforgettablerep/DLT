@@ -109,7 +109,8 @@ JSON_COLUMNS = {"epoch_secs"}
 
 DLT_MODELS = ("DLT", "DLTPlug")
 DLT_ONLY = {c for c in CONFIG_COLUMNS if c.startswith("dlt_")}
-PLUG_ONLY = {"plug_base", "dlt_lr", "dlt_fusion", "dlt_train", "dlt_select"}
+PLUG_ONLY = {"plug_base", "dlt_fusion"}
+BRANCH_RECIPE = {"dlt_lr": 0.0, "dlt_train": "joint", "dlt_select": "none"}   # DLTPlug always; DLT when not the default
 BACKBONE_ONLY = {"d_model", "d_ff", "e_layers", "d_layers", "n_heads", "factor", "use_norm", "dropout"}
 
 LEGACY_KEYS = {
@@ -348,6 +349,8 @@ def build_result_row(args, metrics, info=None, checkpoint=0):
         if col in DLT_ONLY and model not in DLT_MODELS:
             continue
         if col in PLUG_ONLY and model != "DLTPlug":
+            continue
+        if col in BRANCH_RECIPE and model != "DLTPlug" and (model != "DLT" or getattr(args, col, BRANCH_RECIPE[col]) == BRANCH_RECIPE[col]):
             continue
         if col in BACKBONE_ONLY and model == "DLT":
             continue

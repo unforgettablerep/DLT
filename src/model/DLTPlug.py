@@ -48,6 +48,17 @@ class Model(nn.Module):
                         if hasattr(self.dlt, name):
                             getattr(self.dlt, name).normal_(0, 0.01)
 
+    @property
+    def split_output(self):
+        """the forecast is the backbone's plus a separate correction (output and refine fusions)"""
+        return self.use_dlt and self.fusion != "input"
+
+    def backbone_parameters(self):
+        return self.base.parameters()
+
+    def branch_parameters(self):
+        return list(self.dlt.parameters()) if self.use_dlt else []
+
     def prepare(self, train_data):
         if self.use_dlt:
             self.dlt.prepare(train_data)
