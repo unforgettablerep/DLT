@@ -1,0 +1,350 @@
+{
+ "dlt": {
+  "checkpoints": [
+   "PEMS08_DLT_sl96_pl96_PEMS08_96_dlt_none_s2021_1.pth",
+   "PEMS08_DLT_sl96_pl96_PEMS08_96_dlt_none_s2022_1.pth",
+   "PEMS08_DLT_sl96_pl96_PEMS08_96_dlt_none_s2023_1.pth"
+  ],
+  "per_seed": [
+   {
+    "pairs": 1360,
+    "hop_share_selected": {
+     "1": 0.12279411764705882,
+     "2": 0.11470588235294117,
+     "3": 0.08308823529411764,
+     ">3 or unreachable": 0.6794117647058824
+    },
+    "hop_share_all_pairs": {
+     "1": 0.019074138531152106,
+     "2": 0.03703445875391577,
+     "3": 0.05917159763313609
+    },
+    "upstream_share": 0.5926470588235294,
+    "downstream_share": 0.5433823529411764,
+    "centroid_mean_by_hop": {
+     "1": 21.223564499822103,
+     "2": 21.402110949433574,
+     "3": 21.15143205736755
+    },
+    "centroid_mean_far": 19.132974034708557,
+    "centroid_upstream_near": 21.532556172589246,
+    "centroid_downstream_near": 20.173994377800568,
+    "spearman_distance_centroid": [
+     -0.30272135278087997,
+     3.223814089593022e-30
+    ],
+    "spearman_distance_peak": [
+     -0.21650725353141792,
+     6.859706708627018e-16
+    ],
+    "spearman_ccf_lag_centroid": [
+     0.2235734648384243,
+     7.228928676829019e-17
+    ],
+    "mass_beyond_lag0": 0.849810779094696,
+    "early_mass_lag0_2": {
+     "all": 0.23024395108222961,
+     "within_3_hops": 0.1921233832836151,
+     "beyond_3_hops": 0.24823155999183655
+    },
+    "upstream_only_pairs": 495,
+    "downstream_only_pairs": 428,
+    "spearman_distance_peak_upstream_only": [
+     -0.286182919308772,
+     8.742245841852533e-11
+    ],
+    "spearman_distance_peak_downstream_only": [
+     -0.22103256040144903,
+     3.900647736115546e-06
+    ],
+    "peak_lag_mean_upstream_only": 6.064646464646465,
+    "peak_lag_mean_downstream_only": 5.126168224299065,
+    "share_multi_lag": 0.4823529411764706
+   },
+   {
+    "pairs": 1360,
+    "hop_share_selected": {
+     "1": 0.12279411764705882,
+     "2": 0.11470588235294117,
+     "3": 0.08308823529411764,
+     ">3 or unreachable": 0.6794117647058824
+    },
+    "hop_share_all_pairs": {
+     "1": 0.019074138531152106,
+     "2": 0.03703445875391577,
+     "3": 0.05917159763313609
+    },
+    "upstream_share": 0.5926470588235294,
+    "downstream_share": 0.5433823529411764,
+    "centroid_mean_by_hop": {
+     "1": 20.997317080149717,
+     "2": 21.162455222285228,
+     "3": 19.661622071718124
+    },
+    "centroid_mean_far": 17.433559685103955,
+    "centroid_upstream_near": 21.0551491433783,
+    "centroid_downstream_near": 19.102885443274378,
+    "spearman_distance_centroid": [
+     -0.3400200674619168,
+     3.727661845749114e-38
+    ],
+    "spearman_distance_peak": [
+     -0.22863793719960585,
+     1.3736153240137465e-17
+    ],
+    "spearman_ccf_lag_centroid": [
+     0.20117544609381785,
+     6.947836711675756e-14
+    ],
+    "mass_beyond_lag0": 0.8511863946914673,
+    "early_mass_lag0_2": {
+     "all": 0.24971169233322144,
+     "within_3_hops": 0.18006137013435364,
+     "beyond_3_hops": 0.2825769782066345
+    },
+    "upstream_only_pairs": 495,
+    "downstream_only_pairs": 428,
+    "spearman_distance_peak_upstream_only": [
+     -0.3024410284933314,
+     6.264719025811666e-12
+    ],
+    "spearman_distance_peak_downstream_only": [
+     -0.14600659872153035,
+     0.002461644899992897
+    ],
+    "peak_lag_mean_upstream_only": 4.284848484848485,
+    "peak_lag_mean_downstream_only": 3.455607476635514,
+    "share_multi_lag": 0.47794117647058826
+   },
+   {
+    "pairs": 1360,
+    "hop_share_selected": {
+     "1": 0.12279411764705882,
+     "2": 0.11470588235294117,
+     "3": 0.08308823529411764,
+     ">3 or unreachable": 0.6794117647058824
+    },
+    "hop_share_all_pairs": {
+     "1": 0.019074138531152106,
+     "2": 0.03703445875391577,
+     "3": 0.05917159763313609
+    },
+    "upstream_share": 0.5926470588235294,
+    "downstream_share": 0.5433823529411764,
+    "centroid_mean_by_hop": {
+     "1": 21.551259581180826,
+     "2": 21.280536599681575,
+     "3": 21.607038692815532
+    },
+    "centroid_mean_far": 19.048825198488384,
+    "centroid_upstream_near": 21.546577229630707,
+    "centroid_downstream_near": 21.139638032807092,
+    "spearman_distance_centroid": [
+     -0.3093341674538957,
+     1.521451646139946e-31
+    ],
+    "spearman_distance_peak": [
+     -0.15613284622262974,
+     7.1173575540037584e-09
+    ],
+    "spearman_ccf_lag_centroid": [
+     0.21290366309780043,
+     2.097705692908851e-15
+    ],
+    "mass_beyond_lag0": 0.8782490491867065,
+    "early_mass_lag0_2": {
+     "all": 0.19487601518630981,
+     "within_3_hops": 0.16866324841976166,
+     "beyond_3_hops": 0.20724481344223022
+    },
+    "upstream_only_pairs": 495,
+    "downstream_only_pairs": 428,
+    "spearman_distance_peak_upstream_only": [
+     -0.1984863664850918,
+     8.618209281083036e-06
+    ],
+    "spearman_distance_peak_downstream_only": [
+     -0.17848023815656916,
+     0.00020605741909927698
+    ],
+    "peak_lag_mean_upstream_only": 6.387878787878788,
+    "peak_lag_mean_downstream_only": 6.775700934579439,
+    "share_multi_lag": 0.7522058823529412
+   }
+  ]
+ },
+ "dltdyn": {
+  "checkpoints": [
+   "PEMS08_DLT_sl96_pl96_PEMS08_96_dltdyn_none_s2021_1.pth",
+   "PEMS08_DLT_sl96_pl96_PEMS08_96_dltdyn_none_s2022_1.pth",
+   "PEMS08_DLT_sl96_pl96_PEMS08_96_dltdyn_none_s2023_1.pth"
+  ],
+  "per_seed": [
+   {
+    "pairs": 1360,
+    "hop_share_selected": {
+     "1": 0.12279411764705882,
+     "2": 0.11470588235294117,
+     "3": 0.08308823529411764,
+     ">3 or unreachable": 0.6794117647058824
+    },
+    "hop_share_all_pairs": {
+     "1": 0.019074138531152106,
+     "2": 0.03703445875391577,
+     "3": 0.05917159763313609
+    },
+    "upstream_share": 0.5926470588235294,
+    "downstream_share": 0.5433823529411764,
+    "centroid_mean_by_hop": {
+     "1": 18.268500525472618,
+     "2": 17.524416833810193,
+     "3": 17.792300895184933
+    },
+    "centroid_mean_far": 17.354007844047707,
+    "centroid_upstream_near": 17.966618776420237,
+    "centroid_downstream_near": 17.608974184106856,
+    "spearman_distance_centroid": [
+     -0.06541995731154258,
+     0.015824618054808233
+    ],
+    "spearman_distance_peak": [
+     -0.1403283090365211,
+     2.0359600872481885e-07
+    ],
+    "spearman_ccf_lag_centroid": [
+     0.0958647007898532,
+     0.00039979233772234146
+    ],
+    "mass_beyond_lag0": 0.8410642743110657,
+    "early_mass_lag0_2": {
+     "all": 0.257318913936615,
+     "within_3_hops": 0.2395569384098053,
+     "beyond_3_hops": 0.26570016145706177
+    },
+    "upstream_only_pairs": 495,
+    "downstream_only_pairs": 428,
+    "spearman_distance_peak_upstream_only": [
+     -0.18082155739703368,
+     5.2043330792411525e-05
+    ],
+    "spearman_distance_peak_downstream_only": [
+     -0.10392248861856741,
+     0.03159472916492946
+    ],
+    "peak_lag_mean_upstream_only": 4.622222222222222,
+    "peak_lag_mean_downstream_only": 3.060747663551402,
+    "share_multi_lag": 0.5580882352941177
+   },
+   {
+    "pairs": 1360,
+    "hop_share_selected": {
+     "1": 0.12279411764705882,
+     "2": 0.11470588235294117,
+     "3": 0.08308823529411764,
+     ">3 or unreachable": 0.6794117647058824
+    },
+    "hop_share_all_pairs": {
+     "1": 0.019074138531152106,
+     "2": 0.03703445875391577,
+     "3": 0.05917159763313609
+    },
+    "upstream_share": 0.5926470588235294,
+    "downstream_share": 0.5433823529411764,
+    "centroid_mean_by_hop": {
+     "1": 18.551260413635536,
+     "2": 19.057058600501176,
+     "3": 18.431151548416718
+    },
+    "centroid_mean_far": 14.965087108850543,
+    "centroid_upstream_near": 18.76233511096453,
+    "centroid_downstream_near": 18.21003895161211,
+    "spearman_distance_centroid": [
+     -0.3928595210843466,
+     2.0224049147509745e-51
+    ],
+    "spearman_distance_peak": [
+     -0.18852160865551354,
+     2.402381198046241e-12
+    ],
+    "spearman_ccf_lag_centroid": [
+     0.262125240900977,
+     8.345708837989153e-23
+    ],
+    "mass_beyond_lag0": 0.827789843082428,
+    "early_mass_lag0_2": {
+     "all": 0.27878639101982117,
+     "within_3_hops": 0.22681689262390137,
+     "beyond_3_hops": 0.30330875515937805
+    },
+    "upstream_only_pairs": 495,
+    "downstream_only_pairs": 428,
+    "spearman_distance_peak_upstream_only": [
+     -0.24519088431870287,
+     3.277385851260803e-08
+    ],
+    "spearman_distance_peak_downstream_only": [
+     -0.10916742364200502,
+     0.023906877509257237
+    ],
+    "peak_lag_mean_upstream_only": 2.680808080808081,
+    "peak_lag_mean_downstream_only": 2.044392523364486,
+    "share_multi_lag": 0.2786764705882353
+   },
+   {
+    "pairs": 1360,
+    "hop_share_selected": {
+     "1": 0.12279411764705882,
+     "2": 0.11470588235294117,
+     "3": 0.08308823529411764,
+     ">3 or unreachable": 0.6794117647058824
+    },
+    "hop_share_all_pairs": {
+     "1": 0.019074138531152106,
+     "2": 0.03703445875391577,
+     "3": 0.05917159763313609
+    },
+    "upstream_share": 0.5926470588235294,
+    "downstream_share": 0.5433823529411764,
+    "centroid_mean_by_hop": {
+     "1": 21.441304795886925,
+     "2": 21.966008797426642,
+     "3": 21.720985495542365
+    },
+    "centroid_mean_far": 20.740033426284743,
+    "centroid_upstream_near": 21.799887223463042,
+    "centroid_downstream_near": 21.17536934224106,
+    "spearman_distance_centroid": [
+     -0.138262893144157,
+     3.074891358840081e-07
+    ],
+    "spearman_distance_peak": [
+     0.19312198823965665,
+     6.811733695527758e-13
+    ],
+    "spearman_ccf_lag_centroid": [
+     0.15248860036529088,
+     1.5913582100735142e-08
+    ],
+    "mass_beyond_lag0": 0.9520092010498047,
+    "early_mass_lag0_2": {
+     "all": 0.08002937585115433,
+     "within_3_hops": 0.10987044125795364,
+     "beyond_3_hops": 0.06594852358102798
+    },
+    "upstream_only_pairs": 495,
+    "downstream_only_pairs": 428,
+    "spearman_distance_peak_upstream_only": [
+     0.22583619623953324,
+     3.8227615913216186e-07
+    ],
+    "spearman_distance_peak_downstream_only": [
+     0.16988782508770897,
+     0.00041543080993727567
+    ],
+    "peak_lag_mean_upstream_only": 8.218181818181819,
+    "peak_lag_mean_downstream_only": 8.978971962616823,
+    "share_multi_lag": 0.9169117647058823
+   }
+  ]
+ }
+}

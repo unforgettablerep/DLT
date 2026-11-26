@@ -30,7 +30,7 @@ lines = []
 P = lines.append
 n_runs = len(rows)
 P(f'# Priority-0 experiments: kernel and gate comparison\n')
-P(f'{n_runs} runs. Time-Series-Library, look-back 96, k = 8 neighbours, L = 48, R = 4, top-K = 5, Adam lr 3e-3 '
+P(f'{n_runs} runs. Protocol of the official loaders, look-back 96, k = 8 neighbours, L = 48, R = 4, top-K = 5, Adam lr 3e-3 '
   f'(halved every epoch), batch 32, 10 epochs, early stopping patience 3 on the validation MSE, '
   f'seeds 2021/2022/2023. Entries: mean ± std over seeds; n < 3 seeds is marked.\n')
 

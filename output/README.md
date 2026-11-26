@@ -14,11 +14,11 @@ studies are being re-run with this protocol.
 | Stand-alone DLT-dyn: ETT, Exchange, Weather; CI | `long_small`; `ablation/make_jobs.py ci_long` | `long_small.tsv`, `ablation/ci_long.tsv` | CPU | done (stage 1, [`summary.md`](long_term_forecast/summary.md)) |
 | Stand-alone DLT-dyn and CI: Electricity, Traffic | `long_large`; `ci_long` | `long_large.tsv`, `ci_long.tsv` | GPU | `make_gpu_jobs.sh` |
 | Guards of the stand-alone model | `ablation/make_jobs.py guard` | `ablation/guard.tsv` | CPU | done (stage 2, [`guard.md`](ablation/guard.md)) |
-| P0 kernel and gate study | `ablation/make_jobs.py p0` | `ablation/p0.tsv` | CPU (ECL: GPU) | stage 3, running |
-| Sensitivity, neighbour selection | `hyperparam/make_jobs.py sensitivity \| neighbours` | `hyperparam/*.tsv` | CPU | stage 4 |
+| P0 kernel and gate study | `ablation/make_jobs.py p0` | `ablation/p0.tsv` | CPU (ECL: GPU) | done on the CPU (stage 3, [`summary.md`](ablation/summary.md)); ECL: `p0_ecl` |
+| Sensitivity, neighbour selection | `hyperparam/make_jobs.py sensitivity \| neighbours` | `hyperparam/*.tsv` | CPU | stage 4, running |
 | Validation search and searched configurations | `hyperparam/hpsearch.py make \| tuned` | `hyperparam/hp.tsv`, `tuned.tsv` | CPU (ECL, Traffic, PEMS: GPU) | stage 5 |
 | All variables as neighbours; lead-lag diagnostic | `ablation/make_jobs.py allnb`; `plugin/leadlag_diag.py` | `ablation/allnb.tsv`, `plugin/leadlag_diag.json` | CPU (ECL, Traffic: GPU) | stage 6 |
-| Learned kernels on PEMS08 | `mechanism/kernels.py` | `mechanism/kernels_pems08.json` | CPU | after stage 3 |
+| Learned kernels on PEMS08 | `mechanism/kernels.py` | `mechanism/kernels_pems08.json` | CPU | done (stage 3) |
 | Fusions with the six backbones; plug-in benchmark | `plugin/make_jobs.py plugin_fusion \| plugin_all` | `plugin/*.tsv` | GPU | `make_gpu_jobs.sh` |
 | Efficiency (time, memory) | `efficiency/run_efficiency.py`, `eff_tune.py` | `efficiency/` | CPU, GPU | done |
 
@@ -77,3 +77,46 @@ against CI:
 5. The arms `dyn` and `ci` reproduce the 48 runs of stage 1 they share to the last digit, so the guards leave the default path of the model
    unchanged. Against the removed protocol the conclusions are the same (significant selection: worst case +1.0 %
    then, +1.7 % now; Weather −8.8 % then, −9.3 % now).
+
+## P0: cross-variable kernels and gates (stage 3, CPU, seeds 2021-2023)
+
+Table: [`ablation/summary.md`](ablation/summary.md) (`scripts/ablation/aggregate.py`). Thirteen configurations of the
+same model (self head + cross branch, k = 8 CCF neighbours, L = 48) on ETTh1-96, Weather-96, PEMS08-24 and PEMS08-96;
+Electricity-96 is the GPU list `p0_ecl`. Change of the test MSE against CI:
+
+| configuration | ETTh1-96 | Weather-96 | PEMS08-24 | PEMS08-96 |
+|---|---:|---:|---:|---:|
+| scalar (lag 0) | +2.6 % | −10.9 % | −18.5 % | −13.2 % |
+| tap3 (CrossLinear-style) | +1.3 % | −11.6 % | −20.9 % | −18.5 % |
+| full (free kernel, lags 0..48) | +2.9 % | −13.7 % | −23.6 % | −27.5 % |
+| MillGNN-static / MillGNN-dyn | +1.0 % / +1.7 % | −12.8 % / −11.7 % | −17.8 % / −20.3 % | −15.0 % / −20.9 % |
+| scalar-dyn | +2.7 % | −11.1 % | −36.2 % | −39.5 % |
+| DLT (static basis kernel) | +2.2 % | −14.0 % | −23.4 % | −26.8 % |
+| **DLT-dyn** | +5.8 % | **−16.2 %** | **−43.1 %** | **−55.3 %** |
+| DLT-dyn + MoVE softmax gate / static gate | +3.7 % / +5.2 % | −16.0 % / −15.9 % | −42.6 % / −43.0 % | −53.9 % / −53.3 % |
+
+1. **DLT-dyn is the best kernel wherever the variables are coupled.** On Weather and PEMS08 it beats every other
+   kernel, by 2.4 % to 6.7 % on Weather and 12.2 % to 98.0 % on PEMS08 (the six Welch t-tests of the summary,
+   3 against 3 seeds: p ≤ 0.02); against the MillGNN-style kernels the margin is 4.0 to 5.3 % on Weather and 40 to
+   90 % on PEMS08. The input-adapted
+   weights carry most of it: the static DLT kernel gains −26.8 % on PEMS08-96, DLT-dyn −55.3 %.
+2. **On ETTh1 every cross kernel loses to CI** (+1.0 % to +5.8 %), DLT-dyn the most; its best validation epoch is
+   1.3 on average against 5.3 for CI. No gate repairs this (MoVE softmax gate +3.7 %, static gate +5.2 %), and the
+   gates keep the coupled gains (PEMS08-96 −53.9 % and −53.3 % against −55.3 %); the guards of stage 2 repair it.
+3. The protocol does not change the study. On Weather and PEMS08 every change against CI is within 0.7 points of
+   the runs under the removed protocol. On ETTh1 CI is 0.9 % better now (0.3853 against 0.3887), which raises the
+   changes of the cross kernels by 0.3 to 1.6 points (largest: MoVE gate, +2.0 % then, +3.7 % now). DLT-dyn's
+   margins over the other kernels moved by less than 1 point everywhere.
+
+## Learned kernels against the PEMS08 road graph (stage 3)
+
+`output/mechanism/kernels_pems08.json` (`scripts/mechanism/kernels.py`, the P0 checkpoints of DLT and DLT-dyn at
+H = 96, three seeds; the figure goes to the paper repository). The statistics equal those of the removed protocol
+to the second decimal:
+
+- The CCF-selected sources are near on the road graph: 12.3 % are one hop from their target (1.9 % of all pairs),
+  11.5 % two hops (3.7 %); 59 % are upstream of their target.
+- The influence is lagged: 86 % (DLT) and 87 % (DLT-dyn) of the kernel mass lies beyond lag 0.
+- The lag does not grow with road distance: Spearman correlation of distance and peak lag −0.20 (DLT) and −0.05
+  (DLT-dyn), of distance and lag centroid −0.32 and −0.20. The kernels show road-near sources acting with a lag,
+  not travel times.
