@@ -69,6 +69,10 @@ class Model(nn.Module):
             raise ValueError("--dlt_train decoupled / --dlt_select variable need a cross-variable branch added to the self head "
                              "(not --dlt_variant ci, not --dlt_gate moe)")
         self.split_output = guarded
+        self.anchor = getattr(configs, "dlt_anchor", "mean")
+        self.cross_input = getattr(configs, "dlt_cross_input", "level")
+        if self.anchor not in ("mean", "last") or self.cross_input not in ("level", "diff"):
+            raise ValueError("--dlt_anchor must be mean or last, --dlt_cross_input level or diff")
         if not cross_only:
             self.self_head = nn.Linear(T, H)
         if self.variant == "ci":
@@ -218,16 +222,28 @@ class Model(nn.Module):
             raise ValueError("the MoVE-style gate mixes two forecasts; use --dlt_gate none or static for plug-ins")
         return (y * sd).permute(0, 2, 1)
 
-    def forecast(self, x_enc):
+    def _normalise(self, x_enc):
+        """x [B, C, T], the anchor (window mean, or the last observation with --dlt_anchor last), sd and the normalised window"""
         x = x_enc.permute(0, 2, 1)
-        # x: [B, C, T]
-        mu = x.mean(-1, keepdim=True)
+        mu = x.mean(-1, keepdim=True) if self.anchor == "mean" else x[..., -1:]
         sd = x.std(-1, keepdim=True) + 1e-5
-        xn = (x - mu) / sd
+        return x, mu, sd, (x - mu) / sd
+
+    def _cross_term(self, xn):
+        """the branch on the normalised window; --dlt_cross_input diff: on the first differences of the neighbours, with the
+        input-dependent coefficients still read from the window itself"""
+        if self.cross_input == "level":
+            return self.cross_head(self.cross(xn))
+        dx = F.pad(xn[..., 1:] - xn[..., :-1], (1, 0))
+        return self.cross_head(self.cross(dx, mod_input=xn))
+
+    def forecast(self, x_enc):
+        # x: [B, C, T]
+        x, mu, sd, xn = self._normalise(x_enc)
         y = self.self_head(xn)
         if self.variant != "ci":
             self._check_ready()
-            y_cross = self.cross_head(self.cross(xn))
+            y_cross = self._cross_term(xn)
             if self.gate == "none":
                 y = y + y_cross
             elif self.gate == "moe":
@@ -239,13 +255,10 @@ class Model(nn.Module):
 
     def parts(self, x_enc, x_mark_enc=None, x_dec=None, x_mark_dec=None):
         """(self forecast, cross-variable correction), both [B, H, C] on the data scale; their sum is forecast(x_enc)."""
-        x = x_enc.permute(0, 2, 1)
-        mu = x.mean(-1, keepdim=True)
-        sd = x.std(-1, keepdim=True) + 1e-5
-        xn = (x - mu) / sd
+        x, mu, sd, xn = self._normalise(x_enc)
         y = self.self_head(xn) * sd + mu
         self._check_ready()
-        c = self.cross_head(self.cross(xn))
+        c = self._cross_term(xn)
         if self.gate == "static":
             c = torch.sigmoid(self.gate_logit)[:, None] * c
         return y.permute(0, 2, 1), (c * sd).permute(0, 2, 1)

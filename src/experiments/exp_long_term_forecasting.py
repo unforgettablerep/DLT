@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch import optim
+from torch.utils.data import DataLoader
 
 from src.data_provider.data_factory import data_provider
 from src.experiments.exp_basic import Exp_Basic
@@ -247,19 +248,46 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             q.requires_grad_(True)
 
     def _variable_mask(self, net):
-        """--dlt_select variable: keep the correction only for the variables whose validation MSE it lowers: [C] bool."""
+        """Per-variable selection of the correction on the validation windows: [C] bool.
+
+        --dlt_select variable: keep it where it lowers the validation MSE. significant: only where it lowers the error
+        consistently: the validation windows, in temporal order, form blocks of pred_len windows (their targets do not
+        overlap); the correction is kept where the mean improvement over the blocks is positive at level
+        --dlt_select_alpha (one-sided t-test) and never with fewer than three blocks.
+        """
+        mode = getattr(self.args, "dlt_select", "variable")
         vali_data, vali_loader = self._get_data(flag="val")
+        if mode == "significant":                           # the windows in temporal order, none dropped
+            vali_loader = DataLoader(vali_data, batch_size=self.args.batch_size, shuffle=False, drop_last=False)
         se_b = se_f = None
+        gains = []
         net.eval()
         with torch.no_grad():
             for batch in vali_loader:
                 batch_x, batch_y, batch_x_mark, batch_y_mark, dec_inp = self._prepare_batch(*batch)
                 y_b, c = net.parts(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 true = batch_y[:, -self.args.pred_len:, :]
-                b = ((y_b - true) ** 2).sum((0, 1)).double()
-                f = ((y_b + c - true) ** 2).sum((0, 1)).double()
+                eb, ef = ((y_b - true) ** 2).double(), ((y_b + c - true) ** 2).double()
+                b, f = eb.sum((0, 1)), ef.sum((0, 1))
                 se_b, se_f = (b, f) if se_b is None else (se_b + b, se_f + f)
-        return (se_f < se_b).cpu()
+                if mode == "significant":
+                    gains.append((eb.mean(1) - ef.mean(1)).cpu())       # [batch, C]: improvement per window
+        if mode != "significant":
+            return (se_f < se_b).cpu()
+        from scipy import stats
+
+        d = torch.cat(gains)
+        H = self.args.pred_len
+        nb = d.shape[0] // H
+        if nb < 3:
+            print("--dlt_select significant: {} validation windows give {} blocks of {}; no correction kept".format(d.shape[0], nb, H))
+            return torch.zeros(d.shape[1], dtype=torch.bool)
+        blocks = d[: nb * H].reshape(nb, H, -1).mean(1)
+        m, sd = blocks.mean(0), blocks.std(0)
+        t = m / (sd / nb ** 0.5 + 1e-12)
+        crit = stats.t.ppf(1 - getattr(self.args, "dlt_select_alpha", 0.05), nb - 1)
+        print("--dlt_select significant: {} blocks of {} validation windows, critical t {:.2f}".format(nb, H, crit))
+        return ((m > 0) & (t > crit)).cpu()
 
     def test(self, setting, test=0):
         test_data, test_loader = self._get_data(flag="test")
@@ -275,11 +303,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         net = self._model_ref
         plug = getattr(net, "split_output", False)          # forecast = backbone (DLT: self head) + correction
         self.dlt_kept = None
-        if plug and getattr(self.args, "dlt_select", "none") == "variable":
+        if plug and getattr(self.args, "dlt_select", "none") != "none":
             net.select_mask = None
             net.select_mask = self._variable_mask(net).to(self.device)
             self.dlt_kept = float(net.select_mask.float().mean())
-            print("--dlt_select variable: correction kept for {} of {} variables (validation MSE)".format(int(net.select_mask.sum()), net.select_mask.numel()))
+            print("--dlt_select {}: correction kept for {} of {} variables (validation MSE)".format(
+                self.args.dlt_select, int(net.select_mask.sum()), net.select_mask.numel()))
         part_streams = (StreamMetrics(), StreamMetrics()) if plug and stream is not None else None
         f_dim = -1 if self.args.features == "MS" else 0
 

@@ -227,6 +227,34 @@ The guards of the plug-in, applied to the stand-alone DLT-dyn (`--dlt_select var
 - The arms `dyn` and `ci` reproduce the earlier stand-alone runs to the last digit (ETTh1 0.4102 / 0.3887, Weather
   0.1637); the guards leave the default path of the model unchanged.
 
+**Round 2: one recipe for every dataset** (ETTm1 and ETTm2 added as data the guards were not designed on; same
+suite, 3 seeds). Change of the test MSE against the self head alone (CI):
+
+| | ETTh1-96 | ETTh2-96 | ETTh2-720 | ETTm1-96 | ETTm2-96 | Exchange-96 | Exchange-720 | PEMS08-96 | Weather-96 | ETT + Exchange: mean / worst |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| DLT-dyn (paper) | +5.5 % | +17.0 % | +11.1 % | −6.9 % | −1.8 % | +34.0 % | +69.7 % | −55.3 % | −15.7 % | +18.4 % / +69.7 % |
+| two-stage + selection | +1.0 % | −0.3 % | +4.5 % | −4.0 % | −1.2 % | +2.0 % | +31.6 % | −58.5 % | −14.0 % | +4.8 % / +31.6 % |
+| two-stage + significant selection | +1.0 % | −0.3 % | −0.1 % | −3.9 % | −1.1 % | −0.2 % | +0.7 % | −57.9 % | −8.8 % | −0.6 % / +1.0 % |
+| the same at level 0.25 | +1.0 % | −0.3 % | −0.1 % | −4.0 % | −1.2 % | +1.8 % | +0.7 % | −58.3 % | −12.9 % | −0.3 % / +1.8 % |
+| last-value anchor + two-stage + sign. selection | +2.6 % | +0.4 % | +0.2 % | −4.3 % | −0.5 % | −0.1 % | −2.2 % | −56.9 % | −7.8 % | −0.6 % / +2.6 % |
+| difference input + two-stage + sign. selection | +1.0 % | −0.3 % | −0.1 % | −3.5 % | −1.1 % | −0.1 % | +0.7 % | −55.5 % | −7.6 % | −0.5 % / +1.0 % |
+
+- **Significant selection is the stable guard.** `--dlt_select significant` keeps the correction of a variable only
+  where it lowers the error consistently over blocks of validation windows (blocks of pred_len windows, whose
+  targets do not overlap; one-sided t-test) and never with fewer than three blocks. One setting for every dataset
+  brings all seven ETT and Exchange settings to within +1.8 % of CI or better (ETTm1 −4 %, ETTm2 −1 %), against DLT-dyn
+  significantly better on ETTh2-96, ETTh2-720, Exchange-96 and Exchange-720 (p 0.008–0.047), and keeps the coupled
+  gains (PEMS08 −58 %, better than DLT-dyn, p 0.04–0.05). Exchange-720 is repaired by the rule of three blocks: its
+  41 validation windows form no block of 720, so no correction is kept (+0.7 % instead of +31.6 %).
+- **The level trades Weather against the weak data.** At 0.05 the test keeps 63 % of the Weather variables and
+  Weather gains −8.8 % instead of −15.7 % (p 0.001); at 0.25 it keeps 89 % and gains −12.9 % (p 0.20 against
+  DLT-dyn), at +1.8 % on Exchange-96. Level 0.25 is the better single recipe.
+- **What did not help:** the last-value anchor leaves the self head unchanged (within ±0.5 % of CI everywhere) and
+  adds nothing to the guarded branch (ETTh1 +2.6 %, Weather −7.8 %); the difference input of the branch neither
+  (Weather −7.6 %). On ETTh1, ETTh2 and Exchange the guards return the forecast to CI: there is no cross-variable
+  signal to gain from (Exchange: the naive last-value forecast is the best one, 0.0811 / 0.8101 against CI 0.0824 /
+  0.8381), so "benefit" there means no harm.
+
 ## Consequences for the paper
 
 1. **Lead with:**
@@ -241,7 +269,7 @@ The guards of the plug-in, applied to the stand-alone DLT-dyn (`--dlt_select var
 3. **Do not claim** CCF neighbour selection as an accuracy contribution (point 4) or travel-time
    interpretability (point 7).
 4. **Next steps:**
-   - the stand-alone DLT-dyn with two-stage training and per-variable selection as the default recipe (point 9),
-     to be confirmed on all datasets and horizons; a guard for the validation / test mismatch of Exchange;
+   - the stand-alone DLT-dyn with two-stage training and significant per-variable selection at level 0.25 as the
+     default recipe (point 9), to be confirmed on all datasets and horizons (GPU for Electricity, Traffic, Solar, PEMS);
    - k and R in the search space;
    - the GPU tiers of [README.md, GPU Runs](../README.md#gpu-runs).

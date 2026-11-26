@@ -17,5 +17,11 @@ def add_dlt_parser(parser):
     parser.add_argument("--dlt_lr", type=float, default=0.0, help="learning rate of the cross-variable branch (0 = --learning_rate)")
     parser.add_argument("--dlt_train", type=str, default="joint", choices=["joint", "decoupled"],
                         help="joint loss, or the backbone (DLT: the self head) first and the branch on its error")
-    parser.add_argument("--dlt_select", type=str, default="none", choices=["none", "variable"],
-                        help="keep the cross-variable correction only for the variables whose validation MSE it lowers")
+    parser.add_argument("--dlt_select", type=str, default="none", choices=["none", "variable", "significant"],
+                        help="keep the cross-variable correction only for the variables whose validation MSE it lowers "
+                             "(significant: consistently over blocks of validation windows, one-sided t-test)")
+    parser.add_argument("--dlt_select_alpha", type=float, default=0.05, help="--dlt_select significant: level of the test")
+    parser.add_argument("--dlt_anchor", type=str, default="mean", choices=["mean", "last"],
+                        help="DLT: forecast relative to the window mean (RLinear) or to the last observation (the zero map is the naive forecast)")
+    parser.add_argument("--dlt_cross_input", type=str, default="level", choices=["level", "diff"],
+                        help="DLT: the cross-variable branch reads the normalised neighbours (level) or their first differences (diff)")

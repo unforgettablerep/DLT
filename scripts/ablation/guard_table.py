@@ -4,8 +4,8 @@ Reads output/ablation/guard.tsv (suite guard of scripts/ablation/make_jobs.py: s
 the plug-in) and writes output/ablation/guard.md. For every setting: test MSE of each arm (mean ± std over the seeds),
 its change against DLT-dyn as in the paper (arm dyn) and against the self head alone (arm ci), a Welch t-test against
 dyn, the share of variables whose correction the per-variable selection kept, and the epoch of the best validation
-loss (two-stage arms: stage 1 + branch). Then, per arm, the change against ci averaged over the weakly coupled
-settings (ETTh1, ETTh2, Exchange: the harm to remove) and the coupled ones (Weather, PEMS08: the gain to keep).
+loss (two-stage arms: stage 1 + branch). Then, per arm, the change against ci in every setting, and its mean over the
+ETT and Exchange settings and over the coupled ones (Weather, PEMS08).
 """
 import argparse
 import collections
@@ -27,8 +27,15 @@ ARMS = {
     "dyn_lr_sel": "1/10 learning rate + selection",
     "dyn_2s": "two-stage training",
     "dyn_2s_sel": "two-stage + selection",
+    "dyn_2s_sig": "two-stage + significant selection",
+    "dyn_2s_sig25": "two-stage + significant selection, level 0.25",
+    "ci_last": "self head alone, last-value anchor",
+    "last": "DLT-dyn, last-value anchor",
+    "last_2s_sig": "last-value anchor + two-stage + significant selection",
+    "diff_2s_sig": "difference input + two-stage + significant selection",
+    "last_diff_2s_sig": "last-value anchor + difference input + two-stage + significant selection",
 }
-WEAK = ("ETTh1", "ETTh2", "Exchange")
+WEAK = ("ETTh1", "ETTh2", "ETTm1", "ETTm2", "Exchange")
 
 
 def mean(v):
@@ -61,7 +68,6 @@ def main():
          "DLT-dyn as in the paper / the self head alone; p = Welch t-test against dyn; kept = share of variables whose",
          "correction the per-variable selection kept; best ep. = epoch of the best validation loss (two-stage: stage 1 +",
          "branch epochs).", ""]
-    summary = collections.defaultdict(lambda: {"weak": [], "coupled": []})
     for ds, H in settings:
         dyn = [r["mse"] for r in cells.get((ds, H, "dyn"), [])]
         ci = [r["mse"] for r in cells.get((ds, H, "ci"), [])]
@@ -82,17 +88,24 @@ def main():
                 best = "{:.1f}".format(best)
             L.append("| {} | {} | {} | {} | {} | {} | {} | {} |".format(label, len(v), ms(v), pct(vs_dyn), pct(vs_ci), pv,
                                                                         "{:.0%}".format(mean(kept)) if kept else "", best))
-            if arm != "ci" and vs_ci == vs_ci:
-                summary[arm]["weak" if ds in WEAK else "coupled"].append(vs_ci)
         L.append("")
-    L += ["## Over the settings: change against the self head alone (CI)", "",
-          "| arm | weakly coupled: mean | worst | coupled: mean | least gain |", "|---|---:|---:|---:|---:|"]
+    L += ["## Over the settings: change of the MSE against the self head alone (CI)", "",
+          "| arm | " + " | ".join("{}-{}".format(ds, H) for ds, H in settings) + " | ETT + Exchange: mean | worst | coupled: mean |",
+          "|---|" + "---:|" * (len(settings) + 3)]
     for arm, label in ARMS.items():
-        s = summary.get(arm)
-        if not s:
+        if arm == "ci" or not any((ds, H, arm) in cells for ds, H in settings):
             continue
-        w, c = s["weak"], s["coupled"]
-        L.append("| {} | {} | {} | {} | {} |".format(label, pct(mean(w)), pct(max(w)) if w else "", pct(mean(c)), pct(max(c)) if c else ""))
+        row, weak, coupled = [], [], []
+        for ds, H in settings:
+            v, ci = cells.get((ds, H, arm)), cells.get((ds, H, "ci"))
+            if not v or not ci:
+                row.append("")
+                continue
+            ch = mean([r["mse"] for r in v]) / mean([r["mse"] for r in ci]) - 1
+            row.append(pct(ch))
+            (weak if ds in WEAK else coupled).append(ch)
+        L.append("| {} | {} | {} | {} | {} |".format(label, " | ".join(row), pct(mean(weak)), pct(max(weak)) if weak else "", pct(mean(coupled))))
+    L.append("")
     text = "\n".join(L) + "\n"
     Path(a.out).write_text(text)
     print(text)

@@ -10,6 +10,17 @@ three seeds, the recipe of the stand-alone runs (long_small; PEMS08 with the pro
     dyn_lr_sel  both
     dyn_2s      two-stage training: the self head on its own loss first, then the branch on its error
     dyn_2s_sel  two-stage training and per-variable selection (the plug-in recipe of the paper)
+  round 2 (one recipe for every dataset; ETTm1 and ETTm2 added as data the guards were not designed on):
+    dyn_2s_sig        two-stage training, correction kept only where it helps consistently over blocks of validation
+                      windows (--dlt_select significant: one-sided t-test, never with fewer than three blocks)
+    ci_last           the self head alone, relative to the last observation (--dlt_anchor last: the zero map is the
+                      naive forecast)
+    last              DLT-dyn relative to the last observation
+    last_2s_sig       last observation + two-stage + significant selection
+    diff_2s_sig       the branch on the first differences of the neighbours (--dlt_cross_input diff) + two-stage +
+                      significant selection
+    last_diff_2s_sig  all three
+    dyn_2s_sig25      dyn_2s_sig at level 0.25 (the rule of at least three blocks unchanged)
 """
 import itertools
 import json
@@ -29,7 +40,8 @@ P0_SETTINGS = {
 }
 from src.ablation.registry import P0_CONFIGS, p0_args, p0_impl  # noqa: E402
 
-GUARD_SETTINGS = (("ETTh1", 96), ("ETTh2", 96), ("ETTh2", 720), ("Exchange", 96), ("Exchange", 720), ("Weather", 96), ("PEMS08", 96))
+GUARD_SETTINGS = (("ETTh1", 96), ("ETTh2", 96), ("ETTh2", 720), ("ETTm1", 96), ("ETTm2", 96), ("Exchange", 96), ("Exchange", 720),
+                  ("Weather", 96), ("PEMS08", 96))
 GUARD_ARMS = {
     "ci": "--dlt_variant ci",
     "dyn": "",
@@ -38,6 +50,13 @@ GUARD_ARMS = {
     "dyn_lr_sel": "--dlt_lr 0.0003 --dlt_select variable",
     "dyn_2s": "--dlt_train decoupled",
     "dyn_2s_sel": "--dlt_train decoupled --dlt_select variable",
+    "dyn_2s_sig": "--dlt_train decoupled --dlt_select significant",
+    "dyn_2s_sig25": "--dlt_train decoupled --dlt_select significant --dlt_select_alpha 0.25",
+    "ci_last": "--dlt_variant ci --dlt_anchor last",
+    "last": "--dlt_anchor last",
+    "last_2s_sig": "--dlt_anchor last --dlt_train decoupled --dlt_select significant",
+    "diff_2s_sig": "--dlt_cross_input diff --dlt_train decoupled --dlt_select significant",
+    "last_diff_2s_sig": "--dlt_anchor last --dlt_cross_input diff --dlt_train decoupled --dlt_select significant",
 }
 
 
@@ -98,7 +117,7 @@ def main():
                 continue
             proto = jobs.protocol_args(ds) if ds in jobs.PEMS_SETS else ""
             args = " ".join(x for x in (jobs.DLT_DEFAULT, jobs.DLT_TRAIN, proto, extra) if x)
-            rel = 0.1 if arm == "ci" else (2.0 if "2s" in arm else 1.0)
+            rel = 0.1 if arm.startswith("ci") else (2.0 if "2s" in arm else 1.0)
             g.add("{}_{}_{}".format(ds, H, arm), "DLT", ds, H, seed, args, jobs.cost(ds, rel))
     else:
         raise SystemExit("unknown suite {}; choose from p0, ci_long, allnb, guard".format(a.suite))

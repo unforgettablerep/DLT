@@ -170,7 +170,8 @@ metrics on the original scale).
 | `--dlt_topk` | 5 | Lags per pair of `topk` / `mill` / `milldyn` |
 | `--plug_base` | `DLinear` | `DLTPlug`: backbone the branch is added to |
 | `--dlt_fusion` | `output` | `DLTPlug`: `output` (sum of forecasts), `refine`, `input` |
-| `--dlt_train` / `--dlt_select` | `joint` / `none` | `DLT` and `DLTPlug`: `decoupled` trains the self head (backbone) first and the branch on its error; `variable` keeps the correction per variable on validation data |
+| `--dlt_train` / `--dlt_select` | `joint` / `none` | `DLT` and `DLTPlug`: `decoupled` trains the self head (backbone) first and the branch on its error; `variable` keeps the correction per variable on validation data; `significant` only where it helps consistently over blocks of validation windows (`--dlt_select_alpha`, 0.05) |
+| `--dlt_anchor` / `--dlt_cross_input` | `mean` / `level` | `DLT`: forecast relative to the window mean or the last observation; the branch on the neighbours or their differences |
 | `--dlt_lr` | 0 | `DLT` and `DLTPlug`: learning rate of the cross-variable branch (0 = `--learning_rate`) |
 | `--seed` | 2021 | Seed of every run (alias `--fix_seed`); results and checkpoints depend on it |
 

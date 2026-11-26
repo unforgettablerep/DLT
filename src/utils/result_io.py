@@ -49,6 +49,9 @@ CONFIG_COLUMNS = [
     "dlt_fusion",
     "dlt_train",
     "dlt_select",
+    "dlt_select_alpha",
+    "dlt_anchor",
+    "dlt_cross_input",
     "d_state",
     "mamba_impl",
 ]
@@ -111,6 +114,7 @@ DLT_MODELS = ("DLT", "DLTPlug")
 DLT_ONLY = {c for c in CONFIG_COLUMNS if c.startswith("dlt_")}
 PLUG_ONLY = {"plug_base", "dlt_fusion"}
 BRANCH_RECIPE = {"dlt_lr": 0.0, "dlt_train": "joint", "dlt_select": "none"}   # DLTPlug always; DLT when not the default
+STANDALONE_RECIPE = {"dlt_anchor": "mean", "dlt_cross_input": "level"}       # DLT only, when not the default
 BACKBONE_ONLY = {"d_model", "d_ff", "e_layers", "d_layers", "n_heads", "factor", "use_norm", "dropout"}
 
 LEGACY_KEYS = {
@@ -351,6 +355,10 @@ def build_result_row(args, metrics, info=None, checkpoint=0):
         if col in PLUG_ONLY and model != "DLTPlug":
             continue
         if col in BRANCH_RECIPE and model != "DLTPlug" and (model != "DLT" or getattr(args, col, BRANCH_RECIPE[col]) == BRANCH_RECIPE[col]):
+            continue
+        if col in STANDALONE_RECIPE and (model != "DLT" or getattr(args, col, STANDALONE_RECIPE[col]) == STANDALONE_RECIPE[col]):
+            continue
+        if col == "dlt_select_alpha" and getattr(args, "dlt_select", "none") != "significant":
             continue
         if col in BACKBONE_ONLY and model == "DLT":
             continue
