@@ -3,8 +3,8 @@
     python scripts/mechanism/kernels.py [--fig_dir <dir>] [--H 96]
 
 Fixed locations (src/utils/paths.py): PEMS08.npz and PEMS08_edges.csv from the data directory; the checkpoints of the
-P0 grid (scripts/ablation/make_jobs.py p0, des PEMS08_<H>_<variant>_none) from temp/checkpoints/PEMS08, and those of
-the runs before the refactor from work/ckpt if that directory exists; statistics to output/mechanism. The figure goes
+P0 grid (scripts/ablation/make_jobs.py p0, des PEMS08_<H>_<variant>_none) from temp/checkpoints/PEMS08; statistics to
+output/mechanism. The figure goes
 to ../DLTpaper/figures if that repository is checked out next to this one, else to output/mechanism (ignored by git).
 
 For every trained DLT / DLT-dyn checkpoint (all seeds) the kernels K_ij(tau) = sum_r alpha_ijr phi_r(tau) of the
@@ -16,7 +16,7 @@ DLT-dyn kernels are the mean input-adapted kernels over the test windows. Writes
 to output/mechanism and fig_kernels_pems08.pdf / .png to --fig_dir. Figures are kept in the paper repository
 (DLTpaper/figures), not in this one.
 """
-import argparse, glob, json, os, sys
+import argparse, json, os, sys
 from pathlib import Path
 import numpy as np, pandas as pd, torch
 from scipy.sparse import csr_matrix
@@ -28,7 +28,6 @@ sys.path.insert(0, str(REPO))
 from src.utils import paths  # noqa: E402
 from src.utils.checkpoint import find_checkpoints  # noqa: E402
 
-LEGACY_CKPT = REPO / 'work' / 'ckpt'      # checkpoints of the runs before the refactor (one folder per run)
 
 
 def road_graph(edges_csv, C):
@@ -151,15 +150,12 @@ def figure(path_pdf, examples, idx, K, h, d, centroid):
 
 
 def p0_checkpoints(variant, H):
-    """Checkpoints of the ungated P0 runs of a variant on PEMS08 (the latest per seed), then those before the refactor."""
+    """Checkpoints of the ungated P0 runs of a variant on PEMS08 (the latest per seed)."""
     latest = {}
     for q in find_checkpoints(str(paths.CHECKPOINTS), 'PEMS08', model='DLT', pred_len=H, des=f'PEMS08_{H}_{variant}_none',
                               dlt_k=8, dlt_L=48, dlt_R=4):
         latest[os.path.basename(q).rsplit('_', 1)[0]] = q                   # <prefix>_<seq>.pth: newest last
-    legacy = sorted(glob.glob(str(LEGACY_CKPT / f'*_P0_PEMS08_{H}_DLT_*_pl{H}_*_{variant}_k8_L48_R4*' / 'checkpoint.pth')))
-    # the P0 grid only: other suites (e.g. long_extra) also train DLT-dyn on PEMS08
-    legacy = [q for q in legacy if '_g' not in q.split(f'_{variant}_k8_L48_R4')[1]]   # ungated models only
-    return sorted(latest.values()) + legacy
+    return sorted(latest.values())
 
 
 def label(q):

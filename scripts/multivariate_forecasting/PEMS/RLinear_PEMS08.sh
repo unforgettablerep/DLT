@@ -31,7 +31,6 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     --learning_rate 0.001 \
     --batch_size 16 \
     --dropout 0 \
@@ -62,7 +61,6 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     --learning_rate 0.001 \
     --batch_size 16 \
     --dropout 0 \
@@ -93,7 +91,6 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     --learning_rate 0.001 \
     --batch_size 16 \
     --dropout 0 \
@@ -124,7 +121,6 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     --learning_rate 0.001 \
     --batch_size 16 \
     --dropout 0 \

@@ -2,7 +2,7 @@
 
     python scripts/plugin/leadlag_diag.py [--datasets ETTh1 PEMS08 ...] [--targets 32] [--out output/plugin/leadlag_diag.json]
 
-On the splits and the scaling of the runs (data_provider, input 96, TSLib PEMS split), per dataset:
+On the splits and the scaling of the runs (data_provider: the protocol of the official loaders, input 96), per dataset:
   - the k = 8 neighbours of every variable, chosen as the DLT branch chooses them on the training split
     (src/layers/DLT_layers.py select_neighbours: max over lags 0..48 of |corr(dx_i(t), dx_j(t - lag))|); the mean |CCF| peak
     of the selected pairs, the share of pairs whose peak is at lag 0 (no lead) and the mean absolute correlation of

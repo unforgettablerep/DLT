@@ -5,7 +5,7 @@
     python scripts/hyperparam/hpsearch.py select     # -> output/hyperparam/tuned.json
     python scripts/hyperparam/hpsearch.py tuned [--horizons 96 192 336 720] [--seeds ...]
     bash scripts/utils/run_queue.sh tuned
---tag <suffix> keeps a second search next to the first (e.g. PEMS at horizon 12 with the TimeMixer protocol: --tag _pems).
+--tag <suffix> keeps a second search next to the first (e.g. PEMS at horizon 12: --tag _pems).
 """
 import argparse
 import itertools
@@ -64,8 +64,7 @@ def main():
         g = jobs.JobList(HP, "hyperparam", a.device)
         for ds in a.datasets:
             for t, c in enumerate(trials(a.trials)):
-                proto = jobs.PEMS_PROTOCOL if ds.startswith("PEMS") else ""
-                g.add("{}_{}_t{:02d}".format(ds, a.H, t), "DLT", ds, a.H, 2021, "{} {} --dlt_hp_trial {}".format(cfg_args(c), proto, t), jobs.cost(ds, c["dlt_k"] / 8 * c["dlt_L"] / 48))
+                g.add("{}_{}_t{:02d}".format(ds, a.H, t), "DLT", ds, a.H, 2021, "{} --dlt_hp_trial {}".format(cfg_args(c), t), jobs.cost(ds, c["dlt_k"] / 8 * c["dlt_L"] / 48))
         g.write()
     elif a.cmd == "select":
         rows = jobs.records("hyperparam", HP)
@@ -97,8 +96,7 @@ def main():
         g = jobs.JobList(TU, "hyperparam", a.device)
         for ds, t in tuned.items():
             for H, seed in itertools.product(a.horizons, a.seeds):
-                proto = jobs.PEMS_PROTOCOL if ds.startswith("PEMS") else ""
-                g.add("{}_{}_tuned".format(ds, H), "DLT", ds, H, seed, "{} {}".format(cfg_args(t["config"]), proto), jobs.cost(ds))
+                g.add("{}_{}_tuned".format(ds, H), "DLT", ds, H, seed, cfg_args(t["config"]), jobs.cost(ds))
         g.write()
 
 

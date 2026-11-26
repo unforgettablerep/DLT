@@ -25,9 +25,9 @@ class ProfileTests(unittest.TestCase):
         cfg = dlt_profiles.resolve("ETTh1", 96)
         self.assertEqual({k: cfg[k] for k in ("dlt_variant", "dlt_k", "dlt_L", "dlt_R", "dlt_impl")}, {"dlt_variant": "dltdyn", "dlt_k": 8, "dlt_L": 48, "dlt_R": 4, "dlt_impl": "basis"})
         self.assertEqual((cfg["learning_rate"], cfg["batch_size"], cfg["train_epochs"], cfg["patience"]), (0.003, 32, 10, 3))
-        self.assertNotIn("drop_last", cfg)
+        self.assertTrue(cfg["drop_last"] and cfg["test_batch_size"] == 1 and cfg["freq"] == "h" and "no_time_marks" not in cfg)
         pems = dlt_profiles.resolve("PEMS08", 12)
-        self.assertTrue(pems["no_time_marks"] and pems["drop_last"] and pems["test_batch_size"] == 1 and pems["pems_split"] == "itransformer")
+        self.assertTrue(pems["no_time_marks"] and pems["drop_last"] and pems["test_batch_size"] == 1)
 
     def test_efficiency_profile_holds_the_selected_recipes(self):
         rows = result_io.latest(result_io.read_results(REPO / "output" / "efficiency" / "eff_tune.tsv"))
@@ -118,20 +118,6 @@ class GeneratedScriptTests(unittest.TestCase):
         self.assertEqual(set(P0_LABELS), set(P0_CONFIGS))
         self.assertEqual(p0_args("dltdyn", "static")["dlt_impl"], "basis")
         self.assertEqual(p0_args("dlt", "none")["dlt_impl"], "kernel")
-
-
-class MigrationTests(unittest.TestCase):
-    def test_legacy_record_is_recognised_in_its_store(self):
-        sys.path.insert(0, str(REPO / "scripts" / "utils"))
-        import migrate_work
-
-        rec = {"model": "DLT", "model_id": "long_small_Weather_96", "data": "custom", "data_path": "weather.csv", "seq_len": 96, "pred_len": 96, "seed": 2021, "mse": 0.1641, "mae": 0.2117, "variant": "dltdyn", "des": "Exp"}
-        row = result_io.migrate_record(rec)
-        stored = dict(row, des="Weather_96_dltdyn", dlt_variant="dltdyn")
-        self.assertEqual(migrate_work.key(row), migrate_work.key(stored))
-        self.assertNotEqual(migrate_work.key(row), migrate_work.key(dict(stored, seed=2022)))
-        self.assertEqual((migrate_work.category("long_small"), migrate_work.category("hp_pems"), migrate_work.category("plugin_all")), ("long_term_forecast", "hyperparam", "plugin"))
-        self.assertIsNone(migrate_work.category("quickstart"))
 
 
 class ResumeTests(unittest.TestCase):

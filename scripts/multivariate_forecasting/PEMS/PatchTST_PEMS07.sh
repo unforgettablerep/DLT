@@ -31,7 +31,6 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     --e_layers 2 \
     --d_layers 1 \
     --factor 3 \
@@ -61,7 +60,6 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     --e_layers 2 \
     --d_layers 1 \
     --factor 3 \
@@ -91,7 +89,6 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     --e_layers 2 \
     --d_layers 1 \
     --factor 3 \
@@ -121,7 +118,6 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     --e_layers 2 \
     --d_layers 1 \
     --factor 3 \

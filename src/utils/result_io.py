@@ -27,11 +27,9 @@ CONFIG_COLUMNS = [
     "lradj",
     "loss",
     "inverse",
-    "vali_inverse",
     "time_marks",
     "drop_last",
     "test_batch_size",
-    "pems_split",
     "freq",
     "dlt_variant",
     "dlt_k",
@@ -93,7 +91,6 @@ STRING_COLUMNS = {
     "des",
     "lradj",
     "loss",
-    "pems_split",
     "freq",
     "dlt_variant",
     "dlt_impl",
@@ -107,7 +104,7 @@ STRING_COLUMNS = {
     "device",
     "torch",
 }
-BOOL_COLUMNS = {"inverse", "vali_inverse", "time_marks", "drop_last"}
+BOOL_COLUMNS = {"inverse", "time_marks", "drop_last"}
 JSON_COLUMNS = {"epoch_secs"}
 
 DLT_MODELS = ("DLT", "DLTPlug")
@@ -365,8 +362,6 @@ def build_result_row(args, metrics, info=None, checkpoint=0):
         if col == "dlt_gate_init" and getattr(args, "dlt_gate", "none") != "static":
             continue
         if col == "dlt_hp_trial" and getattr(args, "dlt_hp_trial", -1) < 0:
-            continue
-        if col == "pems_split" and getattr(args, "data", "") != "PEMS":
             continue
         if col in ("d_state", "mamba_impl") and "S_Mamba" not in (model, getattr(args, "plug_base", None)):
             continue

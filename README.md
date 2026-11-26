@@ -91,9 +91,10 @@ python -u scripts/run.py --is_training 1 --model DLT --des quickstart --seed 202
 ```
 
 Append `--no_use_gpu --num_workers 0` for the CPU. The run trains, tests the best checkpoint and appends one row to
-`output/long_term_forecast/Weather.tsv`; the checkpoint goes to `temp/checkpoints/Weather/`. On the CPU it gives
-MSE 0.1642 / MAE 0.2117 (best epoch 7 of 10); on a GPU expect the same to about three decimals (cuDNN and
-TensorFloat-32 are not bit-identical to the CPU). As in every recorded run there is no per-epoch test pass;
+`output/long_term_forecast/Weather.tsv`; the checkpoint goes to `temp/checkpoints/Weather/`. Every run uses the
+protocol of the official iTransformer / S-Mamba loaders (`protocol()` in `src/configs/dlt_profiles.py`). On a GPU
+expect the CPU result to about three decimals (cuDNN and TensorFloat-32 are not bit-identical to the CPU). As in every
+recorded run there is no per-epoch test pass;
 `--epoch_test` adds it, and because that pass draws from the random number generator, such a run differs slightly.
 `--is_training 2` tests the latest checkpoint again (`--checkpoint N` a given one).
 
@@ -108,19 +109,6 @@ bash scripts/multivariate_forecasting/Weather/DLT.sh                      # DLT-
 SEEDS="2021" bash scripts/multivariate_forecasting/PEMS/iTransformer_PEMS08.sh
 bash scripts/multivariate_forecasting/run_all_forecasts.sh --model DLT --gpu 0,1 --para 2   # all 13 datasets
 ```
-
-CPU reference values of the default recipe, mean ± std over seeds 2021–2023:
-
-| dataset / horizon | DLT-dyn | same model without the cross branch (CI) | CPU s / epoch (1 thread) |
-|---|---|---|---:|
-| Weather / 96 (MSE, MAE) | 0.1637 ± 0.0006, 0.2101 ± 0.0014 | 0.1942, 0.2335 | 25 |
-| ECL / 96 (MSE, MAE) | 0.1713 ± 0.0007, 0.2619 ± 0.0003 | 0.1975, 0.2739 | 201 |
-| PEMS08 / 96 (MSE, MAE, scaled) | 0.5229 ± 0.0087, 0.4945 ± 0.0055 | 1.1681, 0.8059 | 56 |
-| PEMS08 / 12 (MAE, MAPE, RMSE; TimeMixer protocol) | 17.87 ± 0.14, 10.68 %, 28.30 | 21.84, 12.62 %, 35.01 | 54 |
-| PEMS04 / 12 (MAE, MAPE, RMSE; TimeMixer protocol) | 22.31 ± 0.06, 13.85 %, 35.10 | 27.36, 16.34 %, 43.54 | 100 |
-| ETTh1 / 96 (MSE, MAE) | 0.4102 ± 0.0055, 0.4140 ± 0.0028 | 0.3887, 0.3957 | 2 |
-
-ETTh1 is listed on purpose: on weakly coupled data the cross-variable branch does not help (`output/README.md`).
 
 ## Architecture
 
@@ -150,10 +138,9 @@ reported DLT-dyn runs (the recipes set it), `dense` is the cheapest when k is cl
 | Solar | Solar | solar_AL.txt | 137 | 96 | 96, 192, 336, 720 |
 | PEMS03 / 04 / 07 / 08 | PEMS | PEMS0x.npz | 358 / 307 / 883 / 170 | 96 | 12, 24, 48, 96 |
 
-Solar and PEMS follow the protocol of the official iTransformer / S-Mamba loaders in every run (no time marks,
-`--drop_last`, test batch 1, PEMS with `--pems_split itransformer`); the baselines use that protocol on every dataset.
-The suite `pems12` instead uses the TimeMixer / MillGNN protocol at horizon 12 (L1 loss, validation MAE and test
-metrics on the original scale).
+Every run, of every model, follows the protocol of the official iTransformer / S-Mamba loaders: four hourly time
+features, the last incomplete training / validation batch dropped, test batch 1; Solar and PEMS without time marks,
+PEMS with the validation and test windows inside their own split.
 
 ## Key Parameters
 
@@ -183,7 +170,7 @@ The DLT-dyn recipe of the paper: learning rate 3e-3 halved every epoch, batch 32
 src/            model/ layers/ configs/ data_provider/ experiments/ utils/ ablation/
 scripts/run.py  the only training entry point
 scripts/<category>/   multivariate_forecasting  benchmark  plugin  ablation  hyperparam  efficiency  mechanism
-                statistics  prototype  batch  utils  (job generators, analyses, queues)
+                batch  utils  (job generators, analyses, queues)
 output/<category>/    tracked result stores (one TSV row per run), tables and conclusions
 assets/reported.json  numbers copied from the papers (never re-computed)
 tests/          unit tests (python -m unittest discover -s tests)
@@ -206,7 +193,7 @@ python scripts/utils/smoke_jobs.py long_small           # pre-flight: one traini
 
 | Experiment | Entry point | Datasets / grid | Output |
 | --- | --- | --- | --- |
-| Stand-alone DLT-dyn | `scripts/multivariate_forecasting/make_jobs.py long_small \| long_large \| long_extra \| pems12` | ETT, Exchange, Weather; ECL, Traffic; Solar and PEMS (official protocol); PEMS04/08-12 (TimeMixer protocol); 3 seeds | `output/long_term_forecast/<suite>.tsv` |
+| Stand-alone DLT-dyn | `scripts/multivariate_forecasting/make_jobs.py long_small \| long_large \| long_extra` | ETT, Exchange, Weather; ECL, Traffic; Solar and PEMS; 3 seeds | `output/long_term_forecast/<suite>.tsv` |
 | Baseline check | `scripts/benchmark/make_jobs.py baselines`, then `scripts/benchmark/baseline_check.py` | six baselines, official settings, 13 datasets | `output/benchmark/baselines*.tsv`, `baseline_check.md` |
 | Plug-in | `scripts/plugin/make_jobs.py plugin_all \| plugin_fusion`; `plugin_table.py`, `plugin_gain.py`, `fusion_table.py`, `plugin_diag.py`, `leadlag_diag.py` | every backbone alone and + DLT-dyn on 13 datasets; five fusion arms | `output/plugin/` |
 | Kernel and gate ablation (P0) | `scripts/ablation/make_jobs.py p0 \| ci_long \| allnb`; `aggregate.py` | 13 configurations × 5 settings × 3 seeds; CI linear; all neighbours | `output/ablation/` |
@@ -214,18 +201,14 @@ python scripts/utils/smoke_jobs.py long_small           # pre-flight: one traini
 | Hyper-parameters | `scripts/hyperparam/make_jobs.py sensitivity \| neighbours`; `hpsearch.py make \| select \| tuned` | L, R, k one at a time; neighbour selection; 20-trial validation search | `output/hyperparam/` |
 | Efficiency | `scripts/efficiency/run_efficiency.py [--setting smamba] [--tuned]`; `make_jobs.py eff_tune`, `eff_tune.py` | parameters, ms per batch, peak memory; S-Mamba setting (batch 16) | `output/efficiency/` |
 | Mechanism | `scripts/mechanism/kernels.py`, `pems_lag.py` | learned kernels against the PEMS08 road graph | `output/mechanism/kernels_pems08.json` |
-| Summary tables | `scripts/statistics/aggregate_p1.py`, `aggregate_p2.py` (or `poe tables`) | all of the above | `output/statistics/summary_p1.md`, `summary_p2.md` |
-| Feasibility prototype | `scripts/prototype/proto.py`, `run_grid.sh`, `agg_md.py` | the first linear study, 69 runs | `output/prototype/` |
 
-`scripts/batch/run_cpu_campaign.sh` replays the whole CPU campaign; `scripts/batch/make_gpu_jobs.sh` writes the lists
-of everything that needs a GPU. Conclusions and tables: [`output/README.md`](output/README.md).
+`scripts/batch/run_cpu_campaign.sh [stage]` runs the CPU part of the study stage by stage; `scripts/batch/make_gpu_jobs.sh`
+writes the lists of everything that needs a GPU. Every job carries the protocol of the official loaders. Conclusions and tables: [`output/README.md`](output/README.md).
 
 ## GPU Runs
 
 The reference machine is one RTX 4090 (24 GB) with the environment above. Before a long queue run `poe check-mamba`
-and `poe check-gpu`; records carry `device` and `torch`. A pre-refactor checkout keeps its records in `work/`:
-`python scripts/utils/migrate_work.py work --apply` (also run by `make_gpu_jobs.sh`) appends them to the stores so
-finished runs are not repeated.
+and `poe check-gpu`; records carry `device` and `torch`.
 
 The tables of the GPU study use GPU runs only. A GPU job counts as done only with a GPU row in its store
 (`scripts/utils/run_missing.py`), and the plug-in lists run the + DLT-dyn arms only (`--skip_alone`): the backbone

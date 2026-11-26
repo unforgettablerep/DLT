@@ -18,7 +18,6 @@ ALL_SETS = LONG_SETS + ("Solar",) + PEMS_SETS
 SEEDS = (2021, 2022, 2023)
 DLT_DEFAULT = " ".join(emit_cli_args({k: CONSTANTS[k] for k in ("dlt_variant", "dlt_k", "dlt_L", "dlt_R", "dlt_impl")}))
 DLT_TRAIN = " ".join(emit_cli_args({k: CONSTANTS[k] for k in ("learning_rate", "batch_size", "train_epochs", "patience")}))
-PEMS_PROTOCOL = "--loss MAE --inverse --vali_inverse"
 REL_COST = {"S_Mamba": 1.5, "iTransformer": 1.5, "PatchTST": 3.0, "RLinear": 0.2, "DLinear": 0.3, "TiDE": 2.0}
 LR_GRID = (1e-4, 5e-4, 1e-3)
 
@@ -77,8 +76,9 @@ class JobList:
         if label is None:
             label = 0 if ds in PEMS_SETS else 48
         meta = resolve_meta(ds, H, label_len=label, model_id="{}_{}_{}".format(self.suite, ds, H))
-        if "--freq " in args:
-            meta.pop("freq")
+        if "--drop_last" not in args:                 # every run: the protocol of the official loaders
+            args = "{} {}".format(protocol_args(ds), args).strip()
+        meta.pop("freq")                                # in the protocol
         dev = "--no_use_gpu --num_workers 0" if self.device == "cpu" else "--num_workers 4"
         cmd = "python -u scripts/run.py --is_training 1 --model {} {} --des {} --seed {} {} {} --no_epoch_test --save_tmp 0 --result_file {} > {} 2>&1".format(
             model,

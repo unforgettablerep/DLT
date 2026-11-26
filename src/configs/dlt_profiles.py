@@ -74,7 +74,6 @@ CLI_ORDER = [
     "drop_last",
     "test_batch_size",
     "no_time_marks",
-    "pems_split",
 ]
 
 META_ORDER = ["root_path", "data_path", "data", "model_id", "features", "seq_len", "label_len", "pred_len", "enc_in", "dec_in", "c_out", "freq"]
@@ -103,13 +102,13 @@ def get_pred_lens(dataset):
 
 
 def protocol(dataset):
-    """Evaluation protocol of the official iTransformer / S-Mamba loaders, shared by every baseline run."""
+    """The protocol of the official iTransformer / S-Mamba loaders, the only one of the study (every run, every model): four hourly
+    time features, the last incomplete training / validation batch dropped, test batch 1, no time marks on PEMS and Solar
+    (the PEMS split of the official loader is the only one, src/data_provider/data_loader.py)."""
     dataset = canonical_dataset(dataset)
     out = {"freq": "h", "drop_last": True, "test_batch_size": 1}
     if dataset in NO_MARKS:
         out["no_time_marks"] = True
-    if dataset in PEMS:
-        out["pems_split"] = "itransformer"
     return out
 
 
@@ -132,19 +131,18 @@ def resolve_meta(dataset, pred_len, label_len=None, model_id=None):
         "enc_in": m["enc_in"],
         "dec_in": m["enc_in"],
         "c_out": m["enc_in"],
-        "freq": m["freq"],
+        "freq": "h",                                 # four hourly time features for every dataset (official loaders)
     }
 
 
 def resolve(dataset, pred_len, profile="default"):
-    """DLT-dyn settings: "default" = the paper's stand-alone recipe (Solar and PEMS with the official-loader protocol); "efficiency" = S-Mamba Fig. 5."""
+    """DLT-dyn settings with the protocol of the official loaders: "default" = the paper's stand-alone recipe; "efficiency" = S-Mamba Fig. 5."""
     dataset = canonical_dataset(dataset)
     if dataset not in DATASET_META:
         raise KeyError("Unknown dataset: {}. Supported: {}".format(dataset, list_datasets()))
     cfg = dict(CONSTANTS)
     if profile == "default":
-        if dataset in NO_MARKS:
-            cfg.update(protocol(dataset))
+        cfg.update(protocol(dataset))
     elif profile == "efficiency":
         if EFFICIENCY_SETTING.get(dataset) != pred_len:
             raise KeyError("efficiency profile: {} only at horizon {}".format(dataset, EFFICIENCY_SETTING.get(dataset)))

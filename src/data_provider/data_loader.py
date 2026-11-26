@@ -130,7 +130,8 @@ class Dataset_Custom(_CsvDataset):
 
 
 class Dataset_PEMS(_WindowDataset):
-    """PEMS03/04/07/08 flow (.npz key "data", feature 0); split 6:2:2, look-back from the preceding split unless --pems_split itransformer."""
+    """PEMS03/04/07/08 flow (.npz key "data", feature 0); split 6:2:2 as the iTransformer / S-Mamba loader: the validation and
+    test windows take their look-back inside their own split."""
 
     def __read_data__(self):
         data = np.load(os.path.join(self.root_path, self.data_path), allow_pickle=False)["data"]
@@ -138,9 +139,7 @@ class Dataset_PEMS(_WindowDataset):
             data = data[:, :, 0]
         data = pd.DataFrame(data.astype(np.float64)).ffill().bfill().values
         n = len(data)
-        border1s = [0, int(0.6 * n) - self.seq_len, int(0.8 * n) - self.seq_len]
-        if getattr(self.args, "pems_split", "tslib") == "itransformer":
-            border1s = [0, int(0.6 * n), int(0.8 * n)]
+        border1s = [0, int(0.6 * n), int(0.8 * n)]
         border2s = [int(0.6 * n), int(0.8 * n), n]
         border1, border2 = border1s[self.set_type], border2s[self.set_type]
         if self.features == "S":

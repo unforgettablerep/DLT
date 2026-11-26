@@ -27,7 +27,7 @@ for pred_len in 96 192 336 720; do
       --enc_in 8 \
       --dec_in 8 \
       --c_out 8 \
-      --freq d \
+      --freq h \
       --dlt_variant dltdyn \
       --dlt_k 8 \
       --dlt_L 48 \
@@ -37,6 +37,8 @@ for pred_len in 96 192 336 720; do
       --batch_size 32 \
       --train_epochs 10 \
       --patience 3 \
+      --drop_last \
+      --test_batch_size 1 \
       $EXTRA_ARGS
   done
 done

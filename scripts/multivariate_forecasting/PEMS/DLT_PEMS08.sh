@@ -40,7 +40,6 @@ for pred_len in 12 24 48 96; do
       --drop_last \
       --test_batch_size 1 \
       --no_time_marks \
-      --pems_split itransformer \
       $EXTRA_ARGS
   done
 done

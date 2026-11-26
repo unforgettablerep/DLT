@@ -31,7 +31,6 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     $EXTRA_ARGS
 done
 
@@ -57,7 +56,6 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     $EXTRA_ARGS
 done
 
@@ -83,7 +81,6 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     $EXTRA_ARGS
 done
 
@@ -109,6 +106,5 @@ for seed in "${seeds[@]}"; do
     --drop_last \
     --test_batch_size 1 \
     --no_time_marks \
-    --pems_split itransformer \
     $EXTRA_ARGS
 done

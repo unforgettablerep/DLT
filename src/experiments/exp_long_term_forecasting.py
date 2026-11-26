@@ -101,12 +101,6 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                 pred = outputs.detach()
                 true = batch_y.detach()
-                if getattr(self.args, "vali_inverse", False) and vali_data.scale:
-                    shape = pred.shape
-                    p_np = vali_data.inverse_transform(pred.cpu().numpy().reshape(-1, shape[-1])).reshape(shape)
-                    t_np = vali_data.inverse_transform(true.cpu().numpy().reshape(-1, shape[-1])).reshape(shape)
-                    total_loss.append(np.mean(np.abs(p_np - t_np)))
-                    continue
                 total_loss.append(criterion(pred, true).item())
         self.model.train()
         return np.average(total_loss)

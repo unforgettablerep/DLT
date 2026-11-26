@@ -83,10 +83,6 @@ default = "1"
 cmd  = "bash scripts/batch/make_gpu_jobs.sh"
 help = "Write the job lists of the experiments that need a GPU (temp/jobs/) and count the runs left"
 
-[tool.poe.tasks.migrate-work]
-cmd  = "python scripts/utils/migrate_work.py work --apply"
-help = "Take over the run records of a pre-refactor work/ directory into output/"
-
 [tool.poe.tasks.missing]
 cmd  = "python scripts/utils/run_missing.py ${list}"
 help = "Print the jobs of a list that have no result yet"
@@ -110,7 +106,7 @@ cmd  = "python scripts/multivariate_forecasting/make_scripts.py"
 help = "Regenerate the per-dataset run scripts from src/configs/dlt_profiles.py and baseline_profiles.py"
 
 [tool.poe.tasks.tables]
-shell = "python scripts/ablation/aggregate.py > /dev/null && python scripts/statistics/aggregate_p1.py > /dev/null && python scripts/statistics/aggregate_p2.py > /dev/null && python scripts/efficiency/eff_tune.py > /dev/null && echo 'output/ablation/summary.md output/statistics/summary_p1.md output/statistics/summary_p2.md output/efficiency/eff_tune.md'"
+shell = "python scripts/ablation/aggregate.py > /dev/null && python scripts/ablation/guard_table.py > /dev/null && python scripts/efficiency/eff_tune.py > /dev/null && echo 'output/ablation/summary.md output/ablation/guard.md output/efficiency/eff_tune.md'"
 help = "Rebuild the summary tables from the result stores"
 
 [tool.poe.tasks.test]

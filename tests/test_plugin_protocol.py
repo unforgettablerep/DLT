@@ -365,7 +365,7 @@ class BaselineSettingTests(unittest.TestCase):
     def test_protocol(self):
         self.assertEqual(" ".join(emit_cli_args(protocol("ETTm1"))), "--freq h --drop_last --test_batch_size 1")
         self.assertTrue(" ".join(emit_cli_args(protocol("Solar"))).endswith("--no_time_marks"))
-        self.assertIn("--pems_split itransformer", " ".join(emit_cli_args(protocol("PEMS07"))))
+        self.assertTrue(" ".join(emit_cli_args(protocol("PEMS07"))).endswith("--no_time_marks"))
 
     def test_benchmark_jobs_parse_with_the_protocol(self):
         import importlib

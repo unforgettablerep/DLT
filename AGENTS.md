@@ -27,10 +27,10 @@ repository (`src/utils/paths.py`, the only place that knows locations; `python -
 | PEMS03/04/07/08 | `PEMS` | `Dataset_PEMS` | 358/307/883/170 | 12,24,48,96 |
 
 - `seq_len=96` everywhere; `label_len` 48, 0 for DLT on PEMS (the baselines use 48).
-- Protocol of the official iTransformer / S-Mamba loaders (`protocol()` in `src/configs/dlt_profiles.py`):
-  `--freq h --drop_last --test_batch_size 1`, Solar and PEMS with `--no_time_marks` (`x_mark = None`), PEMS with
-  `--pems_split itransformer` (validation / test windows start inside their split). The baselines use it on every
-  dataset, DLT on Solar and PEMS. `pems12` uses the TimeMixer protocol instead (`--loss MAE --inverse --vali_inverse`).
+- One protocol for every run and model, that of the official iTransformer / S-Mamba loaders (`protocol()` in
+  `src/configs/dlt_profiles.py`, emitted into every job by `scripts/utils/jobs.py` and the defaults of
+  `src/configs/common.py`): `--freq h --drop_last --test_batch_size 1`, Solar and PEMS with `--no_time_marks`
+  (`x_mark = None`); `Dataset_PEMS` starts the validation / test windows inside their split. No other protocol.
 - `DATASET_META`, `canonical_dataset` (aliases such as `electricity` → `ECL`), `resolve`, `resolve_meta`: the
   single source of dataset metadata. Do not copy these tables into scripts.
 
@@ -79,8 +79,8 @@ official baseline settings reproduce.
 - `scripts/multivariate_forecasting/run_all_forecasts.sh [--model M] [--gpu 0,1] [--para N]` dispatches the
   per-dataset scripts with least-loaded GPU placement; log `log/multivariate_forecasting/scheduler.log`, lock
   `temp/forecasts/run.lock`. `scripts/utils/gpu_queue.sh` offers round-robin GPU slots to shell runners.
-- `scripts/batch/make_gpu_jobs.sh` writes every list that needs a GPU; `run_cpu_campaign.sh` replays the CPU
-  campaign. `scripts/utils/migrate_work.py` takes over the records of a pre-refactor `work/` directory.
+- `scripts/batch/make_gpu_jobs.sh` writes every list that needs a GPU; `run_cpu_campaign.sh [stage]` runs the CPU
+  part of the study stage by stage.
 - GPU study: tables use GPU records only (`--device gpu`; default of `baseline_check.py`). Plug-in lists run the
   + DLT-dyn arms only (`scripts/plugin/make_jobs.py --skip_alone`); the backbone alone is the baseline-check run
   (`src/utils/baseline_runs.py`, tables with `--alone baselines`). Each baseline is reproduced once with its official
@@ -151,9 +151,8 @@ file, so analyses find checkpoints by configuration (`find_checkpoints(root, dat
 Derived from Time-Series-Library (commit `4e938a1`, MIT): the data loaders, the experiment loop, `Embed`,
 `SelfAttention_Family`, `Transformer_EncDec`, `Autoformer_EncDec`, DLinear, PatchTST, TiDE, iTransformer and
 `src/utils/{metrics,tools,timefeatures,masking}.py`. Changes, all off by default unless a recipe sets them:
-`Dataset_PEMS` and `Dataset_Solar` (5- / 10-minute time marks rebuilt, iTransformer splits on request);
-`--no_time_marks`, `--test_batch_size`, `--drop_last`, `--pems_split`; `--loss MAE` and `--vali_inverse` (TimeMixer
-PEMS protocol); `prepare()` and `extra_loss()` hooks; per-group learning rates kept by `adjust_learning_rate`
+`Dataset_PEMS` and `Dataset_Solar` (5- / 10-minute time marks rebuilt, the splits of the iTransformer loader);
+`--no_time_marks`, `--test_batch_size` (default 1), `--drop_last` (default on); `--loss MAE` (unused by the study); `prepare()` and `extra_loss()` hooks; per-group learning rates kept by `adjust_learning_rate`
 (`lr_scale`); streaming test metrics; masked and clipped MAPE; iTransformer honours `--use_norm`; TiDE
 `--tide_checkpoint` (recomputation, identical results); CPU fallback when CUDA / MPS is missing and a
 `CUDA_VISIBLE_DEVICES` mask set by the caller is kept; pandas ≥ 3 frequency aliases in `timefeatures.py`. The other

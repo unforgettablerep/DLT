@@ -1,133 +1,128 @@
-# Baseline check on the GPU: Weather and PEMS04 (2026-11-18)
-
-**Source.** [`baselines_gpu.tsv`](baselines_gpu.tsv): 45 runs from the RTX 4090 (PyTorch 2.10.0+cu130), seed 2021, suite
-`baselines` of `scripts/benchmark/make_jobs.py`. Every run uses the settings of the official scripts (`src/configs/baseline_profiles.py`) and
-the protocol of the official loaders: four time features, dropped last training / validation batch, test batch 1;
-on PEMS no time marks and the split of the iTransformer loader. S-Mamba ran with `mamba_ssm`. No forecast was NaN.
-Coverage: Weather complete (6 baselines × 4 horizons); PEMS04 complete for five baselines, TiDE 1 of 4 horizons.
-Tables: `python scripts/benchmark/baseline_check.py --files output/benchmark/baselines_gpu.tsv`.
-
-## Weather: all six baselines reproduce the S-Mamba paper
-
-- **All 24 settings are within 5 % of the published MSE:**
-  - S-Mamba +0.3 to +1.3 %;
-  - iTransformer +0.7 to +1.5 %;
-  - PatchTST +0.3 to +0.8 %;
-  - RLinear −1.4 to +0.6 %;
-  - DLinear −0.5 to +0.3 %;
-  - TiDE −4.7 to +3.8 %.
-- **PatchTST matches with the Time-Series-Library script** (3 epochs on Weather). The PatchTST paper's settings,
-  used until 2026-11-15, were 2–5 % behind.
-- **RLinear on the GPU equals the CPU run to 1e-4** (Weather-96: 0.19308 against 0.19306), even where the best
-  epoch differs: the pipeline does not depend on the device.
-- **TiDE matches the paper on Weather.** At horizon 96 on ETTh1, ETTh2 and Exchange ours was 10–28 % better
-  ([CPU check](baseline_check_cpu.md)). On Weather its MAE is 9 % better than published.
-
-## PEMS04: four baselines match or beat the paper; iTransformer at 48 / 96 and PatchTST do not
-
-- **The PEMS pipeline is right.** DLinear is within ±0.3 %, RLinear 2–6 % better and S-Mamba 0–11 % better than
-  published, all three with the same loader and protocol.
-- **TiDE**, horizon 12: 37 % better than published. As on the long-term sets, the published TiDE column is weak.
-- **iTransformer: +4 %, +5 %, +13 %, +14 %** at horizons 12 to 96, with the official settings (4 layers, d_model
-  1024, learning rate 5e-4, no instance normalisation).
-  - At horizons 24 to 96 the best epoch is the last one (10 of 10): the validation loss still fell when the
-    schedule ended (the learning rate halves every epoch, to 1e-6 at epoch 10).
-  - S-Mamba, with the same loader, beats its published numbers, so the data are not the cause. Left: the seed
-    (one run) and the learning rate.
-- **PatchTST: +6 %, +18 %, +50 %, +112 %.** There is no official PEMS setting; the Electricity line (2 layers,
-  d_model 512, learning rate 1e-4, batch 16) is far off at the long horizons. At horizon 96 it is worse than
-  DLinear.
-
-## Next on the GPU
-
-1. PEMS04 TiDE, horizons 24 / 48 / 96. With the original configuration they run out of GPU memory: TiDE runs one
-   forward pass per variable and keeps all their activations, 25 / 33 / 48 GB at batch 512 (21 GB at horizon 12,
-   which fit). The jobs now carry `--tide_checkpoint`, which recomputes each pass in the backward pass: the same
-   settings and the same outputs and gradients (unit test), 0.06 GB kept for backward. Write the list again:
-   ```bash
-   python scripts/benchmark/make_jobs.py baselines --device gpu --seeds 2021 --models TiDE --datasets PEMS04 --list bl_tide
-   bash scripts/utils/run_gpu_queue.sh bl_tide 0              # horizon 12 is done and skipped
-   ```
-2. Learning-rate check for iTransformer and PatchTST on PEMS04: the same settings at the other learning rates of
-   {1e-4, 5e-4, 1e-3}, 16 runs. `baseline_check.py` then takes, per setting, the learning rate with the lowest
-   validation loss and names it in the table:
-   ```bash
-   python scripts/benchmark/make_jobs.py baselines --device gpu --seeds 2021 --models iTransformer PatchTST --datasets PEMS04 \
-       --backbone_lr 0.0001 0.0005 0.001 --list bl_lrcheck
-   bash scripts/utils/run_gpu_queue.sh bl_lrcheck 0 0
-   ```
-3. A second seed for iTransformer on PEMS04, to see how much of its gap is seed spread (4 runs):
-   ```bash
-   python scripts/benchmark/make_jobs.py baselines --device gpu --seeds 2022 --models iTransformer --datasets PEMS04 --list bl_seed
-   bash scripts/utils/run_gpu_queue.sh bl_seed 0
-   ```
-4. The other datasets of the check, as in README.md (GPU Runs) ("Baseline check").
-
-## Tables
+# Baseline check against the S-Mamba paper
 
 Change = ours / published - 1 (MSE per horizon; MAE averaged over the horizons). * more than 5 % worse than published, ** more than 10 %. Seeds averaged; n = runs per setting.
 
-### S-Mamba
+## S-Mamba
 
 | dataset | horizon 1 | horizon 2 | horizon 3 | horizon 4 | MAE |
 |---|---|---|---|---|---:|
+| ETTh1 | 0.388 / 0.386 (+0.6 %) | 0.444 / 0.443 (+0.3 %) | 0.491 / 0.489 (+0.4 %) | 0.510 / 0.502 (+1.7 %) | +0.8 % |
+| ETTh2 | 0.296 / 0.296 (-0.0 %) | 0.377 / 0.376 (+0.2 %) | 0.422 / 0.424 (-0.4 %) | 0.429 / 0.426 (+0.6 %) | +0.4 % |
+| ETTm1 | 0.332 / 0.333 (-0.3 %) | 0.378 / 0.376 (+0.4 %) | 0.410 / 0.408 (+0.4 %) | 0.475 / 0.475 (-0.1 %) | +0.5 % |
+| ETTm2 | 0.179 / 0.179 (-0.0 %) | 0.252 / 0.250 (+0.8 %) | 0.312 / 0.312 (-0.1 %) | 0.413 / 0.411 (+0.4 %) | +0.2 % |
+| Exchange | 0.087 / 0.086 (+1.2 %) | 0.180 / 0.182 (-0.9 %) | 0.330 / 0.332 (-0.5 %) | 0.857 / 0.867 (-1.2 %) | -0.3 % |
 | Weather | 0.167 / 0.165 (+1.1 %) | 0.215 / 0.214 (+0.3 %) | 0.275 / 0.274 (+0.4 %) | 0.354 / 0.350 (+1.3 %) | +0.5 % |
+| ECL | 0.139 / 0.139 (-0.2 %) | 0.163 / 0.159 (+2.8 %) | 0.181 / 0.176 (+2.7 %) | 0.204 / 0.204 (-0.2 %) | +0.9 % |
+| Traffic | 0.381 / 0.382 (-0.3 %) | 0.394 / 0.396 (-0.4 %) | 0.420 / 0.417 (+0.8 %) | 0.464 / 0.460 (+0.9 %) | -0.1 % |
+| Solar | 0.205 / 0.205 (-0.0 %) | 0.241 / 0.237 (+1.5 %) | 0.261 / 0.258 (+1.3 %) | 0.264 / 0.260 (+1.7 %) | +0.6 % |
+| PEMS03 | 0.066 / 0.065 (+0.9 %) | 0.087 / 0.087 (+0.3 %) | 0.166 / 0.133 (+24.6 %)** | 0.219 / 0.201 (+9.0 %)* | +4.6 % |
 | PEMS04 | 0.073 / 0.076 (-4.0 %) | 0.084 / 0.084 (-0.3 %) | 0.103 / 0.115 (-10.7 %) | 0.123 / 0.137 (-10.2 %) | -3.1 % |
+| PEMS07 | 0.060 / 0.063 (-5.6 %) | 0.082 / 0.081 (+1.0 %) | 0.101 / 0.093 (+9.0 %)* | 0.122 / 0.117 (+4.2 %) | +1.6 % |
+| PEMS08 | 0.076 / 0.076 (+0.3 %) | 0.108 / 0.104 (+3.5 %) | 0.162 / 0.167 (-2.8 %) | 0.270 / 0.245 (+10.1 %)** | +6.7 % |
 
-8 settings; within 5 %: 8; mean |change| 3.5 %; more than 10 % worse: none.
+52 settings; within 5 %: 48; mean |change| 2.4 %; more than 10 % worse: PEMS03-48 +24.6 %, PEMS08-96 +10.1 %.
 
-### iTransformer
+## iTransformer
 
 | dataset | horizon 1 | horizon 2 | horizon 3 | horizon 4 | MAE |
 |---|---|---|---|---|---:|
+| ETTh1 | 0.386 / 0.386 (-0.1 %) | 0.441 / 0.441 (+0.1 %) | 0.491 / 0.487 (+0.8 %) | 0.495 / 0.503 (-1.7 %) | -0.1 % |
+| ETTh2 | 0.300 / 0.297 (+1.1 %) | 0.380 / 0.380 (-0.0 %) | 0.423 / 0.428 (-1.1 %) | 0.431 / 0.427 (+0.8 %) | +0.1 % |
+| ETTm1 | 0.341 / 0.334 (+2.2 %) | 0.381 / 0.377 (+1.1 %) | 0.420 / 0.426 (-1.5 %) | 0.487 / 0.491 (-0.9 %) | +0.6 % |
+| ETTm2 | 0.184 / 0.180 (+2.0 %) | 0.253 / 0.250 (+1.2 %) | 0.316 / 0.311 (+1.5 %) | 0.412 / 0.412 (-0.0 %) | +0.8 % |
+| Exchange | 0.087 / 0.086 (+1.0 %) | 0.180 / 0.177 (+1.6 %) | 0.334 / 0.331 (+1.0 %) | 0.860 / 0.847 (+1.5 %) | +1.0 % |
 | Weather | 0.175 / 0.174 (+0.7 %) | 0.224 / 0.221 (+1.5 %) | 0.280 / 0.278 (+0.7 %) | 0.360 / 0.358 (+0.7 %) | +0.8 % |
+| ECL | 0.148 / 0.148 (+0.2 %) | 0.164 / 0.162 (+1.0 %) | 0.178 / 0.178 (+0.2 %) | 0.225 / 0.225 (-0.2 %) | -0.3 % |
+| Traffic | 0.392 / 0.395 (-0.7 %) | 0.412 / 0.417 (-1.2 %) | 0.424 / 0.433 (-2.2 %) | 0.460 / 0.467 (-1.5 %) | +0.1 % |
+| Solar | 0.203 / 0.203 (-0.1 %) | 0.237 / 0.233 (+1.7 %) | 0.248 / 0.248 (-0.2 %) | 0.249 / 0.249 (-0.2 %) | -0.2 % |
+| PEMS03 | 0.069 / 0.071 (-3.2 %) | 0.097 / 0.093 (+4.8 %) | 0.160 / 0.125 (+28.1 %)** | 1.359 / 0.164 (+728.8 %)** | +63.5 % |
 | PEMS04 | 0.081 / 0.078 (+4.2 %) | 0.099 / 0.095 (+4.5 %) | 0.135 / 0.120 (+12.8 %)** | 0.171 / 0.150 (+13.9 %)** | +5.1 % |
+| PEMS07 | 0.068 / 0.067 (+0.8 %) | 0.087 / 0.088 (-0.6 %) | 1.033 / 0.110 (+838.8 %)** | 1.038 / 0.139 (+646.6 %)** | +137.3 % |
+| PEMS08 | 0.089 / 0.079 (+12.2 %)** | 0.137 / 0.115 (+18.8 %)** | 0.244 / 0.186 (+31.1 %)** | 0.484 / 0.221 (+119.1 %)** | +27.2 % |
 
-8 settings; within 5 %: 6; mean |change| 4.9 %; more than 10 % worse: PEMS04-48 +12.8 %, PEMS04-96 +13.9 %.
+52 settings; within 5 %: 42; mean |change| 48.1 %; more than 10 % worse: PEMS03-48 +28.1 %, PEMS03-96 +728.8 %, PEMS04-48 +12.8 %, PEMS04-96 +13.9 %, PEMS07-48 +838.8 %, PEMS07-96 +646.6 %, PEMS08-12 +12.2 %, PEMS08-24 +18.8 %, PEMS08-48 +31.1 %, PEMS08-96 +119.1 %.
 
-### PatchTST
+## PatchTST
 
 | dataset | horizon 1 | horizon 2 | horizon 3 | horizon 4 | MAE |
 |---|---|---|---|---|---:|
+| ETTh1 | - / 0.414 | - / 0.460 | 0.473 / 0.501 (-5.7 %) | 0.522 / 0.500 (+4.4 %) | +1.2 % |
+| ETTh2 | 0.293 / 0.302 (-3.1 %) | 0.372 / 0.388 (-4.2 %) | 0.420 / 0.426 (-1.4 %) | 0.436 / 0.431 (+1.2 %) | +0.0 % |
+| ETTm1 | 0.323 / 0.329 (-1.7 %) | 0.370 / 0.367 (+0.8 %) | 0.398 / 0.399 (-0.1 %) | 0.459 / 0.454 (+1.1 %) | +0.4 % |
+| ETTm2 | 0.182 / 0.175 (+3.9 %) | 0.248 / 0.241 (+2.8 %) | 0.319 / 0.305 (+4.5 %) | 0.420 / 0.402 (+4.5 %) | +2.4 % |
+| Exchange | 0.094 / 0.088 (+6.9 %)* | 0.182 / 0.176 (+3.3 %) | 0.343 / 0.301 (+14.0 %)** | 0.906 / 0.901 (+0.6 %) | +3.1 % |
 | Weather | 0.178 / 0.177 (+0.8 %) | 0.226 / 0.225 (+0.3 %) | 0.280 / 0.278 (+0.6 %) | 0.356 / 0.354 (+0.4 %) | +0.3 % |
+| ECL | 0.180 / 0.181 (-0.5 %) | 0.187 / 0.188 (-0.3 %) | 0.204 / 0.204 (+0.1 %) | 0.245 / 0.246 (-0.4 %) | +1.3 % |
+| Traffic | 0.459 / 0.462 (-0.5 %) | 0.469 / 0.466 (+0.7 %) | 0.484 / 0.482 (+0.4 %) | 0.518 / 0.514 (+0.8 %) | +1.8 % |
+| Solar | 0.221 / 0.234 (-5.6 %) | 0.247 / 0.267 (-7.6 %) | 0.267 / 0.290 (-7.9 %) | 0.265 / 0.289 (-8.3 %) | -4.8 % |
+| PEMS03 | 0.094 / 0.099 (-5.3 %) | 0.148 / 0.142 (+4.1 %) | 0.269 / 0.211 (+27.7 %)** | 0.460 / 0.269 (+70.8 %)** | +12.2 % |
 | PEMS04 | 0.111 / 0.105 (+6.2 %)* | 0.181 / 0.153 (+18.2 %)** | 0.344 / 0.229 (+50.3 %)** | 0.616 / 0.291 (+111.7 %)** | +20.3 % |
+| PEMS08 | 0.106 / 0.168 (-37.1 %) | 0.168 / 0.224 (-24.9 %) | 0.326 / 0.321 (+1.5 %) | 0.577 / 0.408 (+41.4 %)** | +8.5 % |
 
-8 settings; within 5 %: 4; mean |change| 23.5 %; more than 10 % worse: PEMS04-24 +18.2 %, PEMS04-48 +50.3 %, PEMS04-96 +111.7 %.
+46 settings; within 5 %: 37; mean |change| 10.8 %; more than 10 % worse: Exchange-336 +14.0 %, PEMS03-48 +27.7 %, PEMS03-96 +70.8 %, PEMS04-24 +18.2 %, PEMS04-48 +50.3 %, PEMS04-96 +111.7 %, PEMS08-96 +41.4 %.
 
-### RLinear
+## RLinear
 
 | dataset | horizon 1 | horizon 2 | horizon 3 | horizon 4 | MAE |
 |---|---|---|---|---|---:|
 | Weather | 0.193 / 0.192 (+0.6 %) | 0.237 / 0.240 (-1.3 %) | 0.288 / 0.292 (-1.4 %) | 0.359 / 0.364 (-1.2 %) | -0.5 % |
+| ECL | 0.197 / 0.201 (-1.9 %) | 0.197 / 0.201 (-1.9 %) | 0.212 / 0.215 (-1.6 %) | 0.254 / 0.257 (-1.3 %) | -2.2 % |
+| Traffic | 0.646 / 0.649 (-0.5 %) | 0.599 / 0.601 (-0.4 %) | 0.606 / 0.609 (-0.5 %) | 0.644 / 0.647 (-0.4 %) | -1.3 % |
+| Solar | 0.306 / 0.322 (-4.9 %) | 0.345 / 0.359 (-3.8 %) | 0.386 / 0.397 (-2.7 %) | 0.390 / 0.397 (-1.8 %) | -1.4 % |
+| PEMS03 | 0.117 / 0.126 (-6.9 %) | 0.234 / 0.246 (-4.8 %) | 0.535 / 0.551 (-2.8 %) | 1.030 / 1.057 (-2.6 %) | -3.2 % |
 | PEMS04 | 0.129 / 0.138 (-6.2 %) | 0.245 / 0.258 (-5.1 %) | 0.552 / 0.572 (-3.4 %) | 1.109 / 1.137 (-2.4 %) | -3.6 % |
+| PEMS07 | 0.109 / 0.118 (-7.5 %) | 0.228 / 0.242 (-5.6 %) | 0.541 / 0.562 (-3.7 %) | 1.070 / 1.096 (-2.4 %) | -4.0 % |
+| PEMS08 | 0.122 / 0.133 (-8.1 %) | 0.235 / 0.249 (-5.8 %) | 0.547 / 0.569 (-3.8 %) | 1.130 / 1.166 (-3.1 %) | -4.0 % |
 
-8 settings; within 5 %: 8; mean |change| 2.7 %; more than 10 % worse: none.
+32 settings; within 5 %: 32; mean |change| 3.1 %; more than 10 % worse: none.
 
-### DLinear
+## DLinear
 
 | dataset | horizon 1 | horizon 2 | horizon 3 | horizon 4 | MAE |
 |---|---|---|---|---|---:|
+| ETTh1 | 0.396 / 0.386 (+2.5 %) | 0.455 / 0.437 (+4.2 %) | 0.487 / 0.481 (+1.2 %) | 0.520 / 0.519 (+0.3 %) | +2.1 % |
+| ETTh2 | 0.351 / 0.333 (+5.5 %)* | 0.481 / 0.477 (+0.8 %) | 0.596 / 0.594 (+0.4 %) | 0.817 / 0.831 (-1.7 %) | +1.2 % |
+| ETTm1 | 0.345 / 0.345 (+0.1 %) | 0.382 / 0.380 (+0.4 %) | 0.413 / 0.413 (+0.1 %) | 0.474 / 0.474 (-0.1 %) | +0.2 % |
+| ETTm2 | 0.197 / 0.193 (+1.9 %) | 0.280 / 0.284 (-1.5 %) | 0.369 / 0.369 (-0.0 %) | 0.544 / 0.554 (-1.9 %) | -0.9 % |
+| Exchange | 0.095 / 0.088 (+7.6 %)* | 0.182 / 0.176 (+3.2 %) | 0.327 / 0.313 (+4.4 %) | 0.746 / 0.839 (-11.0 %) | +0.9 % |
 | Weather | 0.196 / 0.196 (+0.0 %) | 0.237 / 0.237 (-0.1 %) | 0.282 / 0.283 (-0.5 %) | 0.346 / 0.345 (+0.3 %) | -0.1 % |
+| ECL | 0.210 / 0.197 (+6.8 %)* | 0.210 / 0.196 (+7.3 %)* | 0.223 / 0.209 (+6.8 %)* | 0.258 / 0.245 (+5.2 %)* | +6.2 % |
+| Traffic | 0.697 / 0.650 (+7.2 %)* | 0.647 / 0.598 (+8.2 %)* | 0.654 / 0.605 (+8.0 %)* | 0.694 / 0.645 (+7.6 %)* | +9.3 % |
+| Solar | 0.290 / 0.290 (-0.1 %) | 0.320 / 0.320 (-0.1 %) | 0.353 / 0.353 (-0.1 %) | 0.357 / 0.356 (+0.3 %) | +0.0 % |
+| PEMS03 | 0.122 / 0.122 (+0.0 %) | 0.202 / 0.201 (+0.4 %) | 0.334 / 0.333 (+0.4 %) | 0.459 / 0.457 (+0.4 %) | +0.7 % |
 | PEMS04 | 0.148 / 0.148 (-0.3 %) | 0.225 / 0.224 (+0.3 %) | 0.356 / 0.355 (+0.2 %) | 0.453 / 0.452 (+0.3 %) | +0.1 % |
+| PEMS07 | 0.115 / 0.115 (+0.4 %) | 0.209 / 0.210 (-0.3 %) | 0.397 / 0.398 (-0.3 %) | 0.592 / 0.594 (-0.3 %) | -0.4 % |
+| PEMS08 | 0.152 / 0.154 (-1.2 %) | 0.246 / 0.248 (-0.9 %) | 0.437 / 0.440 (-0.7 %) | 0.673 / 0.674 (-0.2 %) | -0.4 % |
 
-8 settings; within 5 %: 8; mean |change| 0.3 %; more than 10 % worse: none.
+52 settings; within 5 %: 42; mean |change| 2.2 %; more than 10 % worse: none.
 
-### TiDE
+## TiDE
 
 | dataset | horizon 1 | horizon 2 | horizon 3 | horizon 4 | MAE |
 |---|---|---|---|---|---:|
+| ETTh1 | 0.385 / 0.479 (-19.6 %) | 0.437 / 0.525 (-16.7 %) | 0.480 / 0.565 (-15.0 %) | 0.482 / 0.594 (-18.9 %) | -14.6 % |
+| ETTh2 | - / 0.400 | 0.376 / 0.528 (-28.8 %) | 0.415 / 0.643 (-35.5 %) | 0.426 / 0.874 (-51.3 %) | -27.8 % |
+| ETTm1 | 0.353 / 0.364 (-3.1 %) | 0.390 / 0.398 (-2.0 %) | 0.422 / 0.428 (-1.5 %) | 0.485 / 0.487 (-0.4 %) | -3.1 % |
+| ETTm2 | 0.182 / 0.207 (-11.9 %) | 0.247 / 0.290 (-14.9 %) | 0.307 / 0.377 (-18.6 %) | 0.407 / 0.558 (-27.0 %) | -18.1 % |
+| Exchange | - / 0.094 | 0.174 / 0.184 (-5.2 %) | 0.325 / 0.349 (-7.0 %) | 0.841 / 0.852 (-1.3 %) | -3.0 % |
 | Weather | 0.193 / 0.202 (-4.7 %) | 0.240 / 0.242 (-0.8 %) | 0.292 / 0.287 (+1.7 %) | 0.364 / 0.351 (+3.8 %) | -9.3 % |
-| PEMS04 | 0.139 / 0.219 (-36.7 %) | - / 0.292 | - / 0.409 | - / 0.492 | -25.9 % |
+| ECL | 0.199 / 0.237 (-16.0 %) | 0.199 / 0.236 (-15.7 %) | 0.214 / 0.249 (-14.2 %) | 0.255 / 0.284 (-10.1 %) | -14.5 % |
+| Traffic | 0.648 / 0.805 (-19.5 %) | 0.601 / 0.756 (-20.5 %) | 0.608 / 0.762 (-20.2 %) | 0.646 / 0.719 (-10.1 %) | -20.4 % |
+| Solar | 0.307 / 0.312 (-1.7 %) | 0.346 / 0.339 (+2.2 %) | 0.387 / 0.368 (+5.2 %)* | 0.391 / 0.370 (+5.6 %)* | -15.9 % |
+| PEMS03 | 0.121 / 0.178 (-31.8 %) | 0.239 / 0.257 (-6.9 %) | 0.542 / 0.379 (+42.9 %)** | 1.042 / 0.490 (+112.6 %)** | +5.1 % |
+| PEMS04 | 0.139 / 0.219 (-36.7 %) | 0.255 / 0.292 (-12.8 %) | 0.567 / 0.409 (+38.7 %)** | 1.124 / 0.492 (+128.5 %)** | +6.5 % |
+| PEMS07 | 0.114 / 0.173 (-34.4 %) | 0.234 / 0.271 (-13.8 %) | 0.549 / 0.446 (+23.1 %)** | 1.082 / 0.628 (+72.3 %)** | +1.2 % |
+| PEMS08 | 0.131 / 0.227 (-42.5 %) | 0.243 / 0.318 (-23.5 %) | 0.559 / 0.497 (+12.4 %)** | 1.151 / 0.721 (+59.7 %)** | -1.6 % |
 
-5 settings; within 5 %: 5; mean |change| 9.5 %; more than 10 % worse: none.
+50 settings; within 5 %: 40; mean |change| 22.5 %; more than 10 % worse: PEMS03-48 +42.9 %, PEMS03-96 +112.6 %, PEMS04-48 +38.7 %, PEMS04-96 +128.5 %, PEMS07-48 +23.1 %, PEMS07-96 +72.3 %, PEMS08-48 +12.4 %, PEMS08-96 +59.7 %.
 
-### Summary
+## Summary
 
 | baseline | settings run | within 5 % | mean abs. change | > 10 % worse |
 |---|---:|---:|---:|---:|
-| S-Mamba | 8 | 8 | 3.5 % | 0 |
-| iTransformer | 8 | 6 | 4.9 % | 2 |
-| PatchTST | 8 | 4 | 23.5 % | 3 |
-| RLinear | 8 | 8 | 2.7 % | 0 |
-| DLinear | 8 | 8 | 0.3 % | 0 |
-| TiDE | 5 | 5 | 9.5 % | 0 |
+| S-Mamba | 52 | 48 | 2.4 % | 2 |
+| iTransformer | 52 | 42 | 48.1 % | 10 |
+| PatchTST | 46 | 37 | 10.8 % | 7 |
+| RLinear | 32 | 32 | 3.1 % | 0 |
+| DLinear | 52 | 42 | 2.2 % | 0 |
+| TiDE | 50 | 40 | 22.5 % | 8 |

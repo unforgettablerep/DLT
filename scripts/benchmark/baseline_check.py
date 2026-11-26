@@ -5,11 +5,10 @@
 Reads the records of the baselines suite (scripts/benchmark/make_jobs.py baselines: each baseline alone with its
 official settings and the protocol of the official loaders, src/configs/baseline_profiles.py) from
 output/benchmark/baselines.tsv and baselines_gpu.tsv, or --files. Records of the backbone alone in the plug-in
-suites (DLTPlug, arm "alone"; output/plugin/plugin_all.tsv, plugin_fusion.tsv) count as well. Only records of the check's protocol (four time features, dropped last
-batches; the records name freq and drop_last since 2026-11-17) unless --any_protocol, and only records of --device
-(default gpu: the check of the paper runs on the GPU; records without a device count for neither). Several seeds are
-averaged.
-The records of the earlier eight baselines are in output/benchmark/baselines_v1.tsv.
+suites (DLTPlug, arm "alone"; output/plugin/plugin_all.tsv, plugin_fusion.tsv) count as well. Only records with the
+protocol of the official loaders (src/configs/dlt_profiles.py, protocol(); checked by src/utils/baseline_runs.py) and
+of --device (default gpu: the check of the paper runs on the GPU; records without a device count for neither). Several
+seeds are averaged.
 
 Reference: assets/reported.json, block smamba_paper (Tables 2-4 of the S-Mamba paper; for iTransformer, PatchTST,
 RLinear, DLinear and TiDE they equal the iTransformer paper). For every baseline: one row per dataset with
@@ -28,6 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.configs import baseline_profiles as baselines  # noqa: E402
 from src.configs.dlt_profiles import DATASET_META, get_pred_lens  # noqa: E402
+from src.utils.baseline_runs import check_protocol  # noqa: E402
 from src.utils.paths import OUTPUT, REPO  # noqa: E402
 from src.utils.result_io import device_class, read_results  # noqa: E402
 
@@ -35,7 +35,7 @@ DEFAULT_FILES = [OUTPUT / 'benchmark' / 'baselines.tsv', OUTPUT / 'benchmark' / 
                  OUTPUT / 'plugin' / 'plugin_all.tsv', OUTPUT / 'plugin' / 'plugin_fusion.tsv']
 
 
-def load(files, any_protocol=False, official_only=True, device="gpu"):
+def load(files, official_only=True, device="gpu"):
     runs = {}
     for f in files or DEFAULT_FILES:
         for r in read_results(f):
@@ -46,8 +46,8 @@ def load(files, any_protocol=False, official_only=True, device="gpu"):
                 continue
             if model not in baselines.BASELINES or r.get('dataset') not in DATASET_META:
                 continue
-            if not any_protocol and not (r.get('freq') == 'h' and r.get('drop_last')):
-                continue                                         # an earlier protocol (records before 2026-11-17)
+            if not check_protocol(r):
+                continue
             runs[(r['des'], r.get('seed'), r.get('model'))] = (model, r)
     variants = collections.defaultdict(lambda: collections.defaultdict(list))   # (model, ds, H) -> {suffix: records}
     for model, r in runs.values():
@@ -75,7 +75,6 @@ def main():
     p.add_argument('--files', nargs='+')
     p.add_argument('--models', nargs='+', default=list(baselines.BASELINES))
     p.add_argument('--tol', type=float, default=5.0)
-    p.add_argument('--any_protocol', action='store_true', help='also records of the earlier protocol')
     p.add_argument('--lr_check', action='store_true', help='take the runs of a learning-rate check into account')
     p.add_argument('--device', default='gpu', choices=['gpu', 'cpu', 'all'], help='only the records of this device')
     p.add_argument('--out')
@@ -84,7 +83,7 @@ def main():
 
     a.models = [canonical_model(m) for m in a.models]
     R = json.load(open(REPO / 'assets' / 'reported.json'))['smamba_paper']
-    cells, chosen = load(a.files, a.any_protocol, not a.lr_check, a.device)
+    cells, chosen = load(a.files, not a.lr_check, a.device)
     tol = a.tol / 100
     fmt = lambda d: f'{100 * d:+.1f} %'
     out = ['# Baseline check against the S-Mamba paper', '',

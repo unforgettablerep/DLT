@@ -2,7 +2,7 @@
 guard (stand-alone DLT-dyn with the guards of the plug-in against harm on weakly coupled data).
 
 guard: seven arms on the weakly coupled ETTh1, ETTh2 and Exchange and the coupled Weather and PEMS08 (GUARD_SETTINGS),
-three seeds, the recipe of the stand-alone runs (long_small; PEMS08 with the protocol of long_extra):
+three seeds, the recipe of the stand-alone runs:
     ci          the self head alone (no cross-variable branch)
     dyn         DLT-dyn as in the paper (joint training, one learning rate)
     dyn_sel     + per-variable selection: the correction only where it lowers the validation MSE
@@ -94,7 +94,7 @@ def main():
         allnb = "--dlt_k 8 --dlt_L 48 --dlt_R 4 --dlt_impl dense --dlt_neighbours all"
         for ds, seed in itertools.product(("PEMS08", "PEMS04"), S):
             for v, rel in (("dltdyn", 4.0 if ds == "PEMS08" else 12.0), ("dlt", 0.4 if ds == "PEMS08" else 1.2)):
-                g.add("{}_12_{}_all".format(ds, v), "DLT", ds, 12, seed, "--dlt_variant {} {} {} {}".format(v, allnb, jobs.DLT_TRAIN, jobs.PEMS_PROTOCOL), jobs.cost(ds, rel))
+                g.add("{}_12_{}_all".format(ds, v), "DLT", ds, 12, seed, "--dlt_variant {} {} {}".format(v, allnb, jobs.DLT_TRAIN), jobs.cost(ds, rel))
         for ds, H, seed in itertools.product(a.datasets or ("Weather", "ECL"), jobs.LONG_HORIZONS, S):
             for v in ("dltdyn", "dlt"):
                 if v == "dltdyn" and ds in ("ECL", "Traffic") and a.device == "cpu":
@@ -108,15 +108,14 @@ def main():
                 "PEMS08",
                 12,
                 seed,
-                "--plug_base iTransformer --dlt_variant dltdyn {} --dlt_lr 0.003 {} {}".format(allnb, bargs, jobs.PEMS_PROTOCOL),
+                "--plug_base iTransformer --dlt_variant dltdyn {} --dlt_lr 0.003 {}".format(allnb, bargs),
                 jobs.cost("PEMS08", 6.0),
             )
     elif a.suite == "guard":
         for (ds, H), (arm, extra), seed in itertools.product(GUARD_SETTINGS, GUARD_ARMS.items(), S):
             if a.datasets and ds not in a.datasets:
                 continue
-            proto = jobs.protocol_args(ds) if ds in jobs.PEMS_SETS else ""
-            args = " ".join(x for x in (jobs.DLT_DEFAULT, jobs.DLT_TRAIN, proto, extra) if x)
+            args = " ".join(x for x in (jobs.DLT_DEFAULT, jobs.DLT_TRAIN, extra) if x)
             rel = 0.1 if arm.startswith("ci") else (2.0 if "2s" in arm else 1.0)
             g.add("{}_{}_{}".format(ds, H, arm), "DLT", ds, H, seed, args, jobs.cost(ds, rel))
     else:
