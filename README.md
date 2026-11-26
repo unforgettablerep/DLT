@@ -198,7 +198,7 @@ python scripts/utils/smoke_jobs.py long_small           # pre-flight: one traini
 | Plug-in | `scripts/plugin/make_jobs.py plugin_all \| plugin_fusion`; `plugin_table.py`, `plugin_gain.py`, `fusion_table.py`, `plugin_diag.py`, `leadlag_diag.py` | every backbone alone and + DLT-dyn on 13 datasets; five fusion arms | `output/plugin/` |
 | Kernel and gate ablation (P0) | `scripts/ablation/make_jobs.py p0 \| ci_long \| allnb`; `aggregate.py` | 13 configurations × 5 settings × 3 seeds; CI linear; all neighbours | `output/ablation/` |
 | Guards of the stand-alone model | `scripts/ablation/make_jobs.py guard`, then `scripts/ablation/guard_table.py` | DLT-dyn with per-variable selection, a slower branch, two-stage training; ETTh1/2, Exchange, Weather, PEMS08; 3 seeds | `output/ablation/guard.*` |
-| Hyper-parameters | `scripts/hyperparam/make_jobs.py sensitivity \| neighbours`; `hpsearch.py make \| select \| tuned` | L, R, k one at a time; neighbour selection; 20-trial validation search | `output/hyperparam/` |
+| Hyper-parameters | `scripts/hyperparam/make_jobs.py sensitivity \| neighbours`, `sens_table.py`; `hpsearch.py make \| select \| tuned` | L, R, k one at a time; neighbour selection; 20-trial validation search | `output/hyperparam/` |
 | Efficiency | `scripts/efficiency/run_efficiency.py [--setting smamba] [--tuned]`; `make_jobs.py eff_tune`, `eff_tune.py` | parameters, ms per batch, peak memory; S-Mamba setting (batch 16) | `output/efficiency/` |
 | Mechanism | `scripts/mechanism/kernels.py`, `pems_lag.py` | learned kernels against the PEMS08 road graph | `output/mechanism/kernels_pems08.json` |
 

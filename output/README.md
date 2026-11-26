@@ -15,8 +15,8 @@ studies are being re-run with this protocol.
 | Stand-alone DLT-dyn and CI: Electricity, Traffic | `long_large`; `ci_long` | `long_large.tsv`, `ci_long.tsv` | GPU | `make_gpu_jobs.sh` |
 | Guards of the stand-alone model | `ablation/make_jobs.py guard` | `ablation/guard.tsv` | CPU | done (stage 2, [`guard.md`](ablation/guard.md)) |
 | P0 kernel and gate study | `ablation/make_jobs.py p0` | `ablation/p0.tsv` | CPU (ECL: GPU) | done on the CPU (stage 3, [`summary.md`](ablation/summary.md)); ECL: `p0_ecl` |
-| Sensitivity, neighbour selection | `hyperparam/make_jobs.py sensitivity \| neighbours` | `hyperparam/*.tsv` | CPU | stage 4, running |
-| Validation search and searched configurations | `hyperparam/hpsearch.py make \| tuned` | `hyperparam/hp.tsv`, `tuned.tsv` | CPU (ECL, Traffic, PEMS: GPU) | stage 5 |
+| Sensitivity, neighbour selection | `hyperparam/make_jobs.py sensitivity \| neighbours` | `hyperparam/*.tsv` | CPU | done (stage 4, [`sensitivity.md`](hyperparam/sensitivity.md)) |
+| Validation search and searched configurations | `hyperparam/hpsearch.py make \| tuned` | `hyperparam/hp.tsv`, `tuned.tsv` | CPU (ECL, Traffic, PEMS: GPU) | stage 5, running |
 | All variables as neighbours; lead-lag diagnostic | `ablation/make_jobs.py allnb`; `plugin/leadlag_diag.py` | `ablation/allnb.tsv`, `plugin/leadlag_diag.json` | CPU (ECL, Traffic: GPU) | stage 6 |
 | Learned kernels on PEMS08 | `mechanism/kernels.py` | `mechanism/kernels_pems08.json` | CPU | done (stage 3) |
 | Fusions with the six backbones; plug-in benchmark | `plugin/make_jobs.py plugin_fusion \| plugin_all` | `plugin/*.tsv` | GPU | `make_gpu_jobs.sh` |
@@ -120,3 +120,30 @@ to the second decimal:
 - The lag does not grow with road distance: Spearman correlation of distance and peak lag −0.20 (DLT) and −0.05
   (DLT-dyn), of distance and lag centroid −0.32 and −0.20. The kernels show road-near sources acting with a lag,
   not travel times.
+
+## Sensitivity and neighbour selection (stage 4, CPU, seeds 2021-2023)
+
+Table: [`hyperparam/sensitivity.md`](hyperparam/sensitivity.md) (`scripts/hyperparam/sens_table.py`). DLT-dyn with one
+of L, R and k changed (defaults L 48, R 4, k 8: the P0 runs), and DLT and DLT-dyn with 8 random or all other variables
+as neighbours instead of the CCF top-8. Change of the test MSE against the default:
+
+| | ETTh1-96 | Weather-96 | PEMS08-96 |
+|---|---:|---:|---:|
+| L 12 / 24 / 96 | −0.4 / +0.1 / −0.3 % | +0.5 / +0.1 / −0.2 % | +2.8 / +1.5 / +0.5 % |
+| R 2 / 8 | −1.6 / −0.5 % | +1.6 / −0.8 % | +11.5 / −5.1 % |
+| k 4 / 16 | −1.7 % / (k is capped at 6) | +2.6 / −2.2 % | +11.8 / −4.7 % |
+| DLT-dyn: 8 random / all other variables as neighbours | | +0.7 / −1.4 % | −2.3 / −18.7 % |
+| DLT: 8 random / all other variables as neighbours | | +2.1 / −2.0 % | −11.2 / −40.7 % |
+
+1. **The maximum lag hardly matters:** L from 12 to 96 changes the MSE by −0.4 % to +2.8 % (p ≥ 0.19).
+2. **More basis functions and more neighbours help on PEMS08:** R 2 costs +11.5 % (p 0.044) and k 4 +11.8 %
+   (p 0.001); R 8 gains −5.1 % (p 0.08) and k 16 −4.7 % (p 0.15). Weather moves the same way by less (R 2 +1.6 %,
+   k 4 +2.6 %, p ≤ 0.013). On ETTh1 nothing is significant (p ≥ 0.13).
+3. **The CCF selection is no accuracy gain.** All other variables as neighbours beat the CCF top-8 on PEMS08
+   (DLT-dyn −18.7 %, p 0.001; DLT −40.7 %) and on Weather (DLT −2.0 %, p 0.002; DLT-dyn −1.4 %, p 0.33). Eight
+   random neighbours are as good as the CCF top-8 for DLT-dyn (+0.7 % and −2.3 %, p ≥ 0.14); only DLT on Weather is
+   worse with them (+2.1 %, p 0.021). The gain comes from the cross-variable information, not from the choice of the
+   neighbours by cross-correlation.
+4. Against the removed protocol every change in this section moved by at most 0.8 points (DLT-dyn with all
+   neighbours on PEMS08: −19.5 % then, −18.7 % now).
+
