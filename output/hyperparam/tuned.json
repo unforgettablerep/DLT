@@ -1,0 +1,86 @@
+{
+ "ETTh1": {
+  "config": {
+   "learning_rate": 0.01,
+   "batch_size": 16,
+   "dlt_k": 4,
+   "dlt_L": 24,
+   "dlt_R": 2,
+   "dlt_dyn_dim": 32,
+   "dlt_gate": "moe"
+  },
+  "searched_at_H": 96,
+  "trials": 20,
+  "best_vali": 0.694760495390015
+ },
+ "ETTh2": {
+  "config": {
+   "learning_rate": 0.01,
+   "batch_size": 16,
+   "dlt_k": 16,
+   "dlt_L": 48,
+   "dlt_R": 8,
+   "dlt_dyn_dim": 8,
+   "dlt_gate": "moe"
+  },
+  "searched_at_H": 96,
+  "trials": 20,
+  "best_vali": 0.22758831854524283
+ },
+ "ETTm1": {
+  "config": {
+   "learning_rate": 0.003,
+   "batch_size": 32,
+   "dlt_k": 8,
+   "dlt_L": 48,
+   "dlt_R": 4,
+   "dlt_dyn_dim": 16,
+   "dlt_gate": "none"
+  },
+  "searched_at_H": 96,
+  "trials": 20,
+  "best_vali": 0.38494129662587195
+ },
+ "ETTm2": {
+  "config": {
+   "learning_rate": 0.01,
+   "batch_size": 64,
+   "dlt_k": 8,
+   "dlt_L": 48,
+   "dlt_R": 2,
+   "dlt_dyn_dim": 32,
+   "dlt_gate": "static"
+  },
+  "searched_at_H": 96,
+  "trials": 20,
+  "best_vali": 0.12243010271131323
+ },
+ "Exchange": {
+  "config": {
+   "learning_rate": 0.01,
+   "batch_size": 32,
+   "dlt_k": 16,
+   "dlt_L": 96,
+   "dlt_R": 4,
+   "dlt_dyn_dim": 32,
+   "dlt_gate": "none"
+  },
+  "searched_at_H": 96,
+  "trials": 20,
+  "best_vali": 0.12093313746154308
+ },
+ "Weather": {
+  "config": {
+   "learning_rate": 0.003,
+   "batch_size": 16,
+   "dlt_k": 4,
+   "dlt_L": 96,
+   "dlt_R": 4,
+   "dlt_dyn_dim": 32,
+   "dlt_gate": "moe"
+  },
+  "searched_at_H": 96,
+  "trials": 20,
+  "best_vali": 0.40227660564446227
+ }
+}

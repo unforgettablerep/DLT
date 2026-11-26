@@ -16,8 +16,8 @@ studies are being re-run with this protocol.
 | Guards of the stand-alone model | `ablation/make_jobs.py guard` | `ablation/guard.tsv` | CPU | done (stage 2, [`guard.md`](ablation/guard.md)) |
 | P0 kernel and gate study | `ablation/make_jobs.py p0` | `ablation/p0.tsv` | CPU (ECL: GPU) | done on the CPU (stage 3, [`summary.md`](ablation/summary.md)); ECL: `p0_ecl` |
 | Sensitivity, neighbour selection | `hyperparam/make_jobs.py sensitivity \| neighbours` | `hyperparam/*.tsv` | CPU | done (stage 4, [`sensitivity.md`](hyperparam/sensitivity.md)) |
-| Validation search and searched configurations | `hyperparam/hpsearch.py make \| tuned` | `hyperparam/hp.tsv`, `tuned.tsv` | CPU (ECL, Traffic, PEMS: GPU) | stage 5, running |
-| All variables as neighbours; lead-lag diagnostic | `ablation/make_jobs.py allnb`; `plugin/leadlag_diag.py` | `ablation/allnb.tsv`, `plugin/leadlag_diag.json` | CPU (ECL, Traffic: GPU) | stage 6 |
+| Validation search and searched configurations | `hyperparam/hpsearch.py make \| tuned` | `hyperparam/hp.tsv`, `tuned.tsv` | CPU (ECL, Traffic, PEMS: GPU) | done on the CPU (stage 5, [`hp_select.md`](hyperparam/hp_select.md)) |
+| All variables as neighbours; lead-lag diagnostic | `ablation/make_jobs.py allnb`; `plugin/leadlag_diag.py` | `ablation/allnb.tsv`, `plugin/leadlag_diag.json` | CPU (ECL, Traffic: GPU) | stage 6, running |
 | Learned kernels on PEMS08 | `mechanism/kernels.py` | `mechanism/kernels_pems08.json` | CPU | done (stage 3) |
 | Fusions with the six backbones; plug-in benchmark | `plugin/make_jobs.py plugin_fusion \| plugin_all` | `plugin/*.tsv` | GPU | `make_gpu_jobs.sh` |
 | Efficiency (time, memory) | `efficiency/run_efficiency.py`, `eff_tune.py` | `efficiency/` | CPU, GPU | done |
@@ -146,4 +146,27 @@ as neighbours instead of the CCF top-8. Change of the test MSE against the defau
    neighbours by cross-correlation.
 4. Against the removed protocol every change in this section moved by at most 0.8 points (DLT-dyn with all
    neighbours on PEMS08: −19.5 % then, −18.7 % now).
+
+## Validation search (stage 5, CPU)
+
+20 random trials per dataset at H = 96, seed 2021 (learning rate, batch size, k, L, R, size of the dynamic weights,
+gate; `scripts/hyperparam/hpsearch.py`); the trial with the lowest validation loss
+([`hyperparam/hp_select.md`](hyperparam/hp_select.md), `tuned.json`) is trained at the four horizons with three seeds
+(`tuned.tsv`; column "tuned" of [`long_term_forecast/summary.md`](long_term_forecast/summary.md)). Change of the test
+MSE, mean over the four horizons:
+
+| | ETTh1 | ETTh2 | ETTm1 | ETTm2 | Exchange | Weather |
+|---|---:|---:|---:|---:|---:|---:|
+| searched against default DLT-dyn | −3.2 % | −2.6 % | ±0 (default chosen) | −1.1 % | −10.9 % | +0.5 % |
+| searched against CI | +1.3 % | +9.6 % | −2.8 % | −1.1 % | +22.2 % | −9.2 % |
+
+1. **The search helps where the default is worst** (Exchange −10.9 %, ETTh1 −3.2 %, ETTh2 −2.6 %) and changes little
+   elsewhere; on Weather it is +2.6 % worse at H = 96 (p < 0.01). It picks a learning rate of 0.01 and a gate on four
+   of the six datasets.
+2. **It does not replace the guards.** Against CI the searched model is still +9.6 % on ETTh2 and +22.2 % on Exchange
+   (Exchange-720 +45.4 %), where two-stage training with significant selection stays within +1.7 % (stage 2).
+3. **The choice is fragile.** The best trial leads the second by 0.03 % to 0.70 % of the validation loss (Exchange
+   7 %), and the validation rank predicts the test rank only weakly (Spearman 0.26 to 0.73 over the 20 trials).
+   Under the removed protocol the search chose other configurations on ETTh2, ETTm1 and Weather; its gains over the
+   default were similar (ETTh1 −3.6 %, Exchange −11.3 %) except on ETTh2 (−7.0 % then, −2.6 % now).
 
