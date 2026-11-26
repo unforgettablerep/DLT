@@ -19,7 +19,8 @@ within the tolerance, mean |change|, and the settings that are worse by more tha
 before the baseline is used).
 Learning-rate check (scripts/benchmark/make_jobs.py baselines --backbone_lr ...; jobs <name>@lr<x>): where such runs exist, the
 setting takes the learning rate with the lowest validation loss among the official one and the checked ones; the
-cell then names it ([lr x]). --official_only ignores these runs.
+cell then names it ([lr x]). The study reproduces every baseline once with its official settings, so these runs are
+left out unless --lr_check.
 """
 import argparse, collections, json, statistics, sys
 from pathlib import Path
@@ -34,7 +35,7 @@ DEFAULT_FILES = [OUTPUT / 'benchmark' / 'baselines.tsv', OUTPUT / 'benchmark' / 
                  OUTPUT / 'plugin' / 'plugin_all.tsv', OUTPUT / 'plugin' / 'plugin_fusion.tsv']
 
 
-def load(files, any_protocol=False, official_only=False, device="gpu"):
+def load(files, any_protocol=False, official_only=True, device="gpu"):
     runs = {}
     for f in files or DEFAULT_FILES:
         for r in read_results(f):
@@ -75,7 +76,7 @@ def main():
     p.add_argument('--models', nargs='+', default=list(baselines.BASELINES))
     p.add_argument('--tol', type=float, default=5.0)
     p.add_argument('--any_protocol', action='store_true', help='also records of the earlier protocol')
-    p.add_argument('--official_only', action='store_true', help='ignore the runs of the learning-rate check')
+    p.add_argument('--lr_check', action='store_true', help='take the runs of a learning-rate check into account')
     p.add_argument('--device', default='gpu', choices=['gpu', 'cpu', 'all'], help='only the records of this device')
     p.add_argument('--out')
     a = p.parse_args()
@@ -83,7 +84,7 @@ def main():
 
     a.models = [canonical_model(m) for m in a.models]
     R = json.load(open(REPO / 'assets' / 'reported.json'))['smamba_paper']
-    cells, chosen = load(a.files, a.any_protocol, a.official_only, a.device)
+    cells, chosen = load(a.files, a.any_protocol, not a.lr_check, a.device)
     tol = a.tol / 100
     fmt = lambda d: f'{100 * d:+.1f} %'
     out = ['# Baseline check against the S-Mamba paper', '',

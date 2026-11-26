@@ -5,7 +5,8 @@ backbone alone is the run of the baseline check (suite baselines of scripts/benc
 output/benchmark/baselines.tsv and baselines_gpu.tsv), the same model with the same settings, protocol and seed.
 alone_cells() returns these runs in the layout of the plug-in tables (scripts/plugin/plugin_table.py and
 fusion_table.py with --alone baselines; plug-in make_jobs.py --select_lr): (dataset, H, backbone, arm) -> records,
-arm "alone" for the official learning rate and "alone@lr<x>" for the runs of the learning-rate check. Only records of
+arm "alone" for the official settings; with lr_check also "alone@lr<x>" for the runs of a learning-rate check (the
+study reproduces every baseline once with its official settings, so the tables leave such runs out). Only records of
 the check's protocol (four time features, dropped last batches: freq h and drop_last) and of the given device count;
 for a run held twice (same job name and seed), the later record wins.
 """
@@ -21,7 +22,7 @@ def check_protocol(row):
     return row.get("freq") == "h" and bool(row.get("drop_last"))
 
 
-def alone_cells(device="gpu", seeds=None, stores=STORES):
+def alone_cells(device="gpu", seeds=None, stores=STORES, lr_check=False):
     """(dataset, H, backbone, "alone" | "alone@lr<x>") -> records; device "gpu", "cpu" or "all"."""
     runs = {}
     for f in stores:
@@ -36,7 +37,7 @@ def alone_cells(device="gpu", seeds=None, stores=STORES):
         stem = "{}_{}_{}".format(r.get("dataset"), r.get("pred_len"), r.get("model"))
         des = r.get("des") or ""
         sfx = des[len(stem):] if des.startswith(stem) else None
-        if sfx is None or (sfx and not sfx.startswith("@lr")):
+        if sfx is None or (sfx and not (lr_check and sfx.startswith("@lr"))):
             continue
         cells[(r["dataset"], r["pred_len"], r["model"], "alone" + sfx)].append(r)
     return cells

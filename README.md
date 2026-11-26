@@ -229,28 +229,27 @@ finished runs are not repeated.
 
 The tables of the GPU study use GPU runs only. A GPU job counts as done only with a GPU row in its store
 (`scripts/utils/run_missing.py`), and the plug-in lists run the + DLT-dyn arms only (`--skip_alone`): the backbone
-alone is the run of the baseline check, which the tables read with `--alone baselines --device gpu`. Done on the GPU
-(2026-11-25): the baseline check except 28 settings, its learning-rate check in part, DLT-dyn on Solar and PEMS
-(three seeds; PEMS08 seed 2021 still to run) and the efficiency measurement (`output/efficiency/efficiency_smamba_gpu.jsonl`).
+alone is the run of the baseline check, which the tables read with `--alone baselines --device gpu`. Every baseline
+is reproduced once with its official settings; a reproduction close to the published result is enough, and one more
+than 10 % behind it is marked in the tables, not re-tuned. Done on the GPU (2026-11-25): the baselines except 28
+settings, DLT-dyn on Solar and PEMS (three seeds; PEMS08 seed 2021 still to run) and the efficiency measurement
+(`output/efficiency/efficiency_smamba_gpu.jsonl`).
 
 ```bash
 bash scripts/batch/make_gpu_jobs.sh                          # lists in temp/jobs/, with the GPU runs left
-bash scripts/utils/run_gpu_queue.sh baselines 0 0            # 1. baseline check: the settings without a GPU run
-bash scripts/utils/run_gpu_queue.sh baselines_lr 0 0         # 2. learning-rate check: iTransformer, PatchTST on PEMS
-bash scripts/utils/run_gpu_queue.sh baselines_itr2022 0 0    #    and a second seed of iTransformer there
-python scripts/benchmark/baseline_check.py                   #    GPU records (--device gpu is the default)
-bash scripts/utils/run_gpu_queue.sh long_extra 0 0 0         # 3. stand-alone DLT-dyn on Solar and PEMS
-bash scripts/utils/run_gpu_queue.sh plugin_fusion 0 0 0      # 4. the five fusions with the six backbones
+bash scripts/utils/run_gpu_queue.sh baselines 0 0            # 1. the baselines alone: the settings without a GPU run
+python scripts/benchmark/baseline_check.py                   #    against the published results (GPU, official settings)
+bash scripts/utils/run_gpu_queue.sh long_extra 0 0 0         # 2. stand-alone DLT-dyn on Solar and PEMS
+bash scripts/utils/run_gpu_queue.sh plugin_fusion 0 0 0      # 3. the five fusions with the six backbones
 python scripts/plugin/fusion_table.py --alone baselines --device gpu
-bash scripts/utils/run_gpu_queue.sh plugin_main 0 0          # 5. plug-in benchmark: + DLT-dyn, two-stage, per-variable selection
-bash scripts/batch/make_gpu_jobs.sh && bash scripts/utils/run_gpu_queue.sh plugin_main_lr 0 0   # at the checked rate (after 2)
+bash scripts/utils/run_gpu_queue.sh plugin_main 0 0          # 4. plug-in benchmark: + DLT-dyn, two-stage, per-variable selection
 python scripts/plugin/plugin_table.py --alone baselines --device gpu --arm dlt_train-decoupled-select-variable
 ```
 
-- **Learning-rate check.** Where a backbone alone stays more than 10 % behind its published numbers, run it at the
-  other learning rates (`scripts/benchmark/make_jobs.py baselines --backbone_lr 0.0001 0.0005 0.001`, jobs
-  `<name>@lr<x>`); `baseline_check.py` and `plugin_table.py` then take the learning rate with the lowest validation
-  loss, and `plugin_all --select_lr` writes + DLT-dyn at that rate (list `plugin_main_lr`).
+- **Baselines.** One reproduction per setting with the official settings and seed 2021; the comparison with the
+  published numbers is `baseline_check.py`. The tools for a learning-rate check remain
+  (`scripts/benchmark/make_jobs.py baselines --backbone_lr ...`, `baseline_check.py --lr_check`, `plugin_all --select_lr`)
+  but are not part of the study; the tables use the official settings.
 - **Memory.** DLT is small (≤ 0.36 M parameters; about 1 GB per step on Traffic at batch 32). The heavy runs are the
   baselines on Traffic (iTransformer 12.4 GB at batch 32) and TiDE, which runs one pass per variable: on data with
   more than 100 variables its jobs carry `--tide_checkpoint` (recomputation in the backward pass, same results).

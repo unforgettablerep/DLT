@@ -53,7 +53,7 @@ def main():
     g = jobs.JobList(a.suite, "plugin", a.device, a.list)
     if a.suite == "plugin_all":
         arm = "dlt" + ("_{}".format(jobs.recipe_tag(a.dlt)) if a.dlt else "")
-        chosen = selected_lrs(alone_cells(a.device)) if a.select_lr else {}
+        chosen = selected_lrs(alone_cells(a.device, lr_check=True)) if a.select_lr else {}
         for ds, base, seed in itertools.product(a.datasets or jobs.ALL_SETS, models or jobs.BASELINES, S):
             for H in jobs.horizons(ds):
                 bargs = jobs.baseline_args(base, ds, H)

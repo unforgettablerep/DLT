@@ -83,7 +83,8 @@ official baseline settings reproduce.
   campaign. `scripts/utils/migrate_work.py` takes over the records of a pre-refactor `work/` directory.
 - GPU study: tables use GPU records only (`--device gpu`; default of `baseline_check.py`). Plug-in lists run the
   + DLT-dyn arms only (`scripts/plugin/make_jobs.py --skip_alone`); the backbone alone is the baseline-check run
-  (`src/utils/baseline_runs.py`, tables with `--alone baselines`), and `--select_lr` reads its learning-rate check.
+  (`src/utils/baseline_runs.py`, tables with `--alone baselines`). Each baseline is reproduced once with its official
+  settings (no learning-rate check, one seed); `baseline_check.py` compares it with the published result.
 
 ## Results and Output
 

@@ -13,33 +13,27 @@ PYTHON_BIN=${PYTHON_BIN:-python}
 JOBS=$("$PYTHON_BIN" -m src.utils.paths temp)/jobs
 [ -d work ] && "$PYTHON_BIN" scripts/utils/migrate_work.py work --apply
 G="--device gpu"
-PEMS="PEMS03 PEMS04 PEMS07 PEMS08"
 TWO_STAGE="--dlt_train decoupled --dlt_select variable"     # the plug-in recipe of the paper (Algorithm 1)
 
-# 1. the baseline check: the six baselines alone, seed 2021 (Weather and PEMS04 ran first: baselines_gpu.tsv)
+# 1. the baselines alone, reproduced once with their official settings (seed 2021; Weather and PEMS04 ran first:
+#    baselines_gpu.tsv). No re-tuning: a reproduction more than 10 % behind the published result is marked in the tables.
 "$PYTHON_BIN" scripts/benchmark/make_jobs.py baselines $G --seeds 2021 \
     --datasets ETTh1 ETTh2 ETTm1 ETTm2 Exchange ECL Traffic Solar PEMS03 PEMS07 PEMS08
-# 2. its learning-rate check for iTransformer and PatchTST on PEMS, and a second seed of iTransformer there
-"$PYTHON_BIN" scripts/benchmark/make_jobs.py baselines $G --seeds 2021 --models iTransformer PatchTST --datasets $PEMS \
-    --backbone_lr 0.0001 0.0005 0.001 --list baselines_lr
-"$PYTHON_BIN" scripts/benchmark/make_jobs.py baselines $G --seeds 2022 --models iTransformer --datasets $PEMS --list baselines_itr2022
-# 3. stand-alone DLT-dyn on Solar and PEMS (Electricity and Traffic: long_large and tier1_partial)
+# 2. stand-alone DLT-dyn on Solar and PEMS (Electricity and Traffic: long_large and tier1_partial)
 "$PYTHON_BIN" scripts/multivariate_forecasting/make_jobs.py long_extra $G
-# 4. how the branch enters the backbone: five arms on four settings, the six backbones, + DLT-dyn arms only
+# 3. how the branch enters the backbone: five arms on four settings, the six backbones, + DLT-dyn arms only
 "$PYTHON_BIN" scripts/plugin/make_jobs.py plugin_fusion $G --seeds 2021 --skip_alone \
     --models S_Mamba iTransformer PatchTST RLinear DLinear TiDE
-# 5. the plug-in benchmark: the six baselines + DLT-dyn, two-stage training and per-variable selection, 13 datasets
+# 4. the plug-in benchmark: the six baselines + DLT-dyn, two-stage training and per-variable selection, 13 datasets
 "$PYTHON_BIN" scripts/plugin/make_jobs.py plugin_all $G --seeds 2021 --skip_alone --dlt "$TWO_STAGE" --list plugin_main
-#    the same at the learning rate chosen by the check of step 2 where it is not the official one (write it after step 2)
-"$PYTHON_BIN" scripts/plugin/make_jobs.py plugin_all $G --seeds 2021 --skip_alone --dlt "$TWO_STAGE" --select_lr --list plugin_main_lr
-# 6. (optional) 20-trial validation search on Electricity, Traffic (H 96) and PEMS04/08 (H 12, TimeMixer protocol)
+# 5. (optional) 20-trial validation search on Electricity, Traffic (H 96) and PEMS04/08 (H 12, TimeMixer protocol)
 "$PYTHON_BIN" scripts/hyperparam/hpsearch.py make --datasets ECL Traffic $G
 "$PYTHON_BIN" scripts/hyperparam/hpsearch.py make --datasets PEMS04 PEMS08 --H 12 --tag _pems $G
-# 7. (optional) all other variables as neighbours on Electricity and Traffic
+# 6. (optional) all other variables as neighbours on Electricity and Traffic
 "$PYTHON_BIN" scripts/ablation/make_jobs.py allnb --datasets ECL Traffic $G --list allnb_large
 
 echo
-for t in baselines baselines_lr baselines_itr2022 long_extra plugin_fusion plugin_main plugin_main_lr hp hp_pems allnb_large; do
+for t in baselines long_extra plugin_fusion plugin_main hp hp_pems allnb_large; do
   echo "$t: $("$PYTHON_BIN" scripts/utils/run_missing.py "$t" | wc -l) of $(wc -l < "$JOBS/jobs_$t.txt") jobs without a GPU result"
 done
 echo
