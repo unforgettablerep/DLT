@@ -193,7 +193,7 @@ python scripts/utils/smoke_jobs.py long_small           # pre-flight: one traini
 
 | Experiment | Entry point | Datasets / grid | Output |
 | --- | --- | --- | --- |
-| Stand-alone DLT-dyn | `scripts/multivariate_forecasting/make_jobs.py long_small \| long_large \| long_extra` | ETT, Exchange, Weather; ECL, Traffic; Solar and PEMS; 3 seeds | `output/long_term_forecast/<suite>.tsv` |
+| Stand-alone DLT-dyn | `scripts/multivariate_forecasting/make_jobs.py long_small \| long_large \| long_extra`; `long_table.py` (against CI) | ETT, Exchange, Weather; ECL, Traffic; Solar and PEMS; 3 seeds | `output/long_term_forecast/<suite>.tsv`, `summary.md` |
 | Baseline check | `scripts/benchmark/make_jobs.py baselines`, then `scripts/benchmark/baseline_check.py` | six baselines, official settings, 13 datasets | `output/benchmark/baselines*.tsv`, `baseline_check.md` |
 | Plug-in | `scripts/plugin/make_jobs.py plugin_all \| plugin_fusion`; `plugin_table.py`, `plugin_gain.py`, `fusion_table.py`, `plugin_diag.py`, `leadlag_diag.py` | every backbone alone and + DLT-dyn on 13 datasets; five fusion arms | `output/plugin/` |
 | Kernel and gate ablation (P0) | `scripts/ablation/make_jobs.py p0 \| ci_long \| allnb`; `aggregate.py` | 13 configurations × 5 settings × 3 seeds; CI linear; all neighbours | `output/ablation/` |
