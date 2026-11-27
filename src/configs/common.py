@@ -62,6 +62,7 @@ def add_common_args(parser):
     parser.add_argument("--drop_last", action="store_true", default=True, help="drop the last incomplete training / validation batch (always on)")
     parser.add_argument("--test_batch_size", type=int, default=1, help="test batch size; the iTransformer / S-Mamba code tests with 1")
     parser.add_argument("--no_time_marks", action="store_true", help="no time-mark features (x_mark = None), as the iTransformer / S-Mamba code on PEMS and Solar")
+    parser.add_argument("--step_metrics", action="store_true", help="record the test MSE of every forecast step (column mse_step, a JSON list of pred_len values)")
     parser.add_argument("--epoch_test", dest="no_epoch_test", action="store_false", help="print the test loss after every epoch (not used for model selection; the extra pass draws from the RNG, so the run differs from one without it)")
     parser.add_argument("--no_epoch_test", dest="no_epoch_test", action="store_true", help="skip the per-epoch test loss (the default; kept for the job lists)")
     parser.set_defaults(no_epoch_test=True)

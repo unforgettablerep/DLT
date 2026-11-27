@@ -422,6 +422,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         )
         if hasattr(net, "mamba_impl") or hasattr(getattr(net, "base", None), "mamba_impl"):
             info["mamba_impl"] = getattr(getattr(net, "base", net), "mamba_impl", None)
+        if getattr(self.args, "step_metrics", False):
+            steps = stream.mse_steps() if stream is not None else np.square(preds - trues).mean(axis=(0, 2)).tolist()
+            info["mse_step"] = [round(float(v), 6) for v in steps]
         seq = self._last_checkpoint_seq if self._last_checkpoint_seq is not None else getattr(self.args, "checkpoint", 0)
         write_test_result(self.args, metrics, info, checkpoint=seq)
         if not int(getattr(self.args, "keep_checkpoint", 1)) and self._last_checkpoint_seq is not None:

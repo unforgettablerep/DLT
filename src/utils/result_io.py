@@ -42,6 +42,7 @@ CONFIG_COLUMNS = [
     "dlt_topk",
     "dlt_dyn_dim",
     "dlt_hp_trial",
+    "dlt_ccf_L",
     "plug_base",
     "dlt_lr",
     "dlt_fusion",
@@ -105,7 +106,7 @@ STRING_COLUMNS = {
     "torch",
 }
 BOOL_COLUMNS = {"inverse", "time_marks", "drop_last"}
-JSON_COLUMNS = {"epoch_secs"}
+JSON_COLUMNS = {"epoch_secs", "mse_step"}
 
 DLT_MODELS = ("DLT", "DLTPlug")
 DLT_ONLY = {c for c in CONFIG_COLUMNS if c.startswith("dlt_")}
@@ -361,7 +362,7 @@ def build_result_row(args, metrics, info=None, checkpoint=0):
             continue
         if col == "dlt_gate_init" and getattr(args, "dlt_gate", "none") != "static":
             continue
-        if col == "dlt_hp_trial" and getattr(args, "dlt_hp_trial", -1) < 0:
+        if col in ("dlt_hp_trial", "dlt_ccf_L") and getattr(args, col, -1) < 0:
             continue
         if col in ("d_state", "mamba_impl") and "S_Mamba" not in (model, getattr(args, "plug_base", None)):
             continue

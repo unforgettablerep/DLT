@@ -84,6 +84,26 @@ class ResultStoreTests(unittest.TestCase):
             self.assertIsNone(rows[0]["new_column"])
             self.assertIsNone(rows[0]["d_model"])
 
+    def test_step_metrics(self):
+        import numpy as np
+        from src.utils.metrics import StreamMetrics
+
+        rng = np.random.default_rng(0)
+        pred, true = rng.normal(size=(40, 6, 3)), rng.normal(size=(40, 6, 3))
+        s = StreamMetrics()
+        for i in range(0, 40, 16):
+            s.update(pred[i:i + 16], true[i:i + 16])
+        self.assertTrue(np.allclose(s.mse_steps(), np.square(pred - true).mean(axis=(0, 2))))
+        self.assertAlmostEqual(float(np.mean(s.mse_steps())), s.result()[1])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "r.tsv")
+            os.environ["RESULT_FILE"] = path
+            try:
+                result_io.write_test_result(self.args(), {"mse": 0.25, "mae": 0.5}, {"mse_step": [0.1, 0.2]})
+            finally:
+                del os.environ["RESULT_FILE"]
+            self.assertEqual(result_io.read_results(path)[0]["mse_step"], [0.1, 0.2])
+
     def test_shell_resume_check(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "r.tsv")

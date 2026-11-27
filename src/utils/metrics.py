@@ -57,6 +57,7 @@ class StreamMetrics:
     def __init__(self):
         self.n = self.n_masked = self.nonfinite = 0
         self.s = dict.fromkeys(("ae", "se", "ape", "spe", "ape_clip5", "ape_masked"), 0.0)
+        self.se_step, self.n_step = None, 0                    # squared error per forecast step (axis 1 of [B, H, C])
 
     def update(self, pred, true):
         self.nonfinite += int(pred.size - np.isfinite(pred).sum())
@@ -67,7 +68,11 @@ class StreamMetrics:
         a = np.abs(r)
         self.n += d.size
         self.s["ae"] += np.abs(d).sum()
-        self.s["se"] += np.square(d).sum()
+        se = np.square(d)
+        self.s["se"] += se.sum()
+        step = se.sum(axis=tuple(i for i in range(se.ndim) if i != 1))
+        self.se_step = step if self.se_step is None else self.se_step + step
+        self.n_step += d.size // d.shape[1]
         self.s["ape"] += a.sum()
         self.s["spe"] += np.square(r).sum()
         tm = np.nan_to_num(a, nan=0.0, posinf=np.inf)
@@ -75,6 +80,10 @@ class StreamMetrics:
         m = np.abs(t) > MASK_EPS
         self.n_masked += int(m.sum())
         self.s["ape_masked"] += a[m].sum()
+
+    def mse_steps(self):
+        """MSE of every forecast step, averaged over the windows and variables seen so far."""
+        return [] if self.se_step is None else (self.se_step / self.n_step).tolist()
 
     def result(self):
         n, s = self.n, self.s

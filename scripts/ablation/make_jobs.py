@@ -1,5 +1,11 @@
 """Job lists of the ablations: p0 (controlled comparison of cross-variable kernels), ci_long (DLT without the branch), allnb (all variables as neighbours),
-guard (stand-alone DLT-dyn with the guards of the plug-in against harm on weakly coupled data).
+guard (stand-alone DLT-dyn with the guards of the plug-in against harm on weakly coupled data), lagrole (what the lags do).
+
+lagrole: Weather-96 and PEMS08-96, three seeds, every run with the test MSE of each forecast step (--step_metrics):
+    ci, scalardyn, dltdyn   the P0 configurations of CI, the lag-0 kernel with input-dependent weights and DLT-dyn (L 48)
+    dltdyn_L<L>             DLT-dyn with the maximum lag L = 1, 2, 4, 8, 12 (the sensitivity study has 12, 24, 96)
+  A lead of the neighbours by tau steps can only inform the first tau steps of the horizon; a better estimate of the
+  current state helps every step. The per-step errors tell the two apart (scripts/ablation/lagrole_table.py).
 
 guard: seven arms on the weakly coupled ETTh1, ETTh2 and Exchange and the coupled Weather and PEMS08 (GUARD_SETTINGS),
 three seeds, the recipe of the stand-alone runs:
@@ -72,6 +78,10 @@ def bench_costs():
     return cost
 
 
+LAGROLE_SETTINGS = (("Weather", 96), ("PEMS08", 96))
+LAGROLE_LAGS = (1, 2, 4, 8, 12)
+
+
 def main():
     p = jobs.common_parser(__doc__)
     a = p.parse_args()
@@ -121,8 +131,17 @@ def main():
             args = " ".join(x for x in (jobs.DLT_DEFAULT, jobs.DLT_TRAIN, extra) if x)
             rel = 0.1 if arm.startswith("ci") else (2.0 if "2s" in arm else 1.0)
             g.add("{}_{}_{}".format(ds, H, arm), "DLT", ds, H, seed, args, jobs.cost(ds, rel))
+    elif a.suite == "lagrole":
+        p0 = lambda v: " ".join("--{} {}".format(k, x) for k, x in p0_args(v, "none").items())
+        arms = {"ci": ("--dlt_variant ci", 0.1), "scalardyn": (p0("scalardyn"), 0.3), "dltdyn": (p0("dltdyn"), 1.0)}
+        # the neighbours of every arm come from the CCF search over lags 0..48 (--dlt_ccf_L), as in P0
+        arms.update({"dltdyn_L{}".format(L): ("{} --dlt_L {} --dlt_ccf_L 48".format(jobs.DLT_DEFAULT, L), 0.6) for L in LAGROLE_LAGS})
+        for (ds, H), (arm, (args, rel)), seed in itertools.product(LAGROLE_SETTINGS, arms.items(), S):
+            if a.datasets and ds not in a.datasets:
+                continue
+            g.add("{}_{}_{}".format(ds, H, arm), "DLT", ds, H, seed, "{} {} --step_metrics".format(args, jobs.DLT_TRAIN), jobs.cost(ds, rel), label=48)
     else:
-        raise SystemExit("unknown suite {}; choose from p0, ci_long, allnb, guard".format(a.suite))
+        raise SystemExit("unknown suite {}; choose from p0, ci_long, allnb, guard, lagrole".format(a.suite))
     g.write()
 
 

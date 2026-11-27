@@ -153,7 +153,7 @@ Derived from Time-Series-Library (commit `4e938a1`, MIT): the data loaders, the 
 `src/utils/{metrics,tools,timefeatures,masking}.py`. Changes, all off by default unless a recipe sets them:
 `Dataset_PEMS` and `Dataset_Solar` (5- / 10-minute time marks rebuilt, the splits of the iTransformer loader);
 `--no_time_marks`, `--test_batch_size` (default 1), `--drop_last` (default on); `--loss MAE` (unused by the study); `prepare()` and `extra_loss()` hooks; per-group learning rates kept by `adjust_learning_rate`
-(`lr_scale`); streaming test metrics; masked and clipped MAPE; iTransformer honours `--use_norm`; TiDE
+(`lr_scale`); streaming test metrics (with the MSE of every forecast step on request, `--step_metrics`); masked and clipped MAPE; iTransformer honours `--use_norm`; TiDE
 `--tide_checkpoint` (recomputation, identical results); CPU fallback when CUDA / MPS is missing and a
 `CUDA_VISIBLE_DEVICES` mask set by the caller is kept; pandas ≥ 3 frequency aliases in `timefeatures.py`. The other
 models and tasks of the library were removed.

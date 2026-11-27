@@ -5,6 +5,7 @@ def add_dlt_parser(parser):
     parser.add_argument("--dlt_variant", type=str, default="dltdyn", choices=list(VARIANTS), help="parameterisation of the cross-variable lag kernel")
     parser.add_argument("--dlt_k", type=int, default=8, help="source neighbours per variable")
     parser.add_argument("--dlt_L", type=int, default=48, help="maximum lag of the cross-variable kernels")
+    parser.add_argument("--dlt_ccf_L", type=int, default=-1, help="largest lag of the CCF neighbour search (-1: --dlt_L); fixes the neighbours while --dlt_L changes")
     parser.add_argument("--dlt_R", type=int, default=4, help="number of shared lag-basis kernels")
     parser.add_argument("--dlt_dyn_dim", type=int, default=16, help="summary dimension of the input-adaptive coefficients")
     parser.add_argument("--dlt_ccf_len", type=int, default=8000, help="most recent training steps used for neighbour selection")

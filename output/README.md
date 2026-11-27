@@ -234,3 +234,43 @@ the neighbours' windows add beyond the variable's own window.
 3. The statistics are those of the removed protocol on the nine datasets whose splits are the same; on PEMS, whose
    validation and test windows now take their look-back inside their split, they moved by at most 0.7 points.
 
+## What the lags do (CPU, seeds 2021-2023)
+
+Table: [`ablation/lagrole.md`](ablation/lagrole.md) (suite `lagrole` of `scripts/ablation/make_jobs.py`,
+`scripts/ablation/lagrole_table.py`). Weather-96 and PEMS08-96: CI, the lag-0 kernel with input-dependent weights
+(scalar-dyn) and DLT-dyn with the maximum lag L = 1, 2, 4, 8, 12 and 48. Only L changes: every arm has the same
+neighbours (CCF search over lags 0..48, `--dlt_ccf_L 48`), and every run records the test MSE of each forecast step
+(`--step_metrics`). A lead of the neighbours by tau steps can only inform the first tau steps of the horizon; a better
+estimate of the current state helps every step.
+
+| change of the MSE against lag 0 | L 1 | L 2 | L 4 | L 8 | L 12 | L 48 |
+|---|---:|---:|---:|---:|---:|---:|
+| Weather-96 | −4.7 % | −4.9 % | −5.6 % | −4.8 % | −5.9 % | −5.7 % |
+| share of the L-48 gain | 83 % | 86 % | 99 % | 85 % | 104 % | 100 % |
+| PEMS08-96 | −16.3 % | −19.1 % | −22.2 % | −23.2 % | −23.3 % | −26.0 % |
+| share of the L-48 gain | 62 % | 73 % | 85 % | 89 % | 89 % | 100 % |
+
+| DLT-dyn (L 48) against lag 0, by forecast step | 1 | 2-4 | 5-8 | 9-16 | 17-32 | 33-64 | 65-96 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Weather-96 (10-minute steps) | −3.2 % | −4.4 % | −6.7 % | −8.2 % | −7.6 % | −5.6 % | −4.7 % |
+| PEMS08-96 (5-minute steps) | +0.9 % | +0.2 % | −1.3 % | −5.8 % | −16.5 % | −25.4 % | −29.1 % |
+
+1. **The lags help, and the first one does most of it.** Every L from 1 up beats lag 0 (p 0.013 to 0.049). One lag,
+   the current value and the one before it, gives 83 % (Weather) and 62 % (PEMS08) of the gain of the full kernel;
+   four lags give 99 % and 85 %. With one lag the kernel of a pair is a weighted sum of the neighbour's level and of
+   its last change, so the gain starts with each neighbour's own recent change, not with a distant lag.
+2. **The gain is not where a lead would put it.** On PEMS08 the lags add nothing to the first eight steps (40
+   minutes: +0.9 % to −1.3 %) and more with every bin after (−29.1 % at steps 65 to 96); on Weather they help every
+   step, most at steps 9 to 32. The lag-0 neighbours behave the same way (CI against lag 0 on PEMS08: +3.1 % at step 1,
+   +77.7 % at steps 33 to 64). The neighbours do not announce the target's next steps; their recent trajectories
+   tell the model the current state of the system and where it is going, which matters most far ahead.
+3. This fits the earlier results: most CCF peaks of the selected pairs are at lag 0 (76 % on Weather, 60 % on PEMS08),
+   aligning each neighbour at its CCF peak lag does not help (P0, `shift`), the learned lags do not grow with road
+   distance, and inside S-Mamba, whose tokens already carry each variable's own trajectory, the lags add nothing
+   (mambadlt).
+4. Checks: the arms CI, scalar-dyn and DLT-dyn reproduce the P0 runs exactly (18 runs). The neighbour search of the
+   sensitivity study (lags 0..L, so that its neighbours changed with L) moved its L-12 result by less than 1 %
+   (Weather 0.1643 against 0.1630 here, PEMS08 0.5244 against 0.5292).
+5. Limits: two settings, one horizon (96), the CPU; whether the profile holds at the PEMS horizons 12 to 48 and on
+   other data is not tested.
+

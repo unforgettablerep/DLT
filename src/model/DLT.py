@@ -44,6 +44,8 @@ class Model(nn.Module):
         self.neighbour_seed = getattr(configs, "seed", 2021)
         self.dyn_dim = d = getattr(configs, "dlt_dyn_dim", 16)
         self.ccf_len = getattr(configs, "dlt_ccf_len", 8000)
+        self.ccf_L = getattr(configs, "dlt_ccf_L", -1)
+        self.ccf_L = L if self.ccf_L is None or self.ccf_L < 0 else self.ccf_L     # lags of the neighbour search
         self.K = K = getattr(configs, "dlt_topk", 5)
         self.gate = getattr(configs, "dlt_gate", "none")
         if self.gate not in GATES:
@@ -125,9 +127,9 @@ class Model(nn.Module):
         if self.variant == "ci":
             return
         values = getattr(train_data, "data_x", train_data)
-        idx, lag = select_neighbours(values, self.k, self.L, self.ccf_len, device=self.idx.device, mode=self.neighbours, seed=self.neighbour_seed)
+        idx, lag = select_neighbours(values, self.k, self.ccf_L, self.ccf_len, device=self.idx.device, mode=self.neighbours, seed=self.neighbour_seed)
         self.idx.copy_(idx)
-        self.lag.copy_(lag)
+        self.lag.copy_(lag.clamp(max=self.L))
         msg = ""
         if self.variant in LAGSET_VARIANTS:
             tl = select_lags(values, idx, self.K, self.L, self.ccf_len, device=self.idx.device)
