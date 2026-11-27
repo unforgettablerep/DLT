@@ -91,26 +91,29 @@ def main():
         for ds, H, seed in itertools.product(a.datasets or jobs.LONG_SETS, jobs.LONG_HORIZONS, S):
             g.add("{}_{}_ci".format(ds, H), "DLT", ds, H, seed, "--dlt_variant ci {}".format(jobs.DLT_TRAIN), jobs.cost(ds, 0.1))
     elif a.suite == "allnb":
+        # all other variables as neighbours (dense path, arm _all) against the CCF top-8 (arm _ccf, the computation path
+        # of P0) with the same device, protocol and seeds. PEMS04 / PEMS08 at horizon 12: DLT and DLT-dyn, and on PEMS08
+        # iTransformer alone and + DLT-dyn (joint training, branch at 3e-3). Other datasets at the four long horizons:
+        # DLT and DLT-dyn; DLT-dyn with the CCF top-8 is the run of long_small / long_large there (allnb_table.py).
         allnb = "--dlt_k 8 --dlt_L 48 --dlt_R 4 --dlt_impl dense --dlt_neighbours all"
-        for ds, seed in itertools.product(("PEMS08", "PEMS04"), S):
-            for v, rel in (("dltdyn", 4.0 if ds == "PEMS08" else 12.0), ("dlt", 0.4 if ds == "PEMS08" else 1.2)):
-                g.add("{}_12_{}_all".format(ds, v), "DLT", ds, 12, seed, "--dlt_variant {} {} {}".format(v, allnb, jobs.DLT_TRAIN), jobs.cost(ds, rel))
-        for ds, H, seed in itertools.product(a.datasets or ("Weather", "ECL"), jobs.LONG_HORIZONS, S):
-            for v in ("dltdyn", "dlt"):
-                if v == "dltdyn" and ds in ("ECL", "Traffic") and a.device == "cpu":
-                    continue
-                g.add("{}_{}_{}_all".format(ds, H, v), "DLT", ds, H, seed, "--dlt_variant {} {} {}".format(v, allnb, jobs.DLT_TRAIN), jobs.cost(ds, 0.6 if v == "dlt" else 1.0))
-        for seed in S:
-            bargs = jobs.baseline_profiles.args("iTransformer", "PEMS08", 12)[0]
-            g.add(
-                "PEMS08_12_iTransformer_dlt_all",
-                "DLTPlug",
-                "PEMS08",
-                12,
-                seed,
-                "--plug_base iTransformer --dlt_variant dltdyn {} --dlt_lr 0.003 {}".format(allnb, bargs),
-                jobs.cost("PEMS08", 6.0),
-            )
+        ccf = lambda v: "--dlt_k 8 --dlt_L 48 --dlt_R 4 --dlt_impl {} --dlt_neighbours ccf".format(p0_impl(v))
+        for ds in a.datasets or ("PEMS08", "PEMS04", "Weather", "ECL"):
+            pems = ds in jobs.PEMS_SETS
+            for H, seed in itertools.product((12,) if pems else jobs.LONG_HORIZONS, S):
+                for v in ("dltdyn", "dlt"):
+                    if v == "dltdyn" and ds in ("ECL", "Traffic") and a.device == "cpu":
+                        continue
+                    rel = {"PEMS08": 4.0, "PEMS04": 12.0}.get(ds, 1.0) if pems else 1.0
+                    rel *= (0.1 if pems else 0.6) if v == "dlt" else 1.0
+                    g.add("{}_{}_{}_all".format(ds, H, v), "DLT", ds, H, seed, "--dlt_variant {} {} {}".format(v, allnb, jobs.DLT_TRAIN), jobs.cost(ds, rel))
+                    if pems or v == "dlt":
+                        g.add("{}_{}_{}_ccf".format(ds, H, v), "DLT", ds, H, seed, "--dlt_variant {} {} {}".format(v, ccf(v), jobs.DLT_TRAIN), jobs.cost(ds, 0.6))
+            if ds == "PEMS08":
+                bargs = jobs.baseline_profiles.args("iTransformer", "PEMS08", 12)[0]
+                for seed in S:
+                    for arm, extra, rel in (("alone", "--dlt_variant ci", 2.0), ("dlt_ccf", "--dlt_variant dltdyn {} --dlt_lr 0.003".format(ccf("dltdyn")), 3.0),
+                                            ("dlt_all", "--dlt_variant dltdyn {} --dlt_lr 0.003".format(allnb), 6.0)):
+                        g.add("PEMS08_12_iTransformer_" + arm, "DLTPlug", "PEMS08", 12, seed, "--plug_base iTransformer {} {}".format(extra, bargs), jobs.cost("PEMS08", rel))
     elif a.suite == "guard":
         for (ds, H), (arm, extra), seed in itertools.product(GUARD_SETTINGS, GUARD_ARMS.items(), S):
             if a.datasets and ds not in a.datasets:

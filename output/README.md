@@ -5,7 +5,8 @@ Every run of the study uses one protocol, that of the official iTransformer / S-
 training / validation batch dropped, test batch 1, no time marks on PEMS and Solar, and the PEMS split of the official
 loader (validation and test windows take their look-back inside their own split). The results of the earlier
 TSLib-default protocol and of the TimeMixer PEMS protocol were removed on 2026-11-26 (the git history keeps them); the
-studies are being re-run with this protocol.
+studies were re-run with this protocol on 2026-11-26 and 27: the CPU part is complete (below); the GPU part waits for
+`scripts/batch/make_gpu_jobs.sh`.
 
 | Study | Entry point | Store | Device | Status |
 | --- | --- | --- | --- | --- |
@@ -17,7 +18,7 @@ studies are being re-run with this protocol.
 | P0 kernel and gate study | `ablation/make_jobs.py p0` | `ablation/p0.tsv` | CPU (ECL: GPU) | done on the CPU (stage 3, [`summary.md`](ablation/summary.md)); ECL: `p0_ecl` |
 | Sensitivity, neighbour selection | `hyperparam/make_jobs.py sensitivity \| neighbours` | `hyperparam/*.tsv` | CPU | done (stage 4, [`sensitivity.md`](hyperparam/sensitivity.md)) |
 | Validation search and searched configurations | `hyperparam/hpsearch.py make \| tuned` | `hyperparam/hp.tsv`, `tuned.tsv` | CPU (ECL, Traffic, PEMS: GPU) | done on the CPU (stage 5, [`hp_select.md`](hyperparam/hp_select.md)) |
-| All variables as neighbours; lead-lag diagnostic | `ablation/make_jobs.py allnb`; `plugin/leadlag_diag.py` | `ablation/allnb.tsv`, `plugin/leadlag_diag.json` | CPU (ECL, Traffic: GPU) | stage 6, running |
+| All variables as neighbours; lead-lag diagnostic | `ablation/make_jobs.py allnb`; `plugin/leadlag_diag.py` | `ablation/allnb.tsv`, `plugin/leadlag_diag.json` | CPU (ECL, Traffic: GPU) | done on the CPU (stage 6, [`allnb.md`](ablation/allnb.md)); ECL, Traffic: `allnb_large` |
 | Learned kernels on PEMS08 | `mechanism/kernels.py` | `mechanism/kernels_pems08.json` | CPU | done (stage 3) |
 | Fusions with the six backbones; plug-in benchmark | `plugin/make_jobs.py plugin_fusion \| plugin_all` | `plugin/*.tsv` | GPU | `make_gpu_jobs.sh` |
 | Efficiency (time, memory) | `efficiency/run_efficiency.py`, `eff_tune.py` | `efficiency/` | CPU, GPU | done |
@@ -169,4 +170,50 @@ MSE, mean over the four horizons:
    7 %), and the validation rank predicts the test rank only weakly (Spearman 0.26 to 0.73 over the 20 trials).
    Under the removed protocol the search chose other configurations on ETTh2, ETTm1 and Weather; its gains over the
    default were similar (ETTh1 −3.6 %, Exchange −11.3 %) except on ETTh2 (−7.0 % then, −2.6 % now).
+
+## All other variables as neighbours (stage 6, CPU, seeds 2021-2023)
+
+Table: [`ablation/allnb.md`](ablation/allnb.md) (`scripts/ablation/allnb_table.py`). All other variables as neighbours
+(dense path) against the CCF top-8, same device, protocol and seeds: stand-alone DLT and DLT-dyn on PEMS04 and PEMS08
+at H = 12 and on Weather at the four horizons (DLT-dyn with the CCF top-8 there: `long_small`), and iTransformer +
+DLT-dyn on PEMS08-12 (joint training, branch at 3e-3). Change of the test MSE of all neighbours against the CCF top-8:
+
+| | PEMS04-12 | PEMS08-12 | Weather (96 / 192 / 336 / 720) |
+|---|---:|---:|---:|
+| DLT | −5.7 % | −6.0 % | −2.0 / −1.8 / −1.6 / −1.1 % |
+| DLT-dyn | −4.2 % | +3.6 % (p 0.11) | −1.4 / −0.5 / −1.1 / −0.9 % |
+| iTransformer + DLT-dyn | | +7.7 % (p 0.07) | |
+
+1. **All neighbours help the static kernel everywhere** (DLT: −5.7 % and −6.0 % on PEMS, −1.1 % to −2.0 % on
+   Weather, p ≤ 0.02), as at PEMS08-96 in stage 4 (−40.7 %).
+2. **For DLT-dyn the picture is mixed:** −4.2 % on PEMS04-12 (p 0.03), +3.6 % on PEMS08-12, within 1.4 % on Weather
+   (significant only at 720, −0.9 %); at PEMS08-96 all neighbours gained −18.7 % (stage 4). Inside iTransformer, all
+   neighbours are worse than the CCF top-8 (+7.7 %). The number of neighbours is a setting to choose on validation
+   data; it is in the search space of stage 5.
+3. **iTransformer + DLT-dyn with the CCF top-8 gains −8.7 % on PEMS08-12** (0.0809 against 0.0886, p < 0.001, three
+   seeds). iTransformer alone is 12 % behind its published result there (0.079; the baseline check on the GPU finds
+   the same, 0.089), and the plug-in arm reaches about the published number: part of the gain may close a
+   reproduction gap rather than add information.
+4. Against the removed protocol (TimeMixer PEMS protocol at H = 12 then): static DLT −4.8 % / −6.5 % then, −5.7 % /
+   −6.0 % now; DLT-dyn −2.8 % / +2.1 % then, −4.2 % / +3.6 % now; iTransformer + DLT-dyn +7.6 % then, +7.7 % now.
+
+## Lead-lag diagnostic (stage 6)
+
+`output/plugin/leadlag_diag.json` (`scripts/plugin/leadlag_diag.py`): ridge regressions on the data alone, no network
+is trained. Change of the test MSE against one shared channel-independent linear forecaster, mean over the four
+horizons (training split in brackets). NB: a correction from the windows of the 8 CCF neighbours; BOTH vs OWN: what
+the neighbours' windows add beyond the variable's own window.
+
+| | ETTh1 | ETTh2 | ETTm1 | ETTm2 | Exchange | Weather | ECL | Traffic | Solar | PEMS03 | PEMS04 | PEMS07 | PEMS08 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| NB | +0.6 (−8.6) | +13.4 (−22.0) | −5.2 (−13.6) | −0.9 (−10.7) | +39.8 (−18.9) | −6.0 (−13.8) | −3.0 (−9.6) | −2.5 (−18.9) | −2.3 (−10.4) | −13.6 (−44.2) | −36.6 (−45.3) | −21.2 (−36.1) | −32.3 (−39.8) |
+| BOTH vs OWN | −0.5 (−6.1) | +11.9 (−19.9) | −1.6 (−7.8) | +0.7 (−8.3) | +22.1 (−15.7) | +0.3 (−7.8) | −3.2 (−9.7) | −3.2 (−18.4) | −7.0 (−18.7) | −11.2 (−46.5) | −42.8 (−50.5) | −19.8 (−35.6) | −36.8 (−44.5) |
+
+1. **The diagnostic flags the harmful datasets before any network is trained.** On ETTh2 and Exchange the neighbour
+   correction lowers the training error (−22.0 %, −18.9 %) and raises the test error (+13.4 %, +39.8 %); these are
+   the datasets where DLT-dyn loses most to CI (stage 1: +12.6 %, +37.8 %).
+2. **The neighbours' pasts carry the most on PEMS** (BOTH vs OWN −11.2 % to −42.8 %), where DLT-dyn gains most
+   (stage 3: PEMS08 −43.1 % and −55.3 %).
+3. The statistics are those of the removed protocol on the nine datasets whose splits are the same; on PEMS, whose
+   validation and test windows now take their look-back inside their split, they moved by at most 0.7 points.
 

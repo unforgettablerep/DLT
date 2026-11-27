@@ -9,7 +9,7 @@
 #   3  P0 kernel and gate study without Electricity, then the learned kernels on PEMS08
 #   4  sensitivity (L, R, k) and neighbour selection
 #   5  20-trial validation search on ETT, Exchange, Weather, then the searched configurations, 3 seeds
-#   6  all variables as neighbours (PEMS04/08 at horizon 12, Weather) and the lead-lag diagnostic
+#   6  all variables as neighbours against the CCF top-8 (PEMS04/08 at horizon 12, Weather) and the lead-lag diagnostic
 # Electricity, Traffic, Solar, PEMS03/04/07, the baselines and the plug-in studies need a GPU (make_gpu_jobs.sh).
 set -e
 REPO=$(cd "$(dirname "$0")/../.." && pwd); cd "$REPO"
@@ -44,7 +44,8 @@ if [ "$FIRST" -le 5 ]; then
   "$PYTHON_BIN" scripts/hyperparam/hpsearch.py tuned; run tuned
 fi
 if [ "$FIRST" -le 6 ]; then
-  "$PYTHON_BIN" scripts/ablation/make_jobs.py allnb --datasets Weather --list allnb_cpu; run allnb_cpu
-  OMP_NUM_THREADS=4 "$PYTHON_BIN" scripts/plugin/leadlag_diag.py > "$LOG/leadlag_diag.log" 2>&1 || echo "diagnostic failed (see log/leadlag_diag.log)"
+  "$PYTHON_BIN" scripts/ablation/make_jobs.py allnb --datasets PEMS08 PEMS04 Weather --list allnb_cpu; run allnb_cpu
+  "$PYTHON_BIN" scripts/ablation/allnb_table.py > /dev/null
+  OMP_NUM_THREADS=4 "$PYTHON_BIN" scripts/plugin/leadlag_diag.py --out output/plugin/leadlag_diag.json > "$LOG/leadlag_diag.log" 2>&1 || echo "diagnostic failed (see log/leadlag_diag.log)"
 fi
 echo "tables: output/ablation/guard.md, output/ablation/summary.md, output/hyperparam/hp_select.md"

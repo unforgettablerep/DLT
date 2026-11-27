@@ -106,7 +106,7 @@ cmd  = "python scripts/multivariate_forecasting/make_scripts.py"
 help = "Regenerate the per-dataset run scripts from src/configs/dlt_profiles.py and baseline_profiles.py"
 
 [tool.poe.tasks.tables]
-shell = "python scripts/multivariate_forecasting/long_table.py > /dev/null && python scripts/ablation/aggregate.py > /dev/null && python scripts/ablation/guard_table.py > /dev/null && python scripts/hyperparam/sens_table.py > /dev/null && python scripts/efficiency/eff_tune.py > /dev/null && echo 'output/long_term_forecast/summary.md output/ablation/summary.md output/ablation/guard.md output/hyperparam/sensitivity.md output/efficiency/eff_tune.md'"
+shell = "python scripts/multivariate_forecasting/long_table.py > /dev/null && python scripts/ablation/aggregate.py > /dev/null && python scripts/ablation/guard_table.py > /dev/null && python scripts/ablation/allnb_table.py > /dev/null && python scripts/hyperparam/sens_table.py > /dev/null && python scripts/efficiency/eff_tune.py > /dev/null && echo 'output/long_term_forecast/summary.md output/ablation/summary.md output/ablation/guard.md output/ablation/allnb.md output/hyperparam/sensitivity.md output/efficiency/eff_tune.md'"
 help = "Rebuild the summary tables from the result stores"
 
 [tool.poe.tasks.test]

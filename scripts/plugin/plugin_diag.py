@@ -2,8 +2,7 @@
 
     python scripts/plugin/plugin_diag.py [store.tsv ...]
 
-Reads output/plugin/plugin.tsv (the pilot plug-in study), output/plugin/plugin_fusion.tsv and
-output/ablation/allnb.tsv, or the given stores (a run present in several is taken from the last). For every
+Reads output/plugin/plugin_all.tsv, output/plugin/plugin_fusion.tsv and output/ablation/allnb.tsv, or the given stores (a run present in several is taken from the last). For every
 dataset, horizon and backbone it prints one line per arm (alone, + DLT-dyn, and the probe arms samelr / gate / gate_samelr): test MSE and
 MAE, the change against the backbone alone, epochs run, the epoch of the best validation loss, and that loss.
 An arm that stops much earlier than the backbone alone points to the training recipe (the fast DLT branch
@@ -17,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.utils.paths import OUTPUT  # noqa: E402
 from src.utils.result_io import read_results  # noqa: E402
 
-DEFAULT_FILES = [OUTPUT / 'plugin' / 'plugin.tsv', OUTPUT / 'plugin' / 'plugin_fusion.tsv', OUTPUT / 'ablation' / 'allnb.tsv']
+DEFAULT_FILES = [OUTPUT / 'plugin' / 'plugin_all.tsv', OUTPUT / 'plugin' / 'plugin_fusion.tsv', OUTPUT / 'ablation' / 'allnb.tsv']
 ARMS = ['alone', 'dlt', 'dlt_samelr', 'dlt_gate', 'dlt_gate_samelr', 'dlt_all']
 LABEL = {'alone': 'alone', 'dlt': '+ DLT-dyn (branch lr 3e-3)', 'dlt_samelr': '+ DLT-dyn, backbone lr',
          'dlt_gate': '+ DLT-dyn, static gate', 'dlt_gate_samelr': '+ DLT-dyn, gate + backbone lr',
