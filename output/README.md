@@ -23,7 +23,24 @@ studies were re-run with this protocol on 2026-11-26 and 27: the CPU part is com
 | Fusions with the six backbones; plug-in benchmark | `plugin/make_jobs.py plugin_fusion \| plugin_all` | `plugin/*.tsv` | GPU | `make_gpu_jobs.sh` |
 | Efficiency (time, memory) | `efficiency/run_efficiency.py`, `eff_tune.py` | `efficiency/` | CPU, GPU | done |
 
-The conclusions of each study follow here when its runs are complete.
+## Summary of the CPU re-run
+
+984 CPU runs (stages 1 to 6 of `scripts/batch/run_cpu_campaign.sh` and the CCF counterparts of the all-neighbour
+suite), none failed. Every conclusion drawn under the removed protocol holds under this one:
+
+- DLT-dyn helps where the variables are coupled (Weather −9.6 % against CI, PEMS08 −43 % to −55 %) and hurts where
+  they are not (ETTh1 +4.6 %, ETTh2 +12.6 %, Exchange +37.8 %).
+- Two-stage training with significant per-variable selection keeps every ETT and Exchange setting within +1.7 % of CI
+  and keeps the coupled gains; the validation search does not (ETTh2 +9.6 %, Exchange +22.2 % against CI).
+- DLT-dyn is the best of thirteen cross-variable kernels on Weather and PEMS08; the CCF ranking of the neighbours
+  is no accuracy gain; the maximum lag hardly matters.
+- The numbers moved little. The MSE of a stand-alone setting moved by at most 2.4 %; the changes against the
+  reference by at most 1.7 points in P0, the sensitivity study and the all-neighbour suite, and by up to 5 points for
+  the unguarded arms of the guard study on ETTh2-720 and Exchange, whose spread over the seeds is large (two-stage
+  training without selection on Exchange-720: +85.5 % then, +80.4 % now). The validation search chose other
+  configurations on three datasets, whose best trials lead by less than 1 % of the validation loss.
+
+The conclusions of each study follow.
 
 ## Stand-alone DLT-dyn against CI (stage 1, CPU, seeds 2021-2023)
 
